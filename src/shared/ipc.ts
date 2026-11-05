@@ -1,4 +1,4 @@
-import type { AnswerKey, Transcript } from '../core/types.js';
+import type { AnswerKey, Student, Transcript } from '../core/types.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
 export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api'; cliPath?: string; configDir?: string }
@@ -6,7 +6,7 @@ export interface Settings { 학기폴더: string | null; 명단: string | null; 
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string }
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
-export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 명단있음: boolean }
+export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }

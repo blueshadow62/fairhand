@@ -63,7 +63,7 @@ canvas.preview { border: 1px solid #ccd; background: #fff; max-width: 100%; }
 progress { width: 320px; height: 18px; }
 
 /* 검토 */
-.review { display: grid; grid-template-columns: 220px 1fr 440px; height: calc(100vh - 44px); }
+.review { display: grid; grid-template-columns: 220px 1fr 460px; height: calc(100vh - 130px); border: 1px solid #ccd; }
 .review .list { overflow: auto; border-right: 1px solid #ccd; background: #fff; }
 .review .list .item { padding: 6px 8px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px; }
 .review .list .item.active { background: #eef2ff; }
@@ -74,3 +74,5 @@ progress { width: 320px; height: 18px; }
 .review .viewer-bar { position: sticky; top: 0; display: flex; gap: 4px; padding: 4px; background: rgba(255,255,255,.85); z-index: 1; }
 .review .editor { overflow: auto; padding: 8px 12px; background: #fafbfc; border-left: 1px solid #ccd; }
 .review .editor table { width: 100%; }
+.review .editor td:first-child { white-space: nowrap; }
+.review .editor td select { min-width: 76px; }

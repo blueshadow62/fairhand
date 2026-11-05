@@ -63,7 +63,12 @@ export function registerIpc(d: IpcDeps): void {
     await writeFile(path.join(dir, '정답표.json'), JSON.stringify(key, null, 1), 'utf-8');
     return { 폴더, key, 쪽수: 0, 전사수: 0 };
   });
-  h(CHANNELS.readSet, async (폴더: string) => { const dir = await setDir(폴더); const { key, transcripts } = await loadSet(dir); const s = await d.settings.load(); return { 폴더, key, transcripts, pages: await listPages(dir), 명단있음: !!s.명단 }; });
+  h(CHANNELS.readSet, async (폴더: string) => {
+    const dir = await setDir(폴더); const { key, transcripts } = await loadSet(dir);
+    const all = await roster().catch(() => null); // 명단 파일이 깨져도 세트는 열리게(엑셀 만들 때 오류가 보인다)
+    const 명단 = all ? all.filter(x => x.학년 === key.대상.학년 && key.대상.반.includes(x.반)) : null; // 검토 화면의 미제출 목록용
+    return { 폴더, key, transcripts, pages: await listPages(dir), 명단있음: !!all, 명단 };
+  });
   h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => {
     const dir = await setDir(폴더);
     const key = parseKey(JSON.stringify(raw), '정답표.json');

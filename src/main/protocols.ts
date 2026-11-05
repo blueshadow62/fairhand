@@ -39,7 +39,7 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.cs
 
 async function fileResponse(file: string | null): Promise<Response> {
   if (!file) return new Response('not found', { status: 404 });
-  try { return new Response(await readFile(file), { headers: { 'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'content-security-policy': CSP } }); }
+  try { return new Response(await readFile(file), { headers: { 'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'content-security-policy': CSP, 'cache-control': 'no-store' } }); }
   catch { return new Response('not found', { status: 404 }); }
 }
 
