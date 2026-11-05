@@ -1,22 +1,34 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { isConfirmed } from '../core/key.js';
+import { isConfirmed, parseKey } from '../core/key.js';
+import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { readRoster } from '../core/roster.js';
-import { loadSet, listPages } from '../core/setio.js';
-import { DataError, type Student, type Transcript } from '../core/types.js';
+import { loadSet, listPages, saveTranscript } from '../core/setio.js';
+import { DataError, type AnswerKey, type QtyUnit, type Student, type Transcript } from '../core/types.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { childEnv } from '../engine/env.js';
+import { judgePage } from '../engine/judge.js';
 import { draftKey, type KeyDraftInput } from '../engine/keydraft.js';
 import { EngineError, userFacingMessage, type TranscribeProvider } from '../engine/provider.js';
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
-import type { CliStatusView, KeyDraftResult, Profile, ProgressEvent, RunResult } from '../shared/ipc.js';
+import type { CliStatusView, JudgeResult, KeyDraftResult, Profile, ProgressEvent, RejudgeResult, RunResult } from '../shared/ipc.js';
 import { openLogin } from './launch.js';
-import { rebuildResult } from './results.js';
+import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
+
+const changeText = (cs: Change[]) => cs.map(c => `${c.단위} ${c.이전}→${c.이후}`);
+
+/** 채점 내용(단위·정답·허용·핵심)의 비교용 서명. 키 순서와 상관없고, 요소형이 아닌 '유형'은 판정에 영향이 없어 뺀다(옛 정답표엔 유형이 없다) */
+function contentSig(k: AnswerKey): string {
+  const qty = k.정량.map(({ 유형, ...u }: QtyUnit) => ({ ...u, ...(유형 === '요소형' ? { 유형 } : {}) }));
+  const sorted = (v: unknown): unknown => Array.isArray(v) ? v.map(sorted)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([a, b]) => [a, sorted(b)])) : v;
+  return JSON.stringify(sorted({ 정량: qty, 정성: k.정성 }));
+}
 
 export interface BridgeDeps { settings: SettingsStore; secrets: SecretStore; version: string; env?: NodeJS.ProcessEnv }
 
@@ -92,6 +104,80 @@ export class EngineBridge {
     const ac = new AbortController();
     const r = await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0 }, ac.signal);
     return r.transcript;
+  }
+
+  /** 세트 폴더의 엑셀을 다시 만든다. 실패는 메시지로만 */
+  private async rebuildSafe(setDir: string): Promise<{ 엑셀?: string; 엑셀오류?: string }> {
+    try { return await rebuildResult(setDir, await this.roster(), { version: this.deps.version }); }
+    catch (e) { return { 엑셀오류: e instanceof Error ? e.message : String(e) }; }
+  }
+
+  /** 정답표 저장. 채점 내용이 바뀌었으면 확인을 지운다(화면만 믿지 않는다). 채점규칙·사례만 바뀐 저장은 확인 유지 */
+  async saveKey(setDir: string, raw: unknown): Promise<AnswerKey> {
+    const key = parseKey(JSON.stringify(raw), '정답표.json');
+    let old: AnswerKey | null = null;
+    try { old = (await loadSet(setDir)).key; } catch { /* 없거나 깨진 정답표는 새로 쓴다 */ }
+    if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
+    await saveKeyFile(setDir, key);
+    return key;
+  }
+
+  /** 결정적 재판정을 돌려 바뀐 장만 저장하고 엑셀을 다시 만든다 */
+  private async rejudgeWith(setDir: string, key: AnswerKey, transcripts: Transcript[]): Promise<RejudgeResult> {
+    const r = rejudgeAll(key, transcripts);
+    for (const c of r.changed) await saveTranscript(setDir, r.transcripts.find(t => t.page === c.page)!);
+    return { 바뀐장: r.changed.map(c => ({ page: c.page, 변경: changeText(c.changes) })), ...await this.rebuildSafe(setDir) };
+  }
+
+  async rejudge(setDir: string): Promise<RejudgeResult> {
+    const { key, transcripts } = await loadSet(setDir);
+    return this.rejudgeWith(setDir, key, transcripts);
+  }
+
+  async applyCase(setDir: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }, now: () => Date = () => new Date()): Promise<RejudgeResult> {
+    if (c.판정 !== 'O' && c.판정 !== 'X') throw new DataError('사례의 판정은 O 또는 X여야 합니다');
+    if (!c.답.trim()) throw new DataError('빈 답은 사례로 기록하지 않습니다');
+    const { key, transcripts } = await loadSet(setDir);
+    if (!key.정량.some(u => u.id === c.단위)) throw new DataError(`정답표에 단위 ${c.단위}가 없습니다`);
+    const next = addCase(key, { 단위: c.단위, 답: c.답, 판정: c.판정, 일시: now().toISOString(), 출처: `검토 p${String(c.page).padStart(2, '0')}` });
+    await saveKeyFile(setDir, next); // 사례는 확인을 지우지 않는다
+    return this.rejudgeWith(setDir, next, transcripts);
+  }
+
+  async removeCase(setDir: string, 단위: string, 답: string): Promise<AnswerKey> {
+    const next = removeCase((await loadSet(setDir)).key, 단위, 답);
+    await saveKeyFile(setDir, next);
+    return next;
+  }
+
+  /** 글만 보내는 모델 재판정. 전사와 같은 실행 표시를 써서 동시에 돌지 않는다 */
+  async judgeWithModel(setDir: string, pages: number[] | undefined, onProgress: (e: ProgressEvent) => void): Promise<JudgeResult> {
+    if (this.current) throw new DataError('이미 실행 중입니다. 끝나거나 중단된 뒤 다시 하세요');
+    const ac = this.current = new AbortController();
+    try {
+      const { key, transcripts } = await this.confirmedSet(setDir);
+      const todo = transcripts.filter(t => !pages || pages.includes(t.page));
+      if (!todo.length) throw new DataError('다시 판정할 전사가 없습니다');
+      const provider = await this.provider();
+      const rules = await loadRules();
+      const 바뀐장: RejudgeResult['바뀐장'] = [], failed: JudgeResult['failed'] = [];
+      let done = 0;
+      for (const t of todo) {
+        if (ac.signal.aborted) break;
+        try {
+          const r = await judgePage(provider, key, rules, t, ac.signal);
+          if (r.changes.length) { await saveTranscript(setDir, r.transcript); 바뀐장.push({ page: t.page, 변경: changeText(r.changes) }); }
+          onProgress({ page: t.page, done: ++done, total: todo.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
+        } catch (e) {
+          if (e instanceof EngineError && e.kind === 'cancelled') break;
+          const error = userFacingMessage(e);
+          failed.push({ page: t.page, error });
+          onProgress({ page: t.page, done: ++done, total: todo.length, error });
+          if (e instanceof EngineError && ['signed-out', 'not-installed', 'needs-update'].includes(e.kind)) break;
+        }
+      }
+      return { 바뀐장, failed, ...await this.rebuildSafe(setDir) };
+    } finally { this.current = null; }
   }
 
   running(): boolean { return this.current !== null; }

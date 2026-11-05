@@ -69,13 +69,7 @@ export function registerIpc(d: IpcDeps): void {
     const 명단 = all ? all.filter(x => x.학년 === key.대상.학년 && key.대상.반.includes(x.반)) : null; // 검토 화면의 미제출 목록용
     return { 폴더, key, transcripts, pages: await listPages(dir), 명단있음: !!all, 명단 };
   });
-  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => {
-    const dir = await setDir(폴더);
-    const key = parseKey(JSON.stringify(raw), '정답표.json');
-    await writeFile(path.join(dir, '정답표.json.tmp'), JSON.stringify(key, null, 1), 'utf-8');
-    await (await import('node:fs/promises')).rename(path.join(dir, '정답표.json.tmp'), path.join(dir, '정답표.json'));
-    return key;
-  });
+  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => d.bridge.saveKey(await setDir(폴더), raw));
   h(CHANNELS.importKey, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePaths[0]) return null; return parseKey(await readFile(r.filePaths[0], 'utf-8'), path.basename(r.filePaths[0])); });
   h(CHANNELS.exportKey, async (폴더: string) => { const dir = await setDir(폴더); const { key } = await loadSet(dir); const r = await dialog.showSaveDialog(d.window()!, { defaultPath: keyExportName(key), filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePath) return null; await writeFile(r.filePath, JSON.stringify(key, null, 1), 'utf-8'); return r.filePath; });
   h(CHANNELS.attachSource, async (폴더: string) => { const dir = await setDir(폴더); const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '지문', extensions: ['pdf', 'txt'] }] }); if (r.canceled || !r.filePaths[0]) return null; await mkdir(path.join(dir, '원본'), { recursive: true }); const name = path.basename(r.filePaths[0]); await copyFile(r.filePaths[0], path.join(dir, '원본', name)); return name; });
@@ -95,5 +89,9 @@ export function registerIpc(d: IpcDeps): void {
 
   h(CHANNELS.saveTranscript, async (폴더: string, raw: unknown) => { const dir = await setDir(폴더); const t = parseTranscript(JSON.stringify(raw), '검토 화면'); return saveAndRebuild(dir, t, await roster(), { version: d.version }); });
   h(CHANNELS.buildResult, async (폴더: string) => rebuildResult(await setDir(폴더), await roster(), { version: d.version }));
+  h(CHANNELS.applyCase, async (폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }) => d.bridge.applyCase(await setDir(폴더), c));
+  h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
+  h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));
+  h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: number[] }) => d.bridge.judgeWithModel(await setDir(폴더), opts?.pages, e => d.window()?.webContents.send(CHANNELS.progress, e)));
   h(CHANNELS.buildCumulative, async () => buildAllCumulative(await semester(), await roster(), { version: d.version }));
 }

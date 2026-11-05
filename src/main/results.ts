@@ -1,10 +1,10 @@
-import { readdir } from 'node:fs/promises';
+import { rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildCumulative, writeCumulativeXlsx, type SetSummary } from '../core/cumulative.js';
 import { cumulativeFileName, resultFileName } from '../core/names.js';
 import { buildRows } from '../core/score.js';
 import { loadSet, saveTranscript } from '../core/setio.js';
-import { DataError, type Student, type Transcript } from '../core/types.js';
+import { DataError, type AnswerKey, type Student, type Transcript } from '../core/types.js';
 import { writeResultXlsx } from '../core/xlsx.js';
 import { listSets } from './paths.js';
 
@@ -60,4 +60,11 @@ export async function buildAllCumulative(semesterDir: string, roster: Student[] 
     파일.push(out);
   }
   return { 파일 };
+}
+
+/** 정답표를 임시 파일에 쓴 뒤 바꿔치기(쓰다 끊겨도 깨지지 않게) */
+export async function saveKeyFile(setDir: string, key: AnswerKey): Promise<void> {
+  const target = path.join(setDir, '정답표.json'), tmp = `${target}.tmp`;
+  try { await writeFile(tmp, JSON.stringify(key, null, 1), 'utf-8'); await rename(tmp, target); }
+  catch (e) { await rm(tmp, { force: true }).catch(() => undefined); throw friendlyFsError(e, '정답표.json'); }
 }

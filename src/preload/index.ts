@@ -9,6 +9,7 @@ const CHANNELS = {
   listSets: 'set:list', createSet: 'set:create', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
+  applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
 } as const;
 
 async function call<T>(ch: string, ...args: unknown[]): Promise<T> {
@@ -48,5 +49,9 @@ const api: GeulnunApi = {
   saveTranscript: (폴더, t) => call(CHANNELS.saveTranscript, 폴더, t),
   buildResult: (폴더) => call(CHANNELS.buildResult, 폴더),
   buildCumulative: () => call(CHANNELS.buildCumulative),
+  applyCase: (폴더, c) => call(CHANNELS.applyCase, 폴더, c),
+  removeCase: (폴더, 단위, 답) => call(CHANNELS.removeCase, 폴더, 단위, 답),
+  rejudge: (폴더) => call(CHANNELS.rejudge, 폴더),
+  judgeWithModel: (폴더, opts) => call(CHANNELS.judgeWithModel, 폴더, opts),
 };
 contextBridge.exposeInMainWorld('geulnun', api);

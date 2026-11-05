@@ -10,6 +10,8 @@ export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcri
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
+export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]; 엑셀?: string; 엑셀오류?: string }
+export interface JudgeResult extends RejudgeResult { failed: { page: number; error: string }[] }
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
 export type ExternalLink = 'install' | 'privacy';
 
@@ -20,6 +22,7 @@ export const CHANNELS = {
   listSets: 'set:list', createSet: 'set:create', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
+  applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
 } as const;
 
 /** preload가 렌더러에 노출하는 전부. 렌더러는 이것만 안다. */
@@ -54,4 +57,11 @@ export interface GeulnunApi {
   saveTranscript(폴더: string, t: Transcript): Promise<{ 엑셀?: string; 엑셀오류?: string }>;
   buildResult(폴더: string): Promise<{ 엑셀: string }>;
   buildCumulative(): Promise<{ 파일: string[] }>;
+  /** 사례를 기록하고 같은 단위·같은 답의 장을 결정적으로 다시 판정한다(검토 화면, 사례로 기록이 켜져 있을 때) */
+  applyCase(폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }): Promise<RejudgeResult>;
+  removeCase(폴더: string, 단위: string, 답: string): Promise<AnswerKey>;
+  /** 결정적 재판정(모델 호출 없음) */
+  rejudge(폴더: string): Promise<RejudgeResult>;
+  /** 글만 보내는 모델 재판정. 진행은 onProgress */
+  judgeWithModel(폴더: string, opts: { pages?: number[] }): Promise<JudgeResult>;
 }

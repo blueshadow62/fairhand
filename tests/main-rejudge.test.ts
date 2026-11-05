@@ -1,0 +1,92 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { EngineBridge } from '../src/main/engine-bridge.js';
+import { SettingsStore } from '../src/main/settings.js';
+import { SecretStore } from '../src/main/secrets.js';
+import { loadSet } from '../src/core/setio.js';
+import type { RawResult, StructuredRequest, TranscribeProvider } from '../src/engine/provider.js';
+
+const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
+const storage = { isEncryptionAvailable: () => true, encryptString: (s: string) => Buffer.from(s), decryptString: (b: Buffer) => b.toString() };
+
+// 픽스처: p01 1-1 '가나' O, 3-1 '열심히' X / p02 1-1 '가나' O / p03 1-1 '' X
+async function setup(confirmed = true) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'geulnun-rejudge-'));
+  const set = path.join(dir, '세트A');
+  await cp(FX, set, { recursive: true });
+  await mkdir(path.join(set, 'pages'), { recursive: true });
+  for (const p of [1, 2, 3]) await writeFile(path.join(set, 'pages', `p0${p}.jpg`), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const keyPath = path.join(set, '정답표.json');
+  const key = JSON.parse(await readFile(keyPath, 'utf-8'));
+  if (confirmed) key.확인 = { 완료: true };
+  await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+  const bridge = new EngineBridge({ settings: new SettingsStore(path.join(dir, 'settings.json')), secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
+  return { dir, set, bridge, key };
+}
+const verdict = async (set: string, page: number, id: string) => (await loadSet(set)).transcripts.find(t => t.page === page)!.정량[id]!.판정;
+
+test('applyCase: 사례를 기록하고 같은 답의 다른 장을 바꾸며 엑셀을 만든다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const r = await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 }, () => new Date('2026-11-06T00:00:00Z'));
+    const { key } = await loadSet(set);
+    assert.deepEqual(key.사례, [{ 단위: '1-1', 답: '가나', 판정: 'X', 일시: '2026-11-06T00:00:00.000Z', 출처: '검토 p01' }]);
+    assert.equal(key.확인?.완료, true); // 사례는 확인을 지우지 않는다
+    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 2, 3]); // p03은 빈 답이라 빈칸으로
+    assert.deepEqual(r.바뀐장[1]!.변경, ['1-1 O→X']);
+    assert.equal(await verdict(set, 2, '1-1'), 'X');
+    assert.ok(r.엑셀 && !r.엑셀오류);
+    assert.equal((await loadSet(set)).transcripts.find(t => t.page === 2)!.정량['1-1']!.답, '가나');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('rejudge: 허용에 표기를 더하면 그 표기를 쓴 장이 O로', async () => {
+  const { dir, set, bridge, key } = await setup();
+  try {
+    key.정량[1].허용 = ['열심히'];
+    await writeFile(path.join(set, '정답표.json'), JSON.stringify(key), 'utf-8');
+    const r = await bridge.rejudge(set);
+    assert.ok(r.바뀐장.some(c => c.page === 1 && c.변경.includes('3-1 X→O')));
+    assert.equal(await verdict(set, 1, '3-1'), 'O');
+    assert.equal(await verdict(set, 3, '1-1'), '빈칸'); // 빈 답은 빈칸으로
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 거절', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const fake: TranscribeProvider = {
+      id: 'api',
+      async complete(req: StructuredRequest): Promise<RawResult> { await gate; void req; return { output: { quant: { '1-1': { verdict: 'X' }, '3-1': { verdict: 'X' } } }, model: 'f' }; },
+      async transcribe(): Promise<RawResult> { throw new Error('쓰지 않음'); },
+    };
+    (bridge as any).provider = async () => fake;
+    const seen: number[] = [];
+    const running = bridge.judgeWithModel(set, [1, 2], e => seen.push(e.page));
+    await assert.rejects(bridge.startRun(set, {}, () => undefined), /이미 실행 중/);
+    release();
+    const r = await running;
+    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 2]);
+    assert.deepEqual(seen, [1, 2]);
+    assert.equal(await verdict(set, 2, '1-1'), 'X');
+    assert.ok((await loadSet(set)).transcripts.find(t => t.page === 2)!.비고.includes('모델 재판정: 1-1 O→X'));
+    assert.equal(bridge.running(), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('saveKey: 사례·채점규칙만 바꾸면 확인 유지, 정답을 바꾸면 확인을 지운다', async () => {
+  const { dir, set, bridge, key } = await setup();
+  try {
+    const k1 = await bridge.saveKey(set, { ...key, 채점규칙: { 넓은말: '인정' }, 사례: [{ 단위: '1-1', 답: '가', 판정: 'O', 일시: '', 출처: '' }], 정량: key.정량.map((u: any) => ({ ...u, 유형: '단답형' })) });
+    assert.equal(k1.확인?.완료, true);
+    const k2 = await bridge.saveKey(set, { ...k1, 정량: k1.정량.map(u => u.id === '1-1' ? { ...u, 정답: '다른 답' } : u) });
+    assert.equal(k2.확인?.완료, false);
+    assert.equal((await loadSet(set)).key.확인?.완료, false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
