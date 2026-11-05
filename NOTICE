@@ -5,4 +5,5 @@ This product includes software developed by third parties:
 - Electron (MIT) https://github.com/electron/electron
 - exceljs (MIT) https://github.com/exceljs/exceljs
 - TypeScript (Apache-2.0) https://github.com/microsoft/TypeScript
+- @anthropic-ai/sdk (MIT) https://github.com/anthropics/anthropic-sdk-typescript
 (부품을 더할 때마다 여기에 적는다. 2단계: @anthropic-ai/sdk(MIT). 3단계: 이음오피스 ai-provider 일부(Apache-2.0, https://github.com/pblsketch/openoffice, 변경하여 사용). 4단계: pdfjs-dist(Apache-2.0). 5단계: electron-builder·electron-updater(MIT).)
