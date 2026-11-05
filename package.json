@@ -10,9 +10,9 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "tsc",
-    "test": "tsc && node --test \"dist/tests/**/*.test.js\"",
-    "start": "tsc && electron .",
+    "build": "tsc && tsc -p tsconfig.preload.json && node scripts/rename-preload.mjs",
+    "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
+    "start": "npm run build && electron .",
     "score": "tsc && node dist/scripts/score-set.js",
     "transcribe": "tsc && node dist/scripts/transcribe-set.js",
     "eval": "tsc && node dist/scripts/eval.js"
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "pdfjs-dist": "^5.7.284"
   }
 }
