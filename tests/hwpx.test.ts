@@ -26,3 +26,18 @@ test('decodeText·extractText: utf-8 BOM, cp949, 확장자별 안내', () => {
   assert.throws(() => extractText('a.xyz', Buffer.alloc(0)), DataError);
   assert.throws(() => extractHwpxText(Buffer.from('not a zip')), DataError);
 });
+
+test('hwpxSectionText: 닫히지 않은 태그·hp:tbl은 건너뛰고 멈추지 않는다', () => {
+  assert.equal(hwpxSectionText('<hp:tbl><hp:t>가</hp:t></hp:tbl><hp:p><hp:t>나'), '가');
+  const big = '<hp:t'.repeat(20000);
+  const t0 = Date.now(); hwpxSectionText(big); assert.ok(Date.now() - t0 < 500);
+});
+
+test('extractHwpxText: 너무 큰 항목은 거절(압축 폭탄 방지)', () => {
+  // 중앙 목록의 크기만 큰 척하는 zip: 픽스처의 uncompressedSize 바이트를 덮어쓴다
+  const buf = Buffer.from(fx('문항지.hwpx'));
+  let eocd = -1; for (let i = buf.length - 22; i >= 0; i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  let p = buf.readUInt32LE(eocd + 16), count = buf.readUInt16LE(eocd + 10);
+  for (let k = 0; k < count; k++) { const n = buf.readUInt16LE(p + 28); if (buf.toString('utf8', p + 46, p + 46 + n).startsWith('Contents/section')) buf.writeUInt32LE(0x7fffffff, p + 24); p += 46 + n + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32); }
+  assert.throws(() => extractHwpxText(buf), (e: unknown) => e instanceof DataError && /너무 큽니다/.test(e.message));
+});
