@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { locateClaude, compareVersion, parseAuthStatus, parseVersion, claudeStatus, MIN_CLI_VERSION } from '../src/engine/status.js';
+import { locateClaude, compareVersion, parseAuthStatus, parseVersion, claudeStatus, MIN_CLI_VERSION, type ClaudeProgram } from '../src/engine/status.js';
 
 test('locateClaude: 설정 경로 → 사용자 .local\\bin → PATH 순서', () => {
   const home = 'C:\\Users\\t';
@@ -38,4 +38,17 @@ test('claudeStatus: 미설치·옛 버전·미로그인을 구분한다', async 
   assert.equal(old.tooOld, true);
   const cur = await claudeStatus(run({ '--version': '2.1.316 (Claude Code)', 'auth status --json': '{"loggedIn":false,"authMethod":"none"}' }), fakeLocate(true));
   assert.deepEqual(cur, { installed: true, version: '2.1.316', tooOld: false, loggedIn: false, authMethod: 'none', subscriptionType: undefined });
+});
+
+test('locateClaude: configuredPath가 있으면 그것을, 없으면 GEULNUN_CLAUDE_PATH를 먼저 본다', () => {
+  assert.deepEqual(locateClaude({ GEULNUN_CLAUDE_PATH: 'X:\\c.exe' }, () => true, 'Y:\\claude-max.exe'), { command: 'Y:\\claude-max.exe', prefixArgs: [] });
+  assert.equal(locateClaude({}, (p) => p === 'Y:\\claude-max.exe', 'Y:\\none.exe'), null); // 적힌 경로가 없으면 자동 찾기로 넘어가지 않고 null
+});
+
+test('claudeStatus: run에 env를 넘긴다', async () => {
+  const seen: NodeJS.ProcessEnv[] = [];
+  const run = async (_p: ClaudeProgram, _a: string[], env?: NodeJS.ProcessEnv) => { seen.push(env ?? {}); return { code: 0, stdout: '2.1.300\n{"loggedIn":true}', stderr: '' }; };
+  const s = await claudeStatus(run, () => ({ command: 'c', prefixArgs: [] }), { CLAUDE_CONFIG_DIR: 'D' });
+  assert.equal(s.loggedIn, true);
+  assert.equal(seen[0]?.CLAUDE_CONFIG_DIR, 'D');
 });

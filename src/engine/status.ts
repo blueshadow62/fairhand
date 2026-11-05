@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { childEnv } from './env.js';
 
 export interface ClaudeProgram { command: string; prefixArgs: string[] }
 export const MIN_CLI_VERSION = '2.1.248';
@@ -14,7 +15,8 @@ function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boo
 }
 
 /** 설정 경로 → 사용자 .local\bin\claude.exe(공식 설치 프로그램 위치) → PATH의 claude.exe → PATH의 claude.cmd(npm, node로 cli.js를 직접 실행) */
-export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync): ClaudeProgram | null {
+export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string): ClaudeProgram | null {
+  if (configuredPath) return exists(configuredPath) ? { command: configuredPath, prefixArgs: [] } : null; // 적어 둔 경로가 틀리면 조용히 다른 것을 쓰지 않는다
   const configured = env.GEULNUN_CLAUDE_PATH;
   if (configured && exists(configured)) return { command: configured, prefixArgs: [] };
   const home = env.USERPROFILE ?? env.HOME ?? '';
@@ -56,20 +58,20 @@ export function parseAuthStatus(stdout: string): { loggedIn: boolean; authMethod
   } catch { return null; }
 }
 
-export type Runner = (program: ClaudeProgram, args: string[]) => Promise<{ code: number | null; stdout: string; stderr: string }>;
+export type Runner = (program: ClaudeProgram, args: string[], env?: NodeJS.ProcessEnv) => Promise<{ code: number | null; stdout: string; stderr: string }>;
 
-export const runClaude: Runner = (program, args) => new Promise(res => {
-  execFile(program.command, [...program.prefixArgs, ...args], { timeout: 20_000, windowsHide: true, maxBuffer: 1 << 20 },
+export const runClaude: Runner = (program, args, env) => new Promise(res => {
+  execFile(program.command, [...program.prefixArgs, ...args], { timeout: 20_000, windowsHide: true, maxBuffer: 1 << 20, env: env ?? childEnv(process.env) },
     (err, stdout, stderr) => res({ code: err && 'code' in err && typeof err.code === 'number' ? err.code : err ? 1 : 0, stdout: String(stdout), stderr: String(stderr) }));
 });
 
 export interface ClaudeStatus { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; authMethod?: string; subscriptionType?: string }
 
-export async function claudeStatus(run: Runner = runClaude, locate: () => ClaudeProgram | null = () => locateClaude()): Promise<ClaudeStatus> {
+export async function claudeStatus(run: Runner = runClaude, locate: () => ClaudeProgram | null = () => locateClaude(), env: NodeJS.ProcessEnv = childEnv(process.env)): Promise<ClaudeStatus> {
   const program = locate();
   if (!program) return { installed: false };
-  const v = parseVersion((await run(program, ['--version'])).stdout) ?? undefined;
-  const auth = parseAuthStatus((await run(program, ['auth', 'status', '--json'])).stdout);
+  const v = parseVersion((await run(program, ['--version'], env)).stdout) ?? undefined;
+  const auth = parseAuthStatus((await run(program, ['auth', 'status', '--json'], env)).stdout);
   return { installed: true, version: v, tooOld: v ? compareVersion(v, MIN_CLI_VERSION) < 0 : undefined,
     loggedIn: auth?.loggedIn, authMethod: auth?.authMethod, subscriptionType: auth?.subscriptionType };
 }

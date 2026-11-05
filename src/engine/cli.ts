@@ -7,9 +7,10 @@ import { CliTurn, initializeLine, launchArgs, userLine, MODEL } from './cli-prot
 import { EngineError, type RawResult, type TranscribeInput, type TranscribeProvider } from './provider.js';
 import { transcriptSchema } from './schema.js';
 import { systemPrompt, userText } from './rules.js';
+import { childEnv } from './env.js';
 import { locateClaude, type ClaudeProgram } from './status.js';
 
-export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void }
+export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void; env?: NodeJS.ProcessEnv }
 
 export function killProcessTree(pid: number): void {
   if (process.platform === 'win32') execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => undefined);
@@ -24,11 +25,13 @@ export class CliProvider implements TranscribeProvider {
   private readonly spawn: typeof nodeSpawn;
   private readonly timeoutMs: number;
   private readonly killTree: (pid: number) => void;
+  private readonly env: NodeJS.ProcessEnv;
   constructor(deps: CliDeps = {}) {
     this.program = deps.program === undefined ? locateClaude() : deps.program;
     this.spawn = deps.spawn ?? nodeSpawn;
     this.timeoutMs = deps.timeoutMs ?? 300_000;
     this.killTree = deps.killTree ?? killProcessTree;
+    this.env = deps.env ?? childEnv(process.env);
   }
 
   async transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> {
@@ -42,7 +45,7 @@ export class CliProvider implements TranscribeProvider {
       return await new Promise<RawResult>((resolve, reject) => {
         let child: ReturnType<typeof nodeSpawn>;
         try {
-          child = this.spawn(program.command, args, { cwd, env: { ...process.env, DISABLE_AUTOUPDATER: '1', DISABLE_TELEMETRY: '1' }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+          child = this.spawn(program.command, args, { cwd, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
         } catch (e) { reject(new EngineError('other', `Claude Code를 실행할 수 없음: ${(e as Error).message}`)); return; }
         let settled = false, exited = false, stderr = '';
         const finish = (err?: EngineError, result?: RawResult) => {
