@@ -82,3 +82,14 @@ test('transcribeSet: 중단하면 그 자리에서 멈춘다', async () => {
   const r = await transcribeSet(p, d, key, rules, [1, 2, 3], ac.signal, { force: true });
   assert.ok(r.ok.length <= 2); assert.ok(!r.ok.includes(3));
 });
+
+test('transcribeSet: 저장 전에 사례·정답 정확 일치를 적용한다', async () => {
+  const d = sampleSet([4]);
+  const k = { ...key, 사례: [{ 단위: '1-1', 답: 'x', 판정: 'O' as const, 일시: 'a', 출처: 'p' }] };
+  const r = await transcribeSet(provider(page => ({ output: good(page), model: 'm' })), d, k, rules, [4], new AbortController().signal);
+  assert.deepEqual(r.ok, [4]);
+  const saved = JSON.parse(readFileSync(path.join(d, 'transcripts', 'p04.json'), 'utf-8'));
+  assert.equal(saved.정량['1-1'].판정, 'O');
+  assert.equal(saved.정량['1-1'].답, 'x');
+  assert.ok(saved.비고.includes('재판정: 1-1 X→O (사례)'));
+});

@@ -1,5 +1,6 @@
 import { readFile, mkdir, writeFile, rename, access } from 'node:fs/promises';
 import path from 'node:path';
+import { rejudgeTranscript } from '../core/rejudge.js';
 import { transcriptFileName } from '../core/setio.js';
 import type { AnswerKey, Transcript } from '../core/types.js';
 import { EngineError, toTranscript, userFacingMessage, withRetry, type Effort, type TranscribeInput, type TranscribeProvider } from './provider.js';
@@ -52,7 +53,7 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
     try {
       const image = (await readFile(path.join(setDir, 'pages', `p${String(page).padStart(2, '0')}.jpg`))).toString('base64');
       const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort }, signal);
-      await writeJson(outDir, name, r.transcript);
+      await writeJson(outDir, name, rejudgeTranscript(key, r.transcript).transcript); // 사례·정답 정확 일치는 저장 전에 맞춘다
       ok.push(page); done++;
       opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
     } catch (e) {

@@ -8,7 +8,7 @@ export function findCase(key: AnswerKey, 단위: string, 답: string): Case | un
   return key.사례?.find(c => c.단위 === 단위 && normalizeAnswer(c.답) === n);
 }
 
-export interface Change { 단위: string; 이전: Panjeong; 이후: Panjeong; 근거: '사례' | '정답' | '허용' | '빈칸' }
+export interface Change { 단위: string; 이전: Panjeong; 이후: Panjeong; 근거: '사례' | '정답' | '허용' | '빈칸' | '모델' }
 
 function decide(key: AnswerKey, 단위: string, 답: string): { 판정: Panjeong; 근거: Change['근거'] } | null {
   const n = normalizeAnswer(답);
