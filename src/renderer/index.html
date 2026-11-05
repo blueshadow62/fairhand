@@ -2,9 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src geulnun-img: blob: data:; style-src 'self'; worker-src 'self' blob:">
 <title>글눈</title>
-<style>body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;padding:24px}</style>
+<link rel="stylesheet" href="/styles.css">
 </head>
-<body><h1>글눈</h1><p>화면은 4단계에서 만듭니다.</p></body>
+<body>
+<div id="app"></div>
+<script type="module" src="/dist/renderer/app.js"></script>
+</body>
 </html>

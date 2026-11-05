@@ -64,7 +64,11 @@ export class EngineBridge {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       await new Anthropic({ apiKey }).messages.create({ model: 'claude-haiku-5-5', max_tokens: 16, messages: [{ role: 'user', content: 'pong' }] });
       return { ok: true, message: '연결됐습니다' };
-    } catch (e) { return { ok: false, message: userFacingMessage(classifyApiError(e)) }; }
+    } catch (e) {
+      const err = classifyApiError(e);
+      // signed-out의 기본 안내는 Claude Code 로그인 문구라 API 키에 맞게 바꾼다
+      return { ok: false, message: err.kind === 'signed-out' ? 'API 키가 틀리거나 권한이 없습니다. 키를 다시 확인해 주세요' : userFacingMessage(err) };
+    }
   }
 
   async draftKey(input: KeyDraftInput): Promise<KeyDraftResult> {
