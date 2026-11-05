@@ -19,6 +19,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let T: Transcript | null = null;  // 편집 중인 전사(사본)
   let dirty = false;
   let zoom = 1;
+  const CASE_PREF = 'geulnun.review.recordCases';
+  let recordCases = (() => { try { return localStorage.getItem(CASE_PREF) !== '0'; } catch { return true; } })();
+  const remember = (on: boolean) => { try { localStorage.setItem(CASE_PREF, on ? '1' : '0'); } catch { /* 저장 못 해도 기본값(켬)으로 */ } };
   const filter: Filter = { 비고만: false, 문제먼저: true, 반: null, 검색: '', 미확인만: false };
 
   const guard = async (fn: () => Promise<void>) => { try { await fn(); } catch (e) { showError((e as Error).message); } };
@@ -141,19 +144,43 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('button', { onclick: () => step(-1), title: 'Alt+←' }, '이전'), el('button', { onclick: () => step(1), title: 'Alt+→' }, '다음'),
       el('strong', {}, tag(T.page)), scoreText,
       el('button', { class: 'primary', onclick: () => void save(), title: 'Ctrl+S' }, '저장'),
+      el('label', { title: '같은 단위에 같은 답을 쓴 다른 장도 함께 바뀝니다' }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), '판정 변경을 사례로 기록(같은 답 다른 장에도 적용)'),
       dirty ? el('span', { class: 'band warn' }, '저장하지 않은 변경') : null));
   }
 
   async function save(): Promise<void> {
     if (!T || !data) return;
-    const t = T;
+    const t = T, 폴더 = data.폴더;
+    // 판정이 O·X로 바뀐 단위(답이 있을 때만)는 사례 후보. 빈칸으로 바꾼 것은 사례로 남기지 않는다
+    const before = data.transcripts.find(x => x.page === t.page);
+    const cases = data.key.정량.map(u => ({ 단위: u.id, v: t.정량[u.id] })).filter(({ 단위, v }) => v && v.답.trim() && (v.판정 === 'O' || v.판정 === 'X') && before?.정량[단위]?.판정 !== v.판정);
     try {
-      const r = await api.saveTranscript(data.폴더, t);
+      let r = await api.saveTranscript(폴더, t);
       dirty = false;
+      const others = new Map<number, string[]>();
+      if (recordCases) for (const c of cases) {
+        const res = await api.applyCase(폴더, { 단위: c.단위, 답: c.v!.답, 판정: c.v!.판정 as 'O' | 'X', page: t.page });
+        for (const b of res.바뀐장) if (b.page !== t.page) others.set(b.page, [...(others.get(b.page) ?? []), ...b.변경]);
+        r = res;
+      }
       await reload(t.page); // reload가 notice를 비우므로 안내는 그 뒤에
+      if (recordCases && cases.length) notice.append(el('div', { class: 'band info' }, `사례 ${cases.length}건 기록. ${others.size ? `${[...others].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ')}도 바뀜` : '같은 답을 쓴 다른 장은 없습니다'}`));
       if (r.엑셀오류) notice.append(el('div', { class: 'band warn' }, `전사는 저장했지만 엑셀을 못 만들었습니다: ${r.엑셀오류}`));
       else showInfo('저장했습니다(엑셀 갱신)');
     } catch (e) { showError((e as Error).message); }
+  }
+
+  /** 명단에서 학생을 고르면 학년·반·번호·이름을 채운다(불명이면 추정으로) */
+  function rosterPick(t: Transcript): HTMLElement {
+    const list = data!.명단!;
+    const pick = el('select', { onchange: () => {
+      const st = list.find(x => `${x.반}-${x.번호}` === pick.value);
+      if (!st) return;
+      Object.assign(t, { 학년: st.학년, 반: st.반, 번호: st.번호, 이름: st.이름 });
+      if (t.식별확신 === '불명') t.식별확신 = '추정';
+      touch(); renderEditor();
+    } }, el('option', { value: '' }, '(명단에서 고르기)'), ...list.map(st => el('option', { value: `${st.반}-${st.번호}`, selected: st.반 === t.반 && st.번호 === t.번호 && st.학년 === t.학년 }, `${sid(st)} ${st.이름 ?? ''}`)));
+    return el('div', { class: 'row' }, '명단: ', pick);
   }
 
   function renderEditor(): void {
@@ -188,7 +215,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderHeader();
     editor.append(headerBox,
       el('h3', {}, '학생'), el('div', { class: 'row' }, '학년', numIn('학년'), '반', numIn('반'), '번호', numIn('번호'), '이름', nameIn, conf),
-      data.명단있음 ? el('div', { class: 'muted' }, '명단과의 이름 맞춤은 저장 뒤 엑셀에서 합니다.') : '',
+      data.명단 ? rosterPick(t) : '',
       el('h3', {}, '비고(줄마다 하나)'), notes,
       el('h3', {}, '정량'), qtyTable,
       el('h3', {}, '정성'), qualTable,

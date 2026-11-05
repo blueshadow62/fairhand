@@ -46,3 +46,14 @@ test('draftToRows: 초안을 편집 행으로', () => {
   const rows = draftToRows({ 정량: [{ id: '1-1', 문항: 1, 설명: 'a', 정답: 'b', 허용: ['c'] }, { id: '3-1', 문항: 3, 설명: 'd', 정답: 'e', 핵심: ['f'] }], 정성: [{ id: 'E1', 문항: 1, 설명: 'g' }], 주의: [] });
   assert.equal(rows[0]!.허용, 'c'); assert.equal(rows[1]!.유형, '문장형'); assert.equal(rows[2]!.유형, '확장');
 });
+
+test('채점규칙·사례: 기본값이면 필드 없음, 바꾸면 들어가고, 왕복 보존', () => {
+  const rows: UnitRow[] = [{ 문항: 1, 유형: '단답형', 설명: 'x', 정답: 'y', 허용: '', 핵심: '', 요소: '' }];
+  assert.equal(rowsToKey({ ...meta, 채점규칙: { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' } }, rows).채점규칙, undefined);
+  const k = rowsToKey({ ...meta, 채점규칙: { 맞춤법: '인정', 넓은말: '인정', 핵심어: '모두' } }, rows, undefined, [{ 단위: '1-1', 답: 'z', 판정: 'X', 일시: 'a', 출처: 'b' }]);
+  assert.equal(k.채점규칙?.넓은말, '인정');
+  assert.equal(k.사례?.length, 1);
+  const back = keyToRows(k);
+  assert.deepEqual(back.meta.채점규칙, { 맞춤법: '인정', 넓은말: '인정', 핵심어: '모두' });
+  assert.deepEqual(rowsToKey(back.meta, back.rows, undefined, k.사례), k);
+});

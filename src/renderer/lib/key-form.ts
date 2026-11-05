@@ -1,9 +1,10 @@
-import type { AnswerKey, QtyUnit, QualUnit } from '../../core/types.js';
+import { DEFAULT_RULES, gradingRules } from '../../core/key.js';
+import type { AnswerKey, Case, GradingRules, QtyUnit, QualUnit } from '../../core/types.js';
 import type { KeyDraftResult } from '../../shared/ipc.js';
 
 export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '확장';
 export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */ }
-export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */ }
+export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */; 채점규칙?: GradingRules /* 없으면 기본값 */ }
 
 export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '확장'];
 export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '' });
@@ -11,7 +12,7 @@ export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow =>
 const list = (s: string, sep: RegExp): string[] => s.split(sep).map(x => x.trim()).filter(Boolean);
 
 /** 편집 행 → 정답표. id는 문항마다 행 순서로 1, 2…(요소형은 요소마다), 확장은 E1, E2… */
-export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['확인']): AnswerKey {
+export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['확인'], 사례?: Case[]): AnswerKey {
   const seq = new Map<number, number>();
   const nextId = (문항: number) => { const n = (seq.get(문항) ?? 0) + 1; seq.set(문항, n); return `${문항}-${n}`; };
   const 정량: QtyUnit[] = [], 정성: QualUnit[] = [];
@@ -32,6 +33,10 @@ export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['�
   if (Object.keys(meta.인원).length) 대상.인원 = { ...meta.인원 };
   const key: AnswerKey = { 세트: `${meta.학기} ${meta.학년}학년 ${meta.글}`, 글: meta.글.trim(), 학기: meta.학기.trim(), 대상, 정량, 정성 };
   if (확인) key.확인 = 확인;
+  // 기본값과 같으면 쓰지 않는다(정답표를 짧게, 옛 정답표와 같은 모양으로)
+  const r = { ...DEFAULT_RULES, ...(meta.채점규칙 ?? {}) };
+  if ((Object.keys(r) as (keyof GradingRules)[]).some(k => r[k] !== DEFAULT_RULES[k])) key.채점규칙 = r;
+  if (사례?.length) key.사례 = 사례; // 사례는 폼이 아니라 정답표에서 그대로 보존한다
   return key;
 }
 
@@ -58,7 +63,7 @@ function unitsToRows(정량: QtyUnit[], 정성: QualUnit[]): UnitRow[] {
 export function keyToRows(key: AnswerKey): { meta: KeyMeta; rows: UnitRow[] } {
   const 인원: Record<string, number> = {};
   for (const [k, v] of Object.entries(key.대상.인원 ?? {})) if (typeof v === 'number') 인원[String(k)] = v;
-  return { meta: { 글: key.글, 학기: key.학기, 학년: key.대상.학년, 반: [...key.대상.반], 인원 }, rows: unitsToRows(key.정량, key.정성) };
+  return { meta: { 글: key.글, 학기: key.학기, 학년: key.대상.학년, 반: [...key.대상.반], 인원, 채점규칙: gradingRules(key) }, rows: unitsToRows(key.정량, key.정성) };
 }
 
 export const draftToRows = (d: KeyDraftResult): UnitRow[] => unitsToRows(d.정량, d.정성);

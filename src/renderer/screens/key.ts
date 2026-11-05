@@ -1,7 +1,8 @@
-import type { AnswerKey, Transcript } from '../../core/types.js';
+import type { AnswerKey, Case, GradingRules, Transcript } from '../../core/types.js';
+import type { RejudgeResult } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
-import { clear, el } from '../lib/el.js';
+import { clear, el, put } from '../lib/el.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 
@@ -30,8 +31,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let meta = newMeta();
   let rows: UnitRow[] = [];
   let 확인: AnswerKey['확인'] | undefined;
+  let 사례: Case[] = [];          // 정답표에서 그대로 보존(폼으로 고치지 않음)
   let dirty = false;
-  let editing = false;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
+  let editing = false;
+  let 전사수 = 0;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
 
   const guard = async (fn: () => Promise<void>) => { try { await fn(); } catch (e) { showError((e as Error).message); } };
   const touch = () => { if (!dirty) { dirty = true; renderStatus(); } };
@@ -58,7 +61,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   function openNew(): void {
-    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; dirty = false; editing = true;
+    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true;
     store.update({ current: null });
     renderEditor();
   }
@@ -67,7 +70,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     await guard(async () => {
       const d = await api.readSet(name);
       const r = keyToRows(d.key);
-      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; dirty = false; editing = true;
+      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; dirty = false; editing = true;
       store.update({ current: name });
       renderEditor();
       sourceArea.value = await api.readSourceText(name).catch(() => '');
@@ -132,13 +135,73 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('span', { class: 'muted' }, '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 1점, 순서 무관. 확장: 응답 여부만 봄.')));
   }
 
+  // ── 채점 규칙(세트별) ──
+  const rulesBox = el('div');
+  const RULES: { k: keyof GradingRules; label: string; opts: [string, string][]; help: string }[] = [
+    { k: '맞춤법', label: '맞춤법이 다른 같은 뜻의 답', opts: [['인정', '인정(O)'], ['불인정', '불인정(X)']], help: "예: '세약서'를 계약서로 볼지" },
+    { k: '넓은말', label: '정답보다 넓은 말', opts: [['인정', '인정(O)'], ['불인정', '불인정(X)']], help: "예: 정답 '선후배 관계'에 '인간관계'" },
+    { k: '핵심어', label: '문장형 핵심어', opts: [['모두', '모두 있어야 O'], ['하나라도', '하나라도 있으면 O']], help: '핵심 낱말이 여럿인 문장형 단위' },
+  ];
+  function renderRules(): void {
+    clear(rulesBox);
+    const cur = meta.채점규칙 ?? { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' };
+    for (const r of RULES) {
+      const sel = el('select', { onchange: () => { meta.채점규칙 = { ...cur, [r.k]: sel.value } as GradingRules; touch(); renderRules(); } },
+        ...r.opts.map(([v, t]) => el('option', { value: v, selected: cur[r.k] === v }, t)));
+      rulesBox.append(el('div', { class: 'row' }, el('span', {}, `${r.label}:`), sel, el('span', { class: 'muted' }, r.help)));
+    }
+    rulesBox.append(el('div', { class: 'muted' }, '규칙은 저장해야 적용됩니다. 규칙·사례만 바꾸면 확인 표시는 그대로입니다.'));
+  }
+
+  // ── 판정 사례와 재판정 ──
+  const casesBox = el('div');
+  const judgeBox = el('div');
+  const judgePages = el('input', { size: 8, placeholder: '예: 1-3,7' });
+  function renderCases(): void {
+    clear(casesBox);
+    if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, '판정 사례가 없습니다. 검토에서 판정을 바꿔 저장하면 여기에 쌓입니다.')); return; }
+    casesBox.append(el('table', {}, el('tr', {}, ...['단위', '답', '판정', '출처', '일시', ''].map(h => el('th', {}, h))),
+      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답), el('td', { class: `v-${c.판정}` }, c.판정), el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString('ko-KR')),
+        el('td', {}, el('button', { class: 'danger', onclick: () => guard(async () => {
+          if (!폴더 || !confirm(`사례 '${c.단위}: ${c.답} → ${c.판정}'을 지울까요?`)) return;
+          사례 = (await api.removeCase(폴더, c.단위, c.답)).사례 ?? [];
+          renderCases();
+          clear(judgeBox); judgeBox.append(el('div', { class: 'band info' }, "사례를 지웠습니다. 그 사례로 바뀐 판정은 그대로입니다. 필요하면 '다시 판정'을 누르세요."));
+        }) }, '삭제'))))));
+  }
+  function showJudge(r: RejudgeResult & { failed?: { page: number; error: string }[] }, extra = ''): void {
+    clear(judgeBox);
+    const tagP = (p: number) => `p${String(p).padStart(2, '0')}`;
+    const text = r.바뀐장.length ? `${r.바뀐장.length}장 바뀜: ${r.바뀐장.map(c => `${tagP(c.page)}(${c.변경.join(', ')})`).join(', ')}` : '바뀐 장 없음';
+    put(judgeBox, el('div', { class: 'band info' }, [text, extra].filter(Boolean).join('\n')),
+      r.failed?.length ? el('div', { class: 'band error' }, `실패: ${r.failed.map(f => `${tagP(f.page)} ${f.error}`).join(' / ')}`) : null,
+      r.엑셀오류 ? el('div', { class: 'band warn' }, `엑셀을 만들지 못했습니다: ${r.엑셀오류}`) : null);
+  }
+  const ruleBtn = el('button', { onclick: () => guard(async () => {
+    if (!폴더) return;
+    if (dirty) { showError('먼저 정답표를 저장하세요'); return; }
+    showJudge(await api.rejudge(폴더), "뜻으로 판단해야 하는 답은 바뀌지 않았습니다. 필요하면 '모델로 다시 판정'을 누르세요.");
+  }) }, '다시 판정(글자 일치만, 모델 호출 없음)');
+  const modelBtn = el('button', { onclick: () => guard(async () => {
+    if (!폴더) return;
+    if (dirty) { showError('먼저 정답표를 저장하세요'); return; }
+    const spec = judgePages.value.trim();
+    const pages = spec ? parsePages(spec) ?? null : undefined;
+    if (pages === null) { showError('장 번호를 1-3,7처럼 적으세요'); return; }
+    if (!confirm(`${pages ? `${pages.length}장` : '전사한 모든 장'}의 답 글만 보내 판정을 다시 받습니다(그림은 보내지 않음, 사용량 소량). 계속할까요?`)) return;
+    modelBtn.disabled = true;
+    const off = api.onProgress(e => { modelBtn.textContent = `모델 재판정 중… ${e.done}/${e.total}`; });
+    try { showJudge(await api.judgeWithModel(폴더, { pages })); }
+    finally { off(); modelBtn.disabled = false; modelBtn.textContent = '모델로 다시 판정(글만 보냄, 사용량 소량)'; }
+  }) }, '모델로 다시 판정(글만 보냄, 사용량 소량)');
+  const judgeBar = el('div', { class: 'row' }, ruleBtn, modelBtn, '장(비우면 전체):', judgePages);
+
   const confirmBox = el('input', { type: 'checkbox', onchange: () => void setConfirmed(confirmBox.checked) });
   async function setConfirmed(on: boolean): Promise<void> {
     if (!폴더 || dirty) { confirmBox.checked = !on; showError('먼저 정답표를 저장하세요'); return; }
     await guard(async () => {
       const next = on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false };
-      await api.saveKey(폴더!, rowsToKey(meta, rows, next));
-      확인 = next; await store.refreshSets();
+      확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).확인; await store.refreshSets();
       showInfo(on ? '정답표를 확인 완료로 표시했습니다' : '확인 표시를 지웠습니다');
     });
     renderStatus();
@@ -149,18 +212,20 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (errs.length) { showError(errs.join('\n')); return; }
     await guard(async () => {
       if (!폴더) {
-        const info = await api.createSet(rowsToKey(meta, rows));
+        const info = await api.createSet(rowsToKey(meta, rows, undefined, 사례));
         await store.refreshSets();
         dirty = false; await openSet(info.폴더);
         showInfo(`새 세트를 만들었습니다: ${info.폴더}`);
         return;
       }
-      // 정답표 내용이 바뀐 저장은 확인을 지운다(다시 확인해야 채점할 수 있다)
-      const next = dirty ? (확인 ? { 완료: false } : undefined) : 확인;
-      await api.saveKey(폴더, rowsToKey(meta, rows, next));
-      확인 = next; dirty = false;
-      await store.refreshSets(); renderStatus();
-      showInfo('저장했습니다');
+      // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
+      const saved = await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례));
+      확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
+      await store.refreshSets(); renderStatus(); renderCases();
+      showInfo(확인?.완료 ? '저장했습니다' : '저장했습니다. 정답표가 바뀌어 확인 표시를 지웠습니다');
+      if (전사수 > 0 && confirm(`정답표가 바뀌었습니다. 기존 ${전사수}장을 글자 일치 기준으로 다시 판정할까요?`)) {
+        showJudge(await api.rejudge(폴더), "뜻으로 판단해야 하는 답은 바뀌지 않았습니다. 필요하면 '모델로 다시 판정'을 누르세요.");
+      }
     });
   }
 
@@ -190,7 +255,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('button', { onclick: () => guard(async () => {
         const k = await api.importKey(); if (!k) return;
         if (dirty && !confirm('지금 편집 중인 내용을 가져온 정답표로 바꿉니다. 계속할까요?')) return;
-        const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; dirty = true; renderEditor();
+        const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
         showInfo('가져왔습니다. 확인하고 저장하세요');
       }) }, '정답표 가져오기')));
     if (!done && 폴더) statusBox.append(el('div', { class: 'band warn' }, '정답표가 아직 확인되지 않았습니다. 확인 완료를 표시해야 채점을 시작할 수 있습니다.'));
@@ -211,15 +276,27 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'row' }, draftBtn,
           폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = `원본 폴더에 보관함: ${n}`; }) }, '지문 PDF/TXT 첨부(보관용)') : null, attachName),
         cautionBox),
+      el('div', { class: 'card' }, el('h3', {}, '채점 규칙과 판정 사례'), rulesBox, casesBox, judgeBar, judgeBox),
       statusBox,
       el('div', { class: 'card' }, el('h3', {}, '한 장만 채점해 보기'),
         el('div', { class: 'muted' }, '답안지 한 장(jpg 또는 PDF의 첫 장)으로 전사를 시험합니다. 결과는 저장하지 않습니다. 확인 완료된 정답표에서만 됩니다.'),
         tryInput, tryBox));
-    renderTable(); renderStatus(); renderList();
+    renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); clear(judgeBox);
   }
 
   store.subscribe(() => renderList());
   renderEditor();
+}
+
+/** "1-3,7" → [1,2,3,7], 형식이 틀리면 null */
+function parsePages(spec: string): number[] | null {
+  const out = new Set<number>();
+  for (const part of spec.split(',').map(x => x.trim()).filter(Boolean)) {
+    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part);
+    if (!m) return null;
+    for (let p = Number(m[1]); p <= Number(m[2] ?? m[1]); p++) out.add(p);
+  }
+  return out.size ? [...out] : null;
 }
 
 /** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
