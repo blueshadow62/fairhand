@@ -17,7 +17,7 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]); // 검사용 최소 JPEG 바
 
 function provider(script: (page: number, call: number) => RawResult | Error): TranscribeProvider & { calls: number } {
   let calls = 0;
-  return { id: 'cli', get calls() { return calls; }, async transcribe(input) { calls++; const r = script(input.page, calls); if (r instanceof Error) throw r; return r; } };
+  return { id: 'cli', get calls() { return calls; }, async complete() { throw new Error('검사에서 쓰지 않음'); }, async transcribe(input) { calls++; const r = script(input.page, calls); if (r instanceof Error) throw r; return r; } };
 }
 function sampleSet(pages: number[]): string {
   const d = mkdtempSync(path.join(tmpdir(), 'geulnun-tr-'));

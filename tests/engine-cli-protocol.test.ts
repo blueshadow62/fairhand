@@ -97,3 +97,8 @@ test('CliTurn: 모르는 control_request에는 error 응답을 쓴다', () => {
   const o = JSON.parse((r as any).line);
   assert.equal(o.type, 'control_response'); assert.equal(o.response.request_id, 'r9'); assert.equal(o.response.subtype, 'error');
 });
+
+test('userLine: 그림이 없으면 text 블록만', () => {
+  const u = JSON.parse(userLine(undefined, '초안을 만들라'));
+  assert.deepEqual(u.message.content, [{ type: 'text', text: '초안을 만들라' }]);
+});

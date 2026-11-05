@@ -4,9 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { CliTurn, initializeLine, launchArgs, userLine, MODEL } from './cli-protocol.js';
-import { EngineError, type RawResult, type TranscribeInput, type TranscribeProvider } from './provider.js';
-import { transcriptSchema } from './schema.js';
-import { systemPrompt, userText } from './rules.js';
+import { EngineError, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 import { childEnv } from './env.js';
 import { locateClaude, type ClaudeProgram } from './status.js';
 
@@ -34,13 +32,15 @@ export class CliProvider implements TranscribeProvider {
     this.env = deps.env ?? childEnv(process.env);
   }
 
-  async transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> {
+  transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> { return this.complete(transcribeRequest(input), signal); }
+
+  async complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> {
     if (!this.program) throw new EngineError('not-installed', 'Claude Code를 찾을 수 없음');
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     const program = this.program;
-    const args = [...program.prefixArgs, ...launchArgs(transcriptSchema(input.key), input.effort)];
+    const args = [...program.prefixArgs, ...launchArgs(req.schema, req.effort)];
     const cwd = await mkdtemp(path.join(tmpdir(), 'geulnun-cli-')); // 다른 폴더의 CLAUDE.md·설정이 끼어들지 않게 빈 폴더에서
-    const turn = new CliTurn(userLine(input.imageJpegBase64, userText(input.page)));
+    const turn = new CliTurn(userLine(req.imageJpegBase64, req.user));
     try {
       return await new Promise<RawResult>((resolve, reject) => {
         let child: ReturnType<typeof nodeSpawn>;
@@ -81,7 +81,7 @@ export class CliProvider implements TranscribeProvider {
           const tail = pending + dec.end(); if (tail.trim() && !settled) act(turn.onLine(tail));
           if (!settled) act(turn.onExit(code, stderr));
         });
-        child.stdin?.write(initializeLine(systemPrompt(input.rules, input.key)));
+        child.stdin?.write(initializeLine(req.system));
       });
     } finally {
       await rm(cwd, { recursive: true, force: true }).catch(() => undefined);

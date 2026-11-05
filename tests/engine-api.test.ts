@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { ApiProvider, buildRequest, classifyApiError } from '../src/engine/api.js';
-import { EngineError } from '../src/engine/provider.js';
+import { EngineError, transcribeRequest } from '../src/engine/provider.js';
 import { loadRules } from '../src/engine/rules.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
@@ -16,7 +16,7 @@ const fakeClient = (reply: any) => {
 };
 
 test('buildRequest: 모델·스키마·그림·effort·fallbacks', () => {
-  const r = buildRequest(input) as any;
+  const r = buildRequest(transcribeRequest(input)) as any;
   assert.equal(r.model, 'claude-opus-5-5');
   assert.equal(r.max_tokens, 16000);
   assert.equal(r.output_config.effort, 'high');
@@ -55,4 +55,11 @@ test('classifyApiError: 상태 코드별 종류', () => {
 
 test('ApiProvider: 키도 client도 없으면 signed-out', async () => {
   await assert.rejects(new ApiProvider({}).transcribe(input, new AbortController().signal), (e: unknown) => e instanceof EngineError && e.kind === 'signed-out');
+});
+
+test('buildRequest: 그림 없는 요청은 text 블록만, system은 그대로', () => {
+  const r = buildRequest({ system: 'S', user: 'U', schema: { type: 'object' }, effort: 'medium' });
+  assert.equal(r.system, 'S');
+  assert.deepEqual(r.messages[0]!.content, [{ type: 'text', text: 'U' }]);
+  assert.equal((r.output_config as any).effort, 'medium');
 });

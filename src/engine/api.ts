@@ -1,22 +1,20 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { EngineError, type RawResult, type TranscribeInput, type TranscribeProvider } from './provider.js';
-import { transcriptSchema } from './schema.js';
-import { systemPrompt, userText } from './rules.js';
+import { EngineError, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 
 export const MODEL = 'claude-opus-5-5';
 type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export interface ApiClientLike { beta: { messages: { create(params: CreateParams, options?: { signal?: AbortSignal }): Promise<any> } } }
 
 /** SDK 타입으로 만들어 요청 모양(output_config.format, fallbacks)을 컴파일 때 확인한다 */
-export function buildRequest(input: TranscribeInput): CreateParams {
+export function buildRequest(req: StructuredRequest): CreateParams {
   return {
     model: MODEL,
     max_tokens: 16000,
-    system: systemPrompt(input.rules, input.key),
+    system: req.system,
     messages: [{ role: 'user', content: [
-      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: input.imageJpegBase64 } },
-      { type: 'text', text: userText(input.page) } ] }],
-    output_config: { effort: input.effort, format: { type: 'json_schema', schema: transcriptSchema(input.key) } },
+      ...(req.imageJpegBase64 ? [{ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: req.imageJpegBase64 } }] : []),
+      { type: 'text' as const, text: req.user } ] }],
+    output_config: { effort: req.effort, format: { type: 'json_schema', schema: req.schema } },
     // 안전 분류기가 거절하면 서버가 다른 모델로 같은 요청을 이어 간다
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
@@ -41,11 +39,13 @@ export class ApiProvider implements TranscribeProvider {
     this.client = opts.client ?? (opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : null);
   }
 
-  async transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> {
+  transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> { return this.complete(transcribeRequest(input), signal); }
+
+  async complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> {
     if (!this.client) throw new EngineError('signed-out', 'API 키가 설정되어 있지 않음');
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     let res: any;
-    try { res = await this.client.beta.messages.create(buildRequest(input), { signal }); }
+    try { res = await this.client.beta.messages.create(buildRequest(req), { signal }); }
     catch (e) { if (signal.aborted) throw new EngineError('cancelled', '중단됨'); throw classifyApiError(e); }
     if (res?.stop_reason === 'refusal') throw new EngineError('refusal', '모델이 거절함');
     const text = (Array.isArray(res?.content) ? res.content : []).find((b: any) => b?.type === 'text')?.text;

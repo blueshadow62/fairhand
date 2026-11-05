@@ -1,7 +1,7 @@
 import { parseTranscript, validateTranscripts } from '../core/transcript.js';
 import { DataError, type AnswerKey, type TranscribeInfo, type Transcript } from '../core/types.js';
-import type { Rules } from './rules.js';
-import { fromModelOutput } from './schema.js';
+import { systemPrompt, userText, type Rules } from './rules.js';
+import { fromModelOutput, transcriptSchema } from './schema.js';
 
 export type EngineErrorKind = 'not-installed' | 'needs-update' | 'signed-out' | 'rate-limit' | 'overloaded' | 'network'
   | 'timeout' | 'refusal' | 'invalid-output' | 'unsafe-tools' | 'cancelled' | 'other';
@@ -13,7 +13,14 @@ export class EngineError extends Error {
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface TranscribeInput { imageJpegBase64: string; key: AnswerKey; rules: Rules; page: number; effort: Effort }
 export interface RawResult { output: unknown; inputTokens?: number; outputTokens?: number; model: string }
-export interface TranscribeProvider { readonly id: 'cli' | 'api'; transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
+/** 시스템 프롬프트 + 사용자 글(+그림) + 출력 스키마. 전사와 정답 초안이 같은 CLI/API 경로를 쓴다. */
+export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; schema: Record<string, unknown>; effort: Effort }
+export interface StructuredProvider { readonly id: 'cli' | 'api'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
+export interface TranscribeProvider extends StructuredProvider { transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
+
+export function transcribeRequest(input: TranscribeInput): StructuredRequest {
+  return { system: systemPrompt(input.rules, input.key), user: userText(input.page), imageJpegBase64: input.imageJpegBase64, schema: transcriptSchema(input.key), effort: input.effort };
+}
 
 /** 모델 출력(이미 스키마 검증을 거쳤어도) 값을 다시 검사해 전사로 만든다. 틀리면 invalid-output. */
 export function toTranscript(raw: unknown, key: AnswerKey, page: number, info: TranscribeInfo): Transcript {

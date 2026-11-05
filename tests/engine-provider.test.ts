@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { EngineError, toTranscript, withRetry, userFacingMessage } from '../src/engine/provider.js';
+import { transcribeRequest } from '../src/engine/provider.js';
+import { loadRules, systemPrompt, userText } from '../src/engine/rules.js';
+import { transcriptSchema } from '../src/engine/schema.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const info = { 엔진: 'cli' as const, 모델: 'claude-opus-5-5', effort: 'high', 규칙: 'transcribe-v1', 일시: '2026-11-06T01:00:00+09:00' };
@@ -49,4 +52,14 @@ test('userFacingMessage: 종류별 한글 안내', () => {
   assert.match(userFacingMessage(new EngineError('needs-update', 'x')), /업데이트/);
   assert.match(userFacingMessage(new EngineError('rate-limit', 'x', Date.parse('2026-11-06T10:00:00+09:00'))), /한도/);
   assert.match(userFacingMessage(new Error('boom')), /boom/);
+});
+
+test('transcribeRequest: 규칙+정답표 시스템 프롬프트, 쪽 지시, 그림, 스키마를 한 요청으로', async () => {
+  const rules = await loadRules();
+  const r = transcribeRequest({ imageJpegBase64: 'AAAA', key, rules, page: 3, effort: 'high' });
+  assert.equal(r.system, systemPrompt(rules, key));
+  assert.equal(r.user, userText(3));
+  assert.equal(r.imageJpegBase64, 'AAAA');
+  assert.deepEqual(r.schema, transcriptSchema(key));
+  assert.equal(r.effort, 'high');
 });
