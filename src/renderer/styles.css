@@ -55,8 +55,15 @@ select.v-O { background: #e3f5e7; } select.v-X { background: #fde2df; } select.v
 .setlist { display: flex; flex-direction: column; gap: 4px; }
 .setlist button { text-align: left; min-height: 44px; }
 .setlist button.active { border-color: #2f5bd3; background: #eef2ff; }
+/* 표가 창보다 넓어지면 맨 끝의 ↑↓삭제 칸이 보이지 않으므로 창 너비에 맞춘다 */
+.keytable { width: 100%; table-layout: fixed; }
 .keytable td:nth-child(1) { width: 64px; }
 .keytable td:nth-child(2) { width: 96px; }
+.keytable td:last-child { width: 150px; }
+.keytable td textarea { width: 100%; box-sizing: border-box; }
+.keytable td input, .keytable td select { box-sizing: border-box; }
+.keytable td .row { flex-wrap: nowrap; margin: 0; gap: 4px; }
+.keytable td .row button { padding: 4px 6px; min-width: 0; white-space: nowrap; }
 
 /* 채점 실행 */
 canvas.preview { border: 1px solid #ccd; background: #fff; max-width: 100%; }
