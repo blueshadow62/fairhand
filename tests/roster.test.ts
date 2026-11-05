@@ -64,3 +64,13 @@ test('parseRosterRows_header_required: 머리글이 없으면 멈춘다', () => 
   assert.throws(() => parseRosterRows([[3, 1, 1, '가'], [3, 1, 2, '나']], '명단.csv'),
     (e: unknown) => e instanceof DataError && /명단\.csv/.test(e.message) && /머리글/.test(e.message));
 });
+
+test('readRoster_xlsx_formula_cells: 수식 칸은 계산 결과로 읽는다', async () => {
+  const p = path.join(tmp(), '명단.xlsx');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('명단');
+  ws.addRow(['학년', '반', '번호', '이름']);
+  ws.addRow([3, 1, { formula: '1+0', result: 1 }, { formula: 'CONCAT("가","상")', result: '가상' }]);
+  await wb.xlsx.writeFile(p);
+  assert.deepEqual(await readRoster(p), [{ 학년: 3, 반: 1, 번호: 1, 이름: '가상' }]);
+});

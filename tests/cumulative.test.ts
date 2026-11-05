@@ -39,3 +39,11 @@ test('writeCumulativeXlsx: 반 시트와 세트 시트', async () => {
   assert.deepEqual(wb.worksheets.map(w => w.name), ['3-1', '세트']);
   assert.deepEqual((wb.getWorksheet('3-1')!.getRow(2).values as unknown[]).slice(1), [3, 1, 1, '박가상', 2, 1, 3]);
 });
+
+test('buildCumulative: 두 세트의 글이 같으면 머리글에 폴더 이름을 덧붙여 구분한다', () => {
+  const same: SetSummary[] = [
+    { 폴더: '세트갑', key: key('같은글', true), rows: [row(1, 1, null, 1)], 채점일시: '', 규칙: '' },
+    { 폴더: '세트을', key: key('같은글', true), rows: [row(1, 1, null, 2)], 채점일시: '', 규칙: '' },
+  ];
+  assert.deepEqual(buildCumulative(same, null, 3).반별[0]!.header, ['학년', '반', '번호', '이름', '같은글(세트갑)', '같은글(세트을)', '총점']);
+});

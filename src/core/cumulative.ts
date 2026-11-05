@@ -22,9 +22,11 @@ export function buildCumulative(sets: SetSummary[], roster: Student[] | null, �
     const r = set.rows.find(r => r.반 !== null && r.번호 !== null && studentKey(학년, r.반, r.번호) === k);
     return r?.합계 ?? null;
   };
+  // 같은 글을 두 번 채점한 세트는 머리글만으로 구분되지 않아 폴더 이름을 덧붙인다
+  const titles = included.map(s => (included.filter(o => o.key.글 === s.key.글).length > 1 ? `${s.key.글}(${s.폴더})` : s.key.글));
   const 반별 = [...new Set([...students.values()].map(s => s.반))].sort((a, b) => a - b).map(반 => ({
     반,
-    header: ['학년', '반', '번호', '이름', ...included.map(s => s.key.글), '총점'],
+    header: ['학년', '반', '번호', '이름', ...titles, '총점'],
     rows: [...students.values()].filter(s => s.반 === 반).sort((a, b) => a.번호 - b.번호).map(s => {
       const k = studentKey(학년, 반, s.번호);
       const scores = included.map(set => score(set, k));

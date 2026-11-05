@@ -39,6 +39,15 @@ function decodeText(buf: Buffer): string {
 const splitCsvLine = (line: string): string[] =>
   line.split(',').map(c => c.trim().replace(/^"(.*)"$/, '$1'));
 
+/** exceljs 칸 값: 서식 있는 글(richText)·수식(result)·하이퍼링크(text)는 보이는 값으로 */
+function cellText(v: unknown): unknown {
+  if (!v || typeof v !== 'object' || v instanceof Date) return v;
+  const o = v as { richText?: { text: string }[]; result?: unknown; text?: unknown };
+  if (o.richText) return o.richText.map(x => x.text).join('');
+  if ('formula' in o || 'sharedFormula' in o) return cellText(o.result ?? '');
+  return o.text ?? '';
+}
+
 export async function readRoster(p: string): Promise<Student[]> {
   const ext = path.extname(p).toLowerCase();
   const where = path.basename(p);
@@ -55,8 +64,7 @@ export async function readRoster(p: string): Promise<Student[]> {
     const rows: unknown[][] = [];
     ws.eachRow({ includeEmpty: false }, row => {
       const vals = row.values as unknown[]; // exceljs는 1부터 시작하는 배열을 준다
-      rows.push(vals.slice(1).map(v => (v && typeof v === 'object' && 'richText' in (v as object))
-        ? (v as { richText: { text: string }[] }).richText.map(x => x.text).join('') : v));
+      rows.push(vals.slice(1).map(cellText));
     });
     return parseRosterRows(rows, where);
   }
