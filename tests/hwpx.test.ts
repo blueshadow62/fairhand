@@ -41,3 +41,8 @@ test('extractHwpxText: 너무 큰 항목은 거절(압축 폭탄 방지)', () =>
   for (let k = 0; k < count; k++) { const n = buf.readUInt16LE(p + 28); if (buf.toString('utf8', p + 46, p + 46 + n).startsWith('Contents/section')) buf.writeUInt32LE(0x7fffffff, p + 24); p += 46 + n + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32); }
   assert.throws(() => extractHwpxText(buf), (e: unknown) => e instanceof DataError && /너무 큽니다/.test(e.message));
 });
+
+test('hwpxSectionText: 문단 끝 표식이 많아도 선형 시간', () => {
+  const big = '<hp:p><hp:t>가</hp:t></hp:p>'.repeat(50000) + '<hp:t'.repeat(20000);
+  const t0 = Date.now(); const out = hwpxSectionText(big); assert.ok(Date.now() - t0 < 1500); assert.ok(out.startsWith('가\n가'));
+});
