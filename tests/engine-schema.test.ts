@@ -50,3 +50,11 @@ test('fromModelOutput: 영문 키 출력을 한글 전사 양식으로', () => {
     정량: { '1-1': { 답: '은영', 판정: 'O' } }, 정성: { E1: { 응답: true, 답: '다리' } }, 비고: ['x'] });
   assert.equal(fromModelOutput('글자'), '글자');
 });
+
+test('systemPrompt: 대상 학년·반(·인원)을 알려 식별 범위를 좁힌다', async () => {
+  const r = await loadRules();
+  const p = systemPrompt(r, key);
+  assert.ok(p.includes('# 대상') && p.includes(`${key.대상.학년}학년`) && p.includes('"추정"'));
+  const withCount = systemPrompt(r, { ...key, 대상: { ...key.대상, 인원: { '1': 28 } } });
+  assert.ok(withCount.includes('1반 28명(번호 1~28)'));
+});

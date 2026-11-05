@@ -43,3 +43,8 @@ test('keyProblems_class_must_be_integer: 대상.반·학년이 글자면 잡는�
   assert.ok(keyProblems({ ...base, 대상: { 학년: '3', 반: [1] } }).some(s => s.includes('대상.학년')));
   assert.deepEqual(keyProblems({ ...base, 대상: { 학년: 3, 반: [1, 3] } }), []);
 });
+
+test('parseKey: 단위의 유형 필드가 그대로 남는다', () => {
+  const k = parseKey(JSON.stringify({ 세트: 's', 글: 'g', 학기: '2026 2학기', 대상: { 학년: 2, 반: [2] }, 정량: [{ id: '1-1', 문항: 1, 설명: 'a', 정답: 'b', 유형: '요소형' }], 정성: [] }));
+  assert.equal(k.정량[0]!.유형, '요소형');
+});
