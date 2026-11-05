@@ -15,5 +15,8 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Record
   return node;
 }
 
+/** append와 같되 null·false는 건너뛴다 */
+export function put(parent: Element, ...children: Child[]): void { for (const c of children) if (c !== null && c !== undefined && c !== false) parent.append(c instanceof Node ? c : String(c)); }
+
 export function clear(node: Element): void { node.replaceChildren(); }
 export function text(node: Element, s: string): void { node.textContent = s; }

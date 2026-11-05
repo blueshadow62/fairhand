@@ -2,6 +2,7 @@ import type { AnswerKey, Transcript } from '../../core/types.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
+import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 
 function defaultSemester(d = new Date()): string {
@@ -222,7 +223,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 }
 
 /** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
-async function fileToJpeg(f: File, _rotation: number): Promise<ArrayBuffer> {
+async function fileToJpeg(f: File, rotation: Rotation): Promise<ArrayBuffer> {
   if (/\.jpe?g$/i.test(f.name)) return f.arrayBuffer();
-  throw new Error('PDF 시험은 아직 지원하지 않습니다. jpg를 고르세요');
+  return pdfPageJpeg(f, 1, rotation);
 }
