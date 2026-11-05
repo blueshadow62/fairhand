@@ -19,7 +19,7 @@ export const store = {
   async refreshSets(): Promise<void> { store.update({ sets: store.state.settings.학기폴더 ? await api.listSets() : [] }); },
 };
 
-export interface Ctx { store: typeof store; showError(message: string): void; showInfo(message: string): void; goTo(tab: Tab): void }
+export interface Ctx { store: typeof store; showError(message: string): void; showInfo(message: string): void; goTo(tab: Tab): void; setLeaveGuard(fn: () => Promise<boolean>): void }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function toast(kind: 'error' | 'info', message: string): void {
@@ -55,14 +55,21 @@ async function start(): Promise<void> {
 
   const mounted = new Map<Tab, HTMLElement>();
   const buttons = new Map<Tab, HTMLButtonElement>();
-  const ctx: Ctx = { store, showError, showInfo, goTo };
-  function goTo(tab: Tab): void {
+  const guards = new Map<Tab, () => Promise<boolean>>();
+  let currentTab: Tab | null = null, leaving = false;
+  const ctx: Ctx = { store, showError, showInfo, goTo, setLeaveGuard: () => undefined };
+  function goTo(tab: Tab): void { void goToAsync(tab); }
+  async function goToAsync(tab: Tab): Promise<void> {
+    if (tab === currentTab || leaving) return;
+    const guard = currentTab ? guards.get(currentTab) : undefined;
+    if (guard) { leaving = true; try { if (!(await guard())) return; } finally { leaving = false; } }
+    currentTab = tab;
     for (const [id, b] of buttons) b.classList.toggle('active', id === tab);
     for (const [id, node] of mounted) node.classList.toggle('hidden', id !== tab);
     if (!mounted.has(tab)) {
       const node = el('div', { class: 'screen', 'data-tab': tab });
       main.append(node); mounted.set(tab, node);
-      TABS.find(t => t.id === tab)!.mod.mount(node, ctx);
+      TABS.find(t => t.id === tab)!.mod.mount(node, { ...ctx, setLeaveGuard: fn => guards.set(tab, fn) });
     }
   }
   for (const t of TABS) { const b = el('button', { onclick: () => goTo(t.id) }, t.이름); buttons.set(t.id, b); tabs.append(b); }

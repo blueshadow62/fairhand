@@ -10,12 +10,13 @@ import { DataError, type AnswerKey } from '../core/types.js';
 import { EngineError, userFacingMessage } from '../engine/provider.js';
 import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
+import { leaveChoice, leaveDialogOptions } from './dialogs.js';
 import { listSets, nextPageNumber, pageFile, resolveSetDir, uniqueFolderName } from './paths.js';
 import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 
-const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md' };
+const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/geulnun#readme' };
 
 export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null }
 
@@ -43,6 +44,7 @@ export function registerIpc(d: IpcDeps): void {
     const filters = kind === 'roster' ? [{ name: '명단', extensions: ['xlsx', 'csv'] }] : kind === 'exe' ? [{ name: '실행 파일', extensions: ['exe', 'cmd'] }] : [{ name: 'JSON', extensions: ['json'] }];
     const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters }); return r.canceled ? null : r.filePaths[0] ?? null;
   });
+  h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
   h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
   h(CHANNELS.revealPath, async (p: string) => { const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
 
@@ -54,6 +56,11 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.cliLogin, (id: string) => d.bridge.openLogin(id));
 
   h(CHANNELS.listSets, async () => listSets(await semester()));
+  h(CHANNELS.deleteSet, async (폴더: string) => {
+    const dir = await setDir(폴더);
+    if (d.bridge.running()) throw new DataError('전사가 실행 중입니다. 끝나거나 중단한 뒤 지우세요');
+    try { await shell.trashItem(dir); } catch (e) { throw new DataError(`세트를 휴지통으로 보내지 못했습니다(파일이 열려 있는지 확인): ${(e as Error).message}`); }
+  });
   h(CHANNELS.createSet, async (raw: unknown): Promise<SetInfo> => {
     const key = parseKey(JSON.stringify(raw), '새 정답표');
     const sem = await semester();

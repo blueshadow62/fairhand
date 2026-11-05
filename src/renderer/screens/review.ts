@@ -107,10 +107,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       정성: Object.fromEntries(k.정성.map(u => [u.id, { 응답: false, 답: '' }])), 비고: [], 확인완료: false };
   }
 
+  /** 저장하지 않은 변경이 있으면 운영체제 대화상자로 묻는다(저장 후 나가기/저장하지 않고 나가기/나가지 않기). */
+  async function leaveOk(): Promise<boolean> {
+    if (!dirty) return true;
+    const c = await api.askLeave();
+    if (c === 'stay') return false;
+    if (c === 'save') { await save(); return !dirty; }
+    dirty = false; return true;
+  }
+  ctx.setLeaveGuard(leaveOk);
+
   function go(page: number): void {
     if (T?.page === page) return;
-    if (dirty && !confirm('저장하지 않은 변경이 있습니다. 버릴까요?')) return;
-    openPage(page);
+    void leaveOk().then(ok => { if (ok) openPage(page, true); });
   }
 
   function openPage(page: number, force = false): void {

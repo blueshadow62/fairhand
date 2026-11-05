@@ -9,7 +9,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
 export function defaultSettings(): Settings {
-  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id };
+  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko' };
 }
 
 function parseProfile(v: unknown): Profile | null {
@@ -41,6 +41,7 @@ export function parseSettings(raw: unknown): Settings {
     기본회전: ROTATIONS.includes(raw.기본회전 as Rotation) ? (raw.기본회전 as Rotation) : 0,
     프로필: 프로필.filter(p => !seen.has(p.id) && seen.add(p.id)),
     사용중: optStr(raw.사용중) ?? null,
+    언어: raw.언어 === 'en' ? 'en' : 'ko',
   });
 }
 

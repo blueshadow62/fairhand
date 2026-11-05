@@ -47,15 +47,23 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const tryBox = el('div');
   root.append(el('h2', {}, '문항 설정'), el('div', { class: 'split' }, el('div', {}, listBox), editor));
 
-  const confirmLeave = () => !dirty || confirm('저장하지 않은 변경이 있습니다. 버릴까요?');
+  /** 저장하지 않은 변경이 있으면 운영체제 대화상자로 묻는다. 저장을 골랐는데 저장이 안 되면(검증 오류) 머문다. */
+  async function leaveOk(): Promise<boolean> {
+    if (!dirty) return true;
+    const c = await api.askLeave();
+    if (c === 'stay') return false;
+    if (c === 'save') { await save(); return !dirty; }
+    dirty = false; return true;
+  }
+  ctx.setLeaveGuard(leaveOk);
 
   function renderList(): void {
     clear(listBox);
-    listBox.append(el('button', { class: 'primary', onclick: () => { if (confirmLeave()) openNew(); } }, '새 세트'));
+    listBox.append(el('button', { class: 'primary', onclick: () => void leaveOk().then(ok => { if (ok) openNew(); }) }, '새 세트'));
     if (!store.state.settings.학기폴더) { listBox.append(el('div', { class: 'muted' }, '설정에서 학기 폴더를 먼저 고르세요.')); return; }
     if (!store.state.sets.length) listBox.append(el('div', { class: 'muted' }, '아직 세트가 없습니다.'));
     for (const s of store.state.sets) {
-      listBox.append(el('button', { class: s.폴더 === 폴더 ? 'active' : '', onclick: () => { if (s.폴더 !== 폴더 && confirmLeave()) void openSet(s.폴더); } },
+      listBox.append(el('button', { class: s.폴더 === 폴더 ? 'active' : '', onclick: () => { if (s.폴더 !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(s.폴더); }); } },
         el('div', {}, s.key.글), el('div', { class: 'muted' }, `${s.key.대상.학년}학년 ${s.key.대상.반.join('·')}반 · ${s.쪽수}장/전사 ${s.전사수} · ${s.key.확인?.완료 ? '확인 ✓' : '미확인'}`)));
     }
   }
@@ -267,9 +275,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!editing) { editor.append(el('div', { class: 'muted' }, "왼쪽에서 세트를 고르거나 '새 세트'를 누르세요.")); renderList(); return; }
     글Input.value = meta.글; 학기Input.value = meta.학기; 학년Select.value = String(meta.학년); 반Input.value = meta.반.join(', '); 인원Input.value = formatHeadcount(meta.인원);
     editor.append(
-      el('div', { class: 'card' }, el('h3', {}, 폴더 ? `세트: ${폴더}` : '새 세트'),
+      el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? `세트: ${폴더}` : '새 세트'),
+          폴더 ? el('button', { class: 'danger', onclick: () => guard(async () => {
+            const info = store.state.sets.find(s => s.폴더 === 폴더);
+            if (!confirm(`'${meta.글}' 세트를 휴지통으로 보냅니다.\n답안지 그림 ${info?.쪽수 ?? 0}장, 전사 ${info?.전사수 ?? 0}장, 채점결과 엑셀이 함께 옮겨집니다.\nWindows 휴지통에서 되살릴 수 있습니다. 계속할까요?`)) return;
+            await api.deleteSet(폴더!); dirty = false; await store.refreshSets(); openNew(); showInfo('세트를 휴지통으로 보냈습니다');
+          }) }, '세트 삭제(휴지통)') : null),
         el('div', { class: 'row' }, '글 제목', 글Input, '학기', 학기Input, 학년Select, '반', 반Input, '반별 인원(선택)', 인원Input)),
-      el('div', { class: 'card' }, el('h3', {}, '문항'), tableBox),
+      el('div', { class: 'card' }, el('h3', {}, '문항'), tableBox, statusBox),
       el('div', { class: 'card' }, el('h3', {}, 'AI로 정답 초안 만들기'),
         el('div', { class: 'muted' }, '문제와 지문을 보내 초안을 받습니다. 초안은 반드시 확인하고 고친 뒤 저장하세요.'),
         problemArea, sourceArea,
@@ -277,7 +290,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = `원본 폴더에 보관함: ${n}`; }) }, '지문 PDF/TXT 첨부(보관용)') : null, attachName),
         cautionBox),
       el('div', { class: 'card' }, el('h3', {}, '채점 규칙과 판정 사례'), rulesBox, casesBox, judgeBar, judgeBox),
-      statusBox,
       el('div', { class: 'card' }, el('h3', {}, '한 장만 채점해 보기'),
         el('div', { class: 'muted' }, '답안지 한 장(jpg 또는 PDF의 첫 장)으로 전사를 시험합니다. 결과는 저장하지 않습니다. 확인 완료된 정답표에서만 됩니다.'),
         tryInput, tryBox));

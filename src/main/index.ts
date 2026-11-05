@@ -1,4 +1,5 @@
-import { app, BrowserWindow, protocol, safeStorage, session } from 'electron';
+import { app, BrowserWindow, dialog, Menu, protocol, safeStorage, session, shell } from 'electron';
+import { menuTemplate } from './menu.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineBridge } from './engine-bridge.js';
@@ -24,7 +25,13 @@ app.whenReady().then(async () => {
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion() });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
-  settings.save = async (patch) => { settingsCache = await origSave(patch); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
+  const applyMenu = () => Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(settingsCache.언어, {
+    openGuide: () => { void shell.openExternal('https://github.com/blueshadow62/geulnun#readme'); },
+    openPrivacy: () => { void shell.openExternal('https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md'); },
+    showAbout: () => { void dialog.showMessageBox({ title: '글눈', message: `글눈 ${app.getVersion()}`, detail: settingsCache.언어 === 'en' ? 'Transcribes and grades handwritten essay answer sheets. Apache-2.0.' : '손글씨 서·논술형 답안지 전사·채점 도구. Apache-2.0.' }); },
+  })));
+  settings.save = async (patch) => { const before = settingsCache.언어; settingsCache = await origSave(patch); if (settingsCache.언어 !== before) applyMenu(); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
+  applyMenu();
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build') },
     () => settingsCache.학기폴더);
   registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win });

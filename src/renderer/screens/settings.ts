@@ -1,4 +1,4 @@
-import type { CliStatusView, Profile, Rotation, SecretView } from '../../shared/ipc.js';
+import type { CliStatusView, Language, Profile, Rotation, SecretView } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
@@ -59,6 +59,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const radios = ([0, 90, 180, 270] as Rotation[]).map(r => el('label', {}, el('input', { type: 'radio', name: 'rot', checked: s.기본회전 === r,
       onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 기본회전: r }) }); }) }), `${r}°`));
     rotationBox.append(el('div', { class: 'row' }, '답안지 기본 회전: ', ...radios));
+    const langSel = el('select', { onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 언어: langSel.value as Language }) }); showInfo(langSel.value === 'en' ? 'Menu language: English' : '메뉴 언어: 한국어'); }) },
+      el('option', { value: 'ko', selected: s.언어 !== 'en' }, '한국어'), el('option', { value: 'en', selected: s.언어 === 'en' }, 'English'));
+    rotationBox.append(el('div', { class: 'row' }, '메뉴 언어 / Menu language: ', langSel, el('span', { class: 'muted' }, '창 위 메뉴에 적용됩니다. 화면 글은 아직 한국어만 지원합니다.')));
   }
 
   function profileCard(p: Profile): HTMLElement {
