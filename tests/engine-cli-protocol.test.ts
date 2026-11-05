@@ -102,3 +102,9 @@ test('userLine: 그림이 없으면 text 블록만', () => {
   const u = JSON.parse(userLine(undefined, '초안을 만들라'));
   assert.deepEqual(u.message.content, [{ type: 'text', text: '초안을 만들라' }]);
 });
+
+test('userLine: 그림 여러 장은 순서대로 image 블록', () => {
+  const u = JSON.parse(userLine(['A', 'B'], '초안'));
+  assert.deepEqual(u.message.content.map((c: any) => c.type), ['image', 'image', 'text']);
+  assert.equal(u.message.content[1].source.data, 'B');
+});

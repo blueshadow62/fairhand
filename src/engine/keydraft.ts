@@ -2,7 +2,8 @@ import type { QtyUnit, QualUnit } from '../core/types.js';
 import { EngineError, withRetry, type Effort, type StructuredProvider, type StructuredRequest } from './provider.js';
 import { loadRules, type Rules } from './rules.js';
 
-export interface KeyDraftInput { 글: string; 문제: string; 지문?: string; effort?: Effort }
+/** 문제·지문은 글로, 또는 그림(문항지 사진·pdf 쪽)으로 준다. 둘 다 있어도 된다. */
+export interface KeyDraftInput { 글: string; 문제: string; 지문?: string; 문제그림?: string[]; 지문그림?: string[]; effort?: Effort }
 export interface KeyDraft { 정량: QtyUnit[]; 정성: QualUnit[]; 주의: string[] }
 
 const ID = /^[a-zA-Z0-9_.-]{1,64}$/;
@@ -25,8 +26,12 @@ export function keyDraftSchema(): Record<string, unknown> {
 }
 
 export function keyDraftRequest(input: KeyDraftInput, rules: Rules): StructuredRequest {
-  const user = ['# 글', input.글, '', '# 문항지', input.문제, '', '# 지문', input.지문?.trim() ? input.지문 : '(지문 없음: 답은 추정이며 cautions에 적는다)'].join('\n');
-  return { system: rules.본문.trimEnd(), user, schema: keyDraftSchema(), effort: input.effort ?? 'high' };
+  const q = input.문제그림?.length ?? 0, s = input.지문그림?.length ?? 0;
+  const 문제 = [input.문제.trim(), q ? `(첨부 그림 1~${q}장이 문항지다. 거기서 문제를 읽는다)` : ''].filter(Boolean).join('\n');
+  const 지문 = [input.지문?.trim() ?? '', s ? `(첨부 그림 ${q + 1}~${q + s}장이 지문이다)` : ''].filter(Boolean).join('\n');
+  const user = ['# 글', input.글, '', '# 문항지', 문제 || '(문항지 없음)', '', '# 지문', 지문 || '(지문 없음: 답은 추정이며 cautions에 적는다)'].join('\n');
+  const images = [...(input.문제그림 ?? []), ...(input.지문그림 ?? [])];
+  return { system: rules.본문.trimEnd(), user, ...(images.length ? { images } : {}), schema: keyDraftSchema(), effort: input.effort ?? 'high' };
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

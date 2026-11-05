@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { CliTurn, initializeLine, launchArgs, userLine, MODEL } from './cli-protocol.js';
-import { EngineError, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
+import { EngineError, requestImages, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 import { childEnv } from './env.js';
 import { locateClaude, type ClaudeProgram } from './status.js';
 
@@ -40,7 +40,7 @@ export class CliProvider implements TranscribeProvider {
     const program = this.program;
     const args = [...program.prefixArgs, ...launchArgs(req.schema, req.effort)];
     const cwd = await mkdtemp(path.join(tmpdir(), 'geulnun-cli-')); // 다른 폴더의 CLAUDE.md·설정이 끼어들지 않게 빈 폴더에서
-    const turn = new CliTurn(userLine(req.imageJpegBase64, req.user));
+    const turn = new CliTurn(userLine(requestImages(req), req.user));
     try {
       return await new Promise<RawResult>((resolve, reject) => {
         let child: ReturnType<typeof nodeSpawn>;

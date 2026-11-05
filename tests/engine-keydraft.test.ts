@@ -50,3 +50,11 @@ test('draftKey: 제공자에 요청을 보내고 검증된 초안을 돌려준�
   const d = await draftKey(p, { 글: 'x', 문제: 'y' }, new AbortController().signal);
   assert.equal(d.정량.length, 2);
 });
+
+test('keyDraftRequest: 문항지·지문 그림을 순서대로 붙이고 글에 몇 장인지 적는다', async () => {
+  const rules = await loadRules('keydraft-v1');
+  const r = keyDraftRequest({ 글: 'g', 문제: '', 문제그림: ['Q1', 'Q2'], 지문: '', 지문그림: ['S1'] }, rules);
+  assert.deepEqual(r.images, ['Q1', 'Q2', 'S1']);
+  assert.ok(r.user.includes('그림 1~2장이 문항지') && r.user.includes('그림 3~3장이 지문'));
+  assert.equal(keyDraftRequest({ 글: 'g', 문제: 'q' }, rules).images, undefined);
+});

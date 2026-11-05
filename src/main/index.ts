@@ -1,5 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, protocol, safeStorage, session, shell } from 'electron';
-import { menuTemplate } from './menu.js';
+import { app, BrowserWindow, Menu, protocol, safeStorage, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineBridge } from './engine-bridge.js';
@@ -25,13 +24,9 @@ app.whenReady().then(async () => {
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion() });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
-  const applyMenu = () => Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(settingsCache.언어, {
-    openGuide: () => { void shell.openExternal('https://github.com/blueshadow62/geulnun#readme'); },
-    openPrivacy: () => { void shell.openExternal('https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md'); },
-    showAbout: () => { void dialog.showMessageBox({ title: '글눈', message: `글눈 ${app.getVersion()}`, detail: settingsCache.언어 === 'en' ? 'Transcribes and grades handwritten essay answer sheets. Apache-2.0.' : '손글씨 서·논술형 답안지 전사·채점 도구. Apache-2.0.' }); },
-  })));
-  settings.save = async (patch) => { const before = settingsCache.언어; settingsCache = await origSave(patch); if (settingsCache.언어 !== before) applyMenu(); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
-  applyMenu();
+  settings.save = async (patch) => { settingsCache = await origSave(patch); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
+  // 창 위 기본 메뉴(File·Edit…)는 쓰지 않는다. 설정·언어·정보는 프로그램 안 '설정' 화면에 있다. 복사·붙여넣기는 Windows가 메뉴 없이도 처리한다.
+  Menu.setApplicationMenu(null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build') },
     () => settingsCache.학기폴더);
   registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win });
@@ -48,6 +43,8 @@ app.whenReady().then(async () => {
   win.webContents.on('console-message', (e) => { if (e.level === 'warning' || e.level === 'error') console.error(`[renderer:${e.level}] ${e.message} (${e.sourceId}:${e.lineNumber})`); });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
+  // 메뉴가 없어도 개발자 도구는 F12로(문제 보고용)
+  win.webContents.on('before-input-event', (_e, input) => { if (input.type === 'keyDown' && input.key === 'F12') win?.webContents.toggleDevTools(); });
   win.on('closed', () => { bridge.cancel(); win = null; });
   await win.loadURL(`${APP_SCHEME}://app/index.html`);
 });

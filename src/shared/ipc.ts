@@ -22,7 +22,7 @@ export const CHANNELS = {
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
-  draftKey: 'ai:draft-key', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
+  draftKey: 'ai:draft-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
 } as const;
@@ -52,7 +52,8 @@ export interface GeulnunApi {
   exportKey(폴더: string): Promise<string | null>;
   attachSource(폴더: string): Promise<string | null>;       // PDF를 세트/원본/에 복사, 파일 이름 반환
   readSourceText(폴더: string): Promise<string>;            // 원본/*.txt 가 있으면 그 글(붙여넣은 지문 저장용)
-  draftKey(input: { 글: string; 문제: string; 지문?: string }): Promise<KeyDraftResult>;
+  draftKey(input: { 글: string; 문제: string; 지문?: string; 문제그림?: ArrayBuffer[]; 지문그림?: ArrayBuffer[] }): Promise<KeyDraftResult>;   // 그림은 JPEG
+  extractText(name: string, data: ArrayBuffer): Promise<string>;   // txt·hwpx에서 글만(hwp·docx는 안내 오류)
   tryPage(폴더: string, jpeg: ArrayBuffer): Promise<Transcript>;
   startRun(폴더: string, opts: { pages?: number[]; force?: boolean }): Promise<RunResult>;
   cancelRun(): Promise<void>;

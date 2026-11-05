@@ -14,7 +14,9 @@ export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface TranscribeInput { imageJpegBase64: string; key: AnswerKey; rules: Rules; page: number; effort: Effort }
 export interface RawResult { output: unknown; inputTokens?: number; outputTokens?: number; model: string }
 /** 시스템 프롬프트 + 사용자 글(+그림) + 출력 스키마. 전사와 정답 초안이 같은 CLI/API 경로를 쓴다. */
-export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; schema: Record<string, unknown>; effort: Effort }
+export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; images?: string[]; schema: Record<string, unknown>; effort: Effort }
+/** 요청의 그림 전부(한 장 + 여러 장), 보내는 순서대로 */
+export const requestImages = (req: StructuredRequest): string[] => [...(req.imageJpegBase64 ? [req.imageJpegBase64] : []), ...(req.images ?? [])];
 export interface StructuredProvider { readonly id: 'cli' | 'api'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
 export interface TranscribeProvider extends StructuredProvider { transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
 

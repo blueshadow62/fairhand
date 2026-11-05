@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { EngineError, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
+import { EngineError, requestImages, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 
 export const MODEL = 'claude-opus-5-5';
 type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
@@ -12,7 +12,7 @@ export function buildRequest(req: StructuredRequest): CreateParams {
     max_tokens: 16000,
     system: req.system,
     messages: [{ role: 'user', content: [
-      ...(req.imageJpegBase64 ? [{ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data: req.imageJpegBase64 } }] : []),
+      ...requestImages(req).map(data => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/jpeg' as const, data } })),
       { type: 'text' as const, text: req.user } ] }],
     output_config: { effort: req.effort, format: { type: 'json_schema', schema: req.schema } },
     // 안전 분류기가 거절하면 서버가 다른 모델로 같은 요청을 이어 간다

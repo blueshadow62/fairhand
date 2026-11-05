@@ -63,3 +63,8 @@ test('buildRequest: 그림 없는 요청은 text 블록만, system은 그대로'
   assert.deepEqual(r.messages[0]!.content, [{ type: 'text', text: 'U' }]);
   assert.equal((r.output_config as any).effort, 'medium');
 });
+
+test('buildRequest: images[]가 모두 image 블록으로', () => {
+  const r = buildRequest({ system: 'S', user: 'U', images: ['A', 'B'], schema: { type: 'object' }, effort: 'high' });
+  assert.deepEqual((r.messages[0]!.content as any[]).map(c => c.type), ['image', 'image', 'text']);
+});

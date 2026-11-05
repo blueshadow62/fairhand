@@ -14,9 +14,9 @@ export function launchArgs(schema: Record<string, unknown>, effort: string): str
 export const initializeLine = (systemPrompt: string): string =>
   `${JSON.stringify({ type: 'control_request', request_id: INIT_ID, request: { subtype: 'initialize', systemPrompt: [systemPrompt] } })}\n`;
 
-export const userLine = (imageJpegBase64: string | undefined, text: string): string =>
+export const userLine = (images: string | string[] | undefined, text: string): string =>
   `${JSON.stringify({ type: 'user', message: { role: 'user', content: [
-    ...(imageJpegBase64 ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageJpegBase64 } }] : []),
+    ...(Array.isArray(images) ? images : images ? [images] : []).map(data => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
     { type: 'text', text } ] } })}\n`;
 
 export type Outcome =
