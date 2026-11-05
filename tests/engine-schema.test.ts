@@ -58,3 +58,12 @@ test('systemPrompt: 대상 학년·반(·인원)을 알려 식별 범위를 좁�
   const withCount = systemPrompt(r, { ...key, 대상: { ...key.대상, 인원: { '1': 28 } } });
   assert.ok(withCount.includes('1반 28명(번호 1~28)'));
 });
+
+test('systemPrompt: 채점 규칙 절과 사례 절', async () => {
+  const r = await loadRules();
+  const p = systemPrompt(r, { ...key, 채점규칙: { 넓은말: '인정' }, 사례: [{ 단위: '1-1', 답: '은영이', 판정: 'X', 일시: 'x', 출처: 'p1' }] });
+  assert.ok(p.includes('# 채점 규칙(이 세트)') && p.includes('넓') && p.includes('인정'));
+  assert.ok(p.includes('# 판정 사례') && p.includes('- 1-1: "은영이" → X'));
+  assert.ok(!p.includes('"사례"')); // 정답표 JSON 안에는 넣지 않는다
+  assert.ok(!systemPrompt(r, key).includes('# 판정 사례'));
+});

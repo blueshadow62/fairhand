@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseKey, keyProblems, isConfirmed, fullScore, headcount } from '../src/core/key.js';
+import { parseKey, keyProblems, isConfirmed, fullScore, headcount, gradingRules, DEFAULT_RULES } from '../src/core/key.js';
 import { DataError } from '../src/core/types.js';
 
 const FX = new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url);
@@ -47,4 +47,13 @@ test('keyProblems_class_must_be_integer: 대상.반·학년이 글자면 잡는�
 test('parseKey: 단위의 유형 필드가 그대로 남는다', () => {
   const k = parseKey(JSON.stringify({ 세트: 's', 글: 'g', 학기: '2026 2학기', 대상: { 학년: 2, 반: [2] }, 정량: [{ id: '1-1', 문항: 1, 설명: 'a', 정답: 'b', 유형: '요소형' }], 정성: [] }));
   assert.equal(k.정량[0]!.유형, '요소형');
+});
+
+test('채점규칙 기본값과 검증, 사례 검증', () => {
+  const base = { 세트: 's', 글: 'g', 학기: '2026 2학기', 대상: { 학년: 2, 반: [2] }, 정량: [{ id: '1-1', 문항: 1, 설명: 'a', 정답: 'b' }], 정성: [] };
+  assert.deepEqual(gradingRules(parseKey(JSON.stringify(base))), DEFAULT_RULES);
+  assert.equal(gradingRules(parseKey(JSON.stringify({ ...base, 채점규칙: { 넓은말: '인정' } }))).넓은말, '인정');
+  assert.throws(() => parseKey(JSON.stringify({ ...base, 채점규칙: { 맞춤법: '대충' } })), /채점규칙/);
+  assert.throws(() => parseKey(JSON.stringify({ ...base, 사례: [{ 단위: '9-9', 답: 'x', 판정: 'O', 일시: '', 출처: '' }] })), /사례/);
+  assert.throws(() => parseKey(JSON.stringify({ ...base, 사례: [{ 단위: '1-1', 답: '', 판정: 'O', 일시: '', 출처: '' }] })), /사례/);
 });

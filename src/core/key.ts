@@ -1,4 +1,8 @@
-import { DataError, type AnswerKey } from './types.js';
+import { DataError, type AnswerKey, type GradingRules } from './types.js';
+
+export const DEFAULT_RULES: GradingRules = { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' };
+const RULE_VALUES: Record<string, string[]> = { 맞춤법: ['인정', '불인정'], 넓은말: ['인정', '불인정'], 핵심어: ['모두', '하나라도'] };
+export const gradingRules = (k: AnswerKey): GradingRules => ({ ...DEFAULT_RULES, ...(k.채점규칙 ?? {}) });
 
 export function keyProblems(k: unknown): string[] {
   const p: string[] = [];
@@ -16,6 +20,19 @@ export function keyProblems(k: unknown): string[] {
     ids.add(u.id);
   }
   for (const u of Array.isArray(o.정량) ? o.정량 : []) if (typeof u?.정답 !== 'string') p.push(`${u?.id}: 정답이 없습니다`);
+  if (o.채점규칙 !== undefined) {
+    if (typeof o.채점규칙 !== 'object' || o.채점규칙 === null || Array.isArray(o.채점규칙)) p.push('채점규칙은 객체여야 합니다');
+    else for (const [k, v] of Object.entries(o.채점규칙)) if (!RULE_VALUES[k]?.includes(v as string)) p.push(`채점규칙.${k} 값이 잘못됨 (${String(v)})`);
+  }
+  if (o.사례 !== undefined) {
+    const qty = new Set((Array.isArray(o.정량) ? o.정량 : []).map((u: any) => u?.id));
+    if (!Array.isArray(o.사례)) p.push('사례는 목록이어야 합니다');
+    else o.사례.forEach((c: any, i: number) => {
+      if (!qty.has(c?.단위)) p.push(`사례 ${i + 1}: 단위 '${c?.단위}'가 정량에 없습니다`);
+      if (c?.판정 !== 'O' && c?.판정 !== 'X') p.push(`사례 ${i + 1}: 판정은 O 또는 X여야 합니다`);
+      if (typeof c?.답 !== 'string' || !c.답.trim()) p.push(`사례 ${i + 1}: 답이 비었습니다`);
+    });
+  }
   return p;
 }
 

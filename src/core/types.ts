@@ -6,6 +6,11 @@ export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형';
 export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType }
 export interface QualUnit { id: string; 문항: number; 설명: string }
 
+/** 세트별 채점 규칙. 없으면 DEFAULT_RULES(key.ts) */
+export interface GradingRules { 맞춤법: '인정' | '불인정'; 넓은말: '인정' | '불인정'; 핵심어: '모두' | '하나라도' }
+/** 선생님이 검토에서 확정한 판정. 같은 단위에 같은(정규화한) 답을 쓴 장에 그대로 적용된다 */
+export interface Case { 단위: string; 답: string; 판정: 'O' | 'X'; 일시: string; 출처: string }
+
 export interface AnswerKey {
   세트: string;
   글: string;
@@ -14,6 +19,8 @@ export interface AnswerKey {
   확인?: { 완료: boolean; 일시?: string };
   정량: QtyUnit[];
   정성: QualUnit[];
+  채점규칙?: Partial<GradingRules>;
+  사례?: Case[];
 }
 
 export interface TranscribeInfo { 엔진: 'cli' | 'api' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
