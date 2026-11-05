@@ -10,6 +10,8 @@
 - 요구: Node 22 이상
 - `npm install` → `npm test` → `npm start`
 - 세트 채점(명령줄): `npm run score -- "<세트 폴더>" --roster "<명단.xlsx>"`
+- 세트 전사(명령줄): `npm run transcribe -- "<세트 폴더>" --engine cli --out "<세트 폴더>\평가\cli"`
+- 평가: `npm run eval -- "<세트 폴더>" --got "<세트 폴더>\평가\cli"`
 
 ## 라이선스
 Apache-2.0. 가져온 부품은 [NOTICE](NOTICE)에 있습니다. 이 프로그램은 사용자가 설치한 Claude Code를 실행하며, Claude 사용은 사용자 본인의 Anthropic 약관을 따릅니다. Anthropic과 관련이 없는 개인 프로젝트입니다.

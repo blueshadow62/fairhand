@@ -13,7 +13,9 @@
     "build": "tsc",
     "test": "tsc && node --test \"dist/tests/**/*.test.js\"",
     "start": "tsc && electron .",
-    "score": "tsc && node dist/scripts/score-set.js"
+    "score": "tsc && node dist/scripts/score-set.js",
+    "transcribe": "tsc && node dist/scripts/transcribe-set.js",
+    "eval": "tsc && node dist/scripts/eval.js"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
