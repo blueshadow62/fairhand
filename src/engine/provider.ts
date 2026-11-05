@@ -1,6 +1,7 @@
 import { parseTranscript, validateTranscripts } from '../core/transcript.js';
 import { DataError, type AnswerKey, type TranscribeInfo, type Transcript } from '../core/types.js';
 import type { Rules } from './rules.js';
+import { fromModelOutput } from './schema.js';
 
 export type EngineErrorKind = 'not-installed' | 'needs-update' | 'signed-out' | 'rate-limit' | 'overloaded' | 'network'
   | 'timeout' | 'refusal' | 'invalid-output' | 'unsafe-tools' | 'cancelled' | 'other';
@@ -17,7 +18,7 @@ export interface TranscribeProvider { readonly id: 'cli' | 'api'; transcribe(inp
 /** 모델 출력(이미 스키마 검증을 거쳤어도) 값을 다시 검사해 전사로 만든다. 틀리면 invalid-output. */
 export function toTranscript(raw: unknown, key: AnswerKey, page: number, info: TranscribeInfo): Transcript {
   let t: Transcript;
-  try { t = parseTranscript(JSON.stringify(raw), `p${page}`); }
+  try { t = parseTranscript(JSON.stringify(fromModelOutput(raw)), `p${page}`); }
   catch (e) { throw new EngineError('invalid-output', `모델 출력이 전사 양식이 아님: ${(e as Error).message}`); }
   if (t.page !== page) throw new EngineError('invalid-output', `모델 출력의 page가 ${t.page}인데 요청한 쪽은 ${page}`);
   try { validateTranscripts(key, [t]); }

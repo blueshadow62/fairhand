@@ -6,8 +6,8 @@ import { EngineError, toTranscript, withRetry, userFacingMessage } from '../src/
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const info = { 엔진: 'cli' as const, 모델: 'claude-opus-5-5', effort: 'high', 규칙: 'transcribe-v1', 일시: '2026-11-06T01:00:00+09:00' };
-const good = { page: 4, 학년: 3, 반: 1, 번호: 9, 이름: null, 식별확신: '확실',
-  정량: { '1-1': { 답: '은영', 판정: 'O' }, '3-1': { 답: '', 판정: '빈칸' } }, 정성: { E1: { 응답: false, 답: '' } }, 비고: [] };
+const good = { page: 4, grade: 3, class: 1, number: 9, name: null, id_confidence: '확실',
+  quant: { '1-1': { answer: '은영', verdict: 'O' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] };
 
 test('toTranscript: 올바른 출력에 전사정보를 붙인다', () => {
   const t = toTranscript(good, key, 4, info);
@@ -21,9 +21,9 @@ test('toTranscript_rejects_wrong_page', () => {
 });
 
 test('toTranscript: 정답표에 없는 단위·잘못된 판정·문자열 응답은 invalid-output', () => {
-  assert.throws(() => toTranscript({ ...good, 정량: { ...good.정량, '9-9': { 답: '', 판정: 'O' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
-  assert.throws(() => toTranscript({ ...good, 정량: { ...good.정량, '1-1': { 답: '', 판정: 'ㅇ' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
-  assert.throws(() => toTranscript({ ...good, 정성: { E1: { 응답: 'false', 답: '' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, quant: { ...good.quant, '9-9': { answer: '', verdict: 'O' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, quant: { ...good.quant, '1-1': { answer: '', verdict: 'ㅇ' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, qual: { E1: { responded: 'false', answer: '' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
   assert.throws(() => toTranscript('글자', key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
 });
 

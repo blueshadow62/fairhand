@@ -33,7 +33,7 @@ function fakeSpawn(script: (stdinLines: string[], out: PassThrough, child: any) 
 const program = { command: 'C:\\fake\\claude.exe', prefixArgs: [] };
 
 test('CliProvider: initialize → user → init 확인 → 결과', async () => {
-  const out = { page: 1, 학년: 3, 반: 1, 번호: 1, 이름: null, 식별확신: '확실', 정량: { '1-1': { 답: '은영', 판정: 'O' }, '3-1': { 답: '', 판정: '빈칸' } }, 정성: { E1: { 응답: false, 답: '' } }, 비고: [] };
+  const out = { page: 1, grade: 3, class: 1, number: 1, name: null, id_confidence: '확실', quant: { '1-1': { answer: '은영', verdict: 'O' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] };
   const f = fakeSpawn((lines, o) => {
     if (lines.length === 1) o.write(j({ type: 'control_response', response: { subtype: 'success', request_id: 'initialize' } }));
     if (lines.length === 2) {

@@ -9,7 +9,7 @@ import { loadRules } from '../src/engine/rules.js';
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const rules = await loadRules();
 const input = { imageJpegBase64: 'AAAA', key, rules, page: 2, effort: 'high' as const };
-const out = { page: 2, 학년: 3, 반: 1, 번호: 2, 이름: null, 식별확신: '추정', 정량: { '1-1': { 답: '', 판정: '빈칸' }, '3-1': { 답: '', 판정: '빈칸' } }, 정성: { E1: { 응답: false, 답: '' } }, 비고: ['번호 흐림'] };
+const out = { page: 2, grade: 3, class: 1, number: 2, name: null, id_confidence: '추정', quant: { '1-1': { answer: '', verdict: '빈칸' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: ['번호 흐림'] };
 const fakeClient = (reply: any) => {
   const calls: any[] = [];
   return { calls, client: { beta: { messages: { create: async (p: any) => { calls.push(p); if (reply instanceof Error) throw reply; return reply; } } } } };
@@ -21,7 +21,7 @@ test('buildRequest: 모델·스키마·그림·effort·fallbacks', () => {
   assert.equal(r.max_tokens, 16000);
   assert.equal(r.output_config.effort, 'high');
   assert.equal(r.output_config.format.type, 'json_schema');
-  assert.deepEqual(r.output_config.format.schema.properties.정량.required, ['1-1', '3-1']);
+  assert.deepEqual(r.output_config.format.schema.properties.quant.required, ['1-1', '3-1']);
   assert.deepEqual(r.messages[0].content[0], { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } });
   assert.deepEqual(r.betas, ['server-side-fallback-2026-07-01']);
   assert.equal(r.fallbacks, 'default');
