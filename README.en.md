@@ -12,6 +12,12 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 3. **Run**: upload the answer-sheet PDF, fix rotation, split into pages, then start transcription. A result workbook is written to the set folder.
 4. **Review**: compare each page image with its transcription, fix and save (the workbook is rebuilt). The semester cumulative record is built here too.
 
+## Grading rules and precedents
+- Each set has three grading rules (Questions screen): spelling variants with the same meaning, answers broader than the key, and sentence keywords (all / any).
+- Verdicts changed in Review are recorded as precedents (can be turned off) and applied right away to other pages with the same answer for the same unit, and to pages transcribed later.
+- After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
+- Every changed verdict is noted in the page's remarks; the student's answer text is never changed.
+
 ## Development
 - Requires Node 22+
 - `npm install` → `npm test` → `npm start` (builds first)
