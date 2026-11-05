@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readdir, readFile, writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { parseKey } from './key.js';
 import { parseTranscript } from './transcript.js';
@@ -53,5 +53,11 @@ export async function saveTranscript(dir: string, t: Transcript): Promise<void> 
   const target = path.join(tdir, transcriptFileName(t.page));
   const tmp = `${target}.tmp`;
   await writeFile(tmp, JSON.stringify(clean, null, 1), 'utf-8');
-  await rename(tmp, target);
+  try { await rename(tmp, target); }
+  catch (e) {
+    await rm(tmp, { force: true }).catch(() => undefined);
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'EPERM' || code === 'EBUSY') throw new DataError(`${transcriptFileName(t.page)}이 다른 프로그램에서 열려 있어 저장할 수 없습니다`);
+    throw e;
+  }
 }
