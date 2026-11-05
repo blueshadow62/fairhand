@@ -6,7 +6,7 @@ const INIT_ID = 'initialize';
 
 /** 고정 플래그 + 모델 + effort + 스키마. `--bare`는 구독 로그인을 읽지 않으므로 쓰지 않는다. */
 export function launchArgs(schema: Record<string, unknown>, effort: string): string[] {
-  return ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
+  return ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--tools', '', '--restricted', '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence',
     '--model', MODEL, '--effort', effort, '--json-schema', JSON.stringify(schema)];
 }
