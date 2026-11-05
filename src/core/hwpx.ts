@@ -31,16 +31,16 @@ function zipEntries(buf: Buffer): ZipEntry[] {
   return out;
 }
 
-function zipRead(buf: Buffer, e: ZipEntry): Buffer {
+function zipRead(buf: Buffer, e: ZipEntry, budget = MAX_ENTRY): Buffer {
   const p = e.localOffset;
   if (p + 30 > buf.length || buf.readUInt32LE(p) !== 0x04034b50) throw new DataError('zip 항목이 깨졌습니다');
-  if (e.uncompressedSize > MAX_ENTRY) throw new DataError(`zip 항목 ${e.name}이 너무 큽니다(${Math.round(e.uncompressedSize / 1048576)}MB)`);
+  if (e.uncompressedSize > budget) throw new DataError(`zip 항목 ${e.name}이 너무 큽니다(${Math.round(e.uncompressedSize / 1048576)}MB)`);
   const nameLen = buf.readUInt16LE(p + 26), extraLen = buf.readUInt16LE(p + 28);
   const start = p + 30 + nameLen + extraLen, end = start + e.compressedSize;
   if (end > buf.length) throw new DataError('zip 항목이 파일 밖까지 이어집니다');
   const data = buf.subarray(start, end);
   if (e.method === 0) return Buffer.from(data);
-  if (e.method === 8) return inflateRawSync(data, { maxOutputLength: MAX_ENTRY }); // 목록의 크기를 속여도 여기서 막힌다
+  if (e.method === 8) return inflateRawSync(data, { maxOutputLength: budget }); // 목록의 크기를 속여도 여기서 막힌다
   throw new DataError(`zip 압축 방식 ${e.method}은 지원하지 않습니다`);
 }
 
@@ -53,8 +53,11 @@ const unescapeXml = (s: string): string => s.replace(/&lt;/g, '<').replace(/&gt;
 export function hwpxSectionText(xml: string): string {
   const paras: string[] = [];
   let cur = '', i = 0;
+  // 찾은 위치를 기억해 i가 그 앞을 지날 때만 다시 찾는다(-1은 '더 없음')
+  let t = -2, pe = -2;
   for (;;) {
-    const t = xml.indexOf('<hp:t', i), pe = xml.indexOf('</hp:p>', i);
+    if (t !== -1 && t < i) t = xml.indexOf('<hp:t', i);
+    if (pe !== -1 && pe < i) pe = xml.indexOf('</hp:p>', i);
     if (pe >= 0 && (t < 0 || pe < t)) { if (cur) paras.push(cur); cur = ''; i = pe + 7; continue; }
     if (t < 0) break;
     const open = xml.indexOf('>', t); if (open < 0) break;
@@ -72,8 +75,17 @@ export function extractHwpxText(buf: Buffer): string {
   const entries = zipEntries(buf).filter(e => /^Contents\/section\d+\.xml$/i.test(e.name))
     .sort((a, b) => Number(/(\d+)/.exec(a.name)![1]) - Number(/(\d+)/.exec(b.name)![1]));
   if (!entries.length) throw new DataError('hwpx 안에 본문(Contents/section*.xml)이 없습니다');
-  if (entries.reduce((n, e) => n + e.uncompressedSize, 0) > MAX_TOTAL) throw new DataError('hwpx 본문이 너무 큽니다(50MB 초과)');
-  return entries.map(e => hwpxSectionText(zipRead(buf, e).toString('utf8'))).filter(Boolean).join('\n\n');
+  if (entries.length > 200) throw new DataError('hwpx 본문 조각이 너무 많습니다');
+  // 실제로 푼 바이트를 누적해 전체 상한을 지킨다(목록의 크기는 믿지 않는다)
+  let used = 0;
+  const texts: string[] = [];
+  for (const e of entries) {
+    const data = zipRead(buf, e, Math.min(MAX_ENTRY, MAX_TOTAL - used));
+    used += data.length;
+    if (used > MAX_TOTAL) throw new DataError('hwpx 본문이 너무 큽니다(50MB 초과)');
+    texts.push(hwpxSectionText(data.toString('utf8')));
+  }
+  return texts.filter(Boolean).join('\n\n');
 }
 
 /** utf-8(BOM 허용)로 읽되, 깨진 글자가 나오면 cp949로 다시 읽는다(메모장 옛 저장본) */
