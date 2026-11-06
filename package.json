@@ -21,7 +21,7 @@
     "eval": "tsc && node dist/scripts/eval.js"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "typescript": "^7.0.2"
