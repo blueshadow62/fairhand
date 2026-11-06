@@ -1,6 +1,7 @@
 {
   "name": "geulnun",
-  "version": "0.1.0",
+  "productName": "글눈",
+  "version": "0.2.0",
   "description": "손글씨 서·논술형 답안지 전사·채점 도구",
   "private": true,
   "license": "Apache-2.0",
@@ -13,6 +14,8 @@
     "build": "tsc && tsc -p tsconfig.preload.json && node scripts/rename-preload.mjs",
     "test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
     "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --win --dir",
+    "dist": "npm run build && electron-builder --win --publish never",
     "score": "tsc && node dist/scripts/score-set.js",
     "transcribe": "tsc && node dist/scripts/transcribe-set.js",
     "eval": "tsc && node dist/scripts/eval.js"
@@ -20,11 +23,64 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
+    "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
     "pdfjs-dist": "^5.7.284"
+  },
+  "build": {
+    "appId": "kr.geulnun.app",
+    "productName": "글눈",
+    "executableName": "Geulnun",
+    "copyright": "Copyright © 2026 blueshadow62. Apache-2.0.",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/src/**",
+      "dist-preload/**",
+      "src/renderer/**",
+      "resources/**",
+      "package.json",
+      "!**/*.map",
+      "!dist/tests/**",
+      "!dist/scripts/**",
+      "!local/**",
+      "!tests/**",
+      "!docs/**",
+      "!node_modules/@napi-rs/**",
+      "!node_modules/pdfjs-dist/legacy/**",
+      "!node_modules/pdfjs-dist/web/**",
+      "!node_modules/pdfjs-dist/types/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "ko_KR"
+      ],
+      "language": "1042",
+      "createDesktopShortcut": true,
+      "shortcutName": "글눈"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "blueshadow62",
+      "repo": "geulnun"
+    }
   }
 }
