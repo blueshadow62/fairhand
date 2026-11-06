@@ -59,6 +59,25 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
   ctx.setLeaveGuard(leaveOk);
 
+  // 휴지통: 세트 목록 아래 버튼, 누르면 목록(되살리기·영구 삭제)
+  const trashBox = el('div', { class: 'trash hidden' });
+  let trashOpen = false;
+  async function renderTrash(): Promise<void> {
+    clear(trashBox); trashBox.classList.toggle('hidden', !trashOpen);
+    if (!trashOpen) return;
+    const items = await api.listTrash();
+    trashBox.append(el('div', { class: 'row' }, el('b', {}, t('key.trash')), el('button', { class: 'small', onclick: () => { trashOpen = false; void renderTrash(); } }, t('key.trashClose'))));
+    if (!items.length) { trashBox.append(el('div', { class: 'muted' }, t('key.trashEmpty'))); return; }
+    for (const it of items) {
+      const when = it.삭제일시 ? new Date(it.삭제일시).toLocaleString(locale()) : '-';
+      trashBox.append(el('div', { class: 'trash-item' },
+        el('div', {}, it.글 ?? it.원래이름), el('div', { class: 'muted' }, t('key.trashLine', { name: it.원래이름, when })),
+        el('div', { class: 'row' },
+          el('button', { class: 'small', onclick: () => guard(async () => { const name = await api.restoreSet(it.id); await store.refreshSets(); showInfo(t('key.trashRestored', { name })); await renderTrash(); }) }, t('key.trashRestore')),
+          el('button', { class: 'small danger', onclick: () => guard(async () => { if (!confirm(t('key.trashPurgeConfirm', { name: it.원래이름 }))) return; await api.purgeSet(it.id); showInfo(t('key.trashPurged')); await renderTrash(); }) }, t('key.trashPurge')))));
+    }
+  }
+
   function renderList(): void {
     clear(listBox);
     listBox.append(el('button', { class: 'primary', onclick: () => void leaveOk().then(ok => { if (ok) openNew(); }) }, t('key.newSet')));
@@ -68,6 +87,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       listBox.append(el('button', { class: s.폴더 === 폴더 ? 'active' : '', onclick: () => { if (s.폴더 !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(s.폴더); }); } },
         el('div', {}, s.key.글), el('div', { class: 'muted' }, t('key.setLine', { grade: s.key.대상.학년, classes: s.key.대상.반.join('·'), pages: s.쪽수, transcripts: s.전사수, status: s.key.확인?.완료 ? t('key.confirmedMark') : t('key.unconfirmedMark') }))));
     }
+    listBox.append(el('button', { class: 'small', onclick: () => { trashOpen = !trashOpen; void renderTrash(); } }, t('key.trash')), trashBox);
   }
 
   function openNew(): void {

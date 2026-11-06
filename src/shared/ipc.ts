@@ -6,6 +6,7 @@ export type Language = 'ko' | 'en';
 export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string }
+export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
 export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
@@ -21,7 +22,7 @@ export const CHANNELS = {
   getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
-  listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
+  listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
@@ -45,7 +46,10 @@ export interface GeulnunApi {
   cliLogin(profileId: string): Promise<{ ok: boolean; message?: string }>;
   listSets(): Promise<SetInfo[]>;
   createSet(key: AnswerKey): Promise<SetInfo>;
-  deleteSet(폴더: string): Promise<void>;            // 세트 폴더를 운영체제 휴지통으로(되살릴 수 있음)
+  deleteSet(폴더: string): Promise<void>;            // 세트 폴더를 학기 폴더 안 .휴지통으로(목록에서 되살리거나 영구 삭제)
+  listTrash(): Promise<TrashEntry[]>;
+  restoreSet(id: string): Promise<string>;           // 되살린 폴더 이름
+  purgeSet(id: string): Promise<void>;               // 영구 삭제
   readSet(폴더: string): Promise<SetData>;
   saveKey(폴더: string, key: AnswerKey): Promise<AnswerKey>;
   importKey(): Promise<AnswerKey | null>;

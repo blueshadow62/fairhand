@@ -12,6 +12,7 @@ import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../sh
 import type { EngineBridge } from './engine-bridge.js';
 import { leaveChoice, leaveDialogOptions } from './dialogs.js';
 import { listSets, nextPageNumber, pageFile, resolveSetDir, uniqueFolderName } from './paths.js';
+import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
 import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
@@ -59,8 +60,11 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.deleteSet, async (폴더: string) => {
     const dir = await setDir(폴더);
     if (d.bridge.running()) throw new DataError('전사가 실행 중입니다. 끝나거나 중단한 뒤 지우세요');
-    try { await shell.trashItem(dir); } catch (e) { throw new DataError(`세트를 휴지통으로 보내지 못했습니다(파일이 열려 있는지 확인): ${(e as Error).message}`); }
+    await trashSet(await semester(), path.basename(dir));
   });
+  h(CHANNELS.listTrash, async () => listTrash(await semester()));
+  h(CHANNELS.restoreSet, async (id: string) => restoreSet(await semester(), id));
+  h(CHANNELS.purgeSet, async (id: string) => purgeSet(await semester(), id));
   h(CHANNELS.createSet, async (raw: unknown): Promise<SetInfo> => {
     const key = parseKey(JSON.stringify(raw), '새 정답표');
     const sem = await semester();
