@@ -1,5 +1,6 @@
 import path from 'node:path';
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { loadExcel } from './excel.js';
 import { fullScore } from './key.js';
 import { DataError, type AnswerKey, type Row } from './types.js';
 
@@ -18,7 +19,7 @@ export async function writeResultXlsx(key: AnswerKey, rows: Row[], unmatched: Ro
   const qty = key.정량.map(u => u.id);
   const qual = key.정성.map(u => u.id);
   const all = [...rows, ...unmatched];
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await loadExcel()).Workbook();
 
   let ws = wb.addWorksheet('결과');
   ws.addRow([...WHO, '합계', '정량', '정성', '비고', ...qty, ...qual]);

@@ -31,9 +31,9 @@ export function appFileFor(url: URL, roots: AppRoots): string | null {
 
 export function pageImageFor(url: URL, semesterDir: string | null): string | null {
   if (!semesterDir || url.protocol !== `${IMG_SCHEME}:` || url.host !== 'set') return null;
-  const m = /^\/([^/]+)\/(p\d+\.jpg)$/.exec(url.pathname);
+  const m = /^\/([^/]+)\/(thumbs\/)?(p\d+\.jpg)$/.exec(url.pathname);
   if (!m) return null;
-  try { return path.join(resolveSetDir(semesterDir, decodeURIComponent(m[1]!)), 'pages', m[2]!); } catch { return null; }
+  try { return path.join(resolveSetDir(semesterDir, decodeURIComponent(m[1]!)), 'pages', m[2] ? 'thumbs' : '', m[3]!); } catch { return null; }
 }
 
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.map': 'application/json', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };

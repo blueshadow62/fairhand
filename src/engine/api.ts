@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import { EngineError, requestImages, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 
 import { MODEL } from './provider.js';
@@ -35,16 +35,19 @@ export function classifyApiError(e: unknown): EngineError {
 
 export class ApiProvider implements TranscribeProvider {
   readonly id = 'api' as const;
-  private readonly client: ApiClientLike | null;
+  private client: ApiClientLike | null;
+  private readonly apiKey?: string;
   readonly model: string;
   constructor(opts: { apiKey?: string; client?: ApiClientLike; model?: string }) {
-    this.client = opts.client ?? (opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : null);
+    this.client = opts.client ?? null;
+    this.apiKey = opts.apiKey;
     this.model = opts.model ?? MODEL;
   }
 
   transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> { return this.complete(transcribeRequest(input), signal); }
 
   async complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> {
+    if (!this.client && this.apiKey) { const { default: Anthropic } = await import('@anthropic-ai/sdk'); this.client = new Anthropic({ apiKey: this.apiKey }); } // SDK는 처음 부를 때 읽는다(앱 기동 0.5초 절약)
     if (!this.client) throw new EngineError('signed-out', 'API 키가 설정되어 있지 않음');
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     let res: any;

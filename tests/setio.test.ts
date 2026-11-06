@@ -84,7 +84,9 @@ test('removePage: 그림과 전사를 지우고 번호는 비워 둔다', async 
   const d = sample();
   mkdirSync(path.join(d, 'pages'), { recursive: true });
   for (const p of [1, 2, 3, 4]) writeFileSync(path.join(d, 'pages', `p0${p}.jpg`), 'x');
+  mkdirSync(path.join(d, 'pages', 'thumbs')); writeFileSync(path.join(d, 'pages', 'thumbs', 'p02.jpg'), 'x');
   assert.deepEqual(await removePage(d, 2), { 전사있었음: true });
+  assert.ok(!readdirSync(path.join(d, 'pages', 'thumbs')).includes('p02.jpg')); // 작은 그림도 함께
   assert.deepEqual(await listPages(d), [1, 3, 4]);
   assert.ok(!(await loadSet(d)).transcripts.some(t => t.page === 2));
   assert.deepEqual(await removePage(d, 4), { 전사있었음: false }); // 전사 없는 장

@@ -54,7 +54,7 @@ const api: GeulnunApi = {
   startRun: (폴더, opts) => call(CHANNELS.startRun, 폴더, opts),
   cancelRun: () => call(CHANNELS.cancelRun),
   onProgress: (cb) => { const h = (_e: unknown, ev: ProgressEvent) => cb(ev); ipcRenderer.on(CHANNELS.progress, h); return () => ipcRenderer.removeListener(CHANNELS.progress, h); },
-  addPages: (폴더, jpegs) => call(CHANNELS.addPages, 폴더, jpegs),
+  addPages: (폴더, jpegs, thumbs) => call(CHANNELS.addPages, 폴더, jpegs, thumbs),
   deletePage: (폴더, page) => call(CHANNELS.deletePage, 폴더, page),
   recordUpload: (폴더, r) => call(CHANNELS.recordUpload, 폴더, r),
   saveTranscript: (폴더, t) => call(CHANNELS.saveTranscript, 폴더, t),

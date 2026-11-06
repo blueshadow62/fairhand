@@ -87,6 +87,7 @@ export async function removePage(dir: string, page: number): Promise<{ 전사있
   const tag = pageTag(page);
   try { await rm(path.join(dir, 'pages', pageImageName(page))); }
   catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new DataError(`${tag} 그림이 없습니다`); throw e; }
+  await rm(path.join(dir, 'pages', 'thumbs', pageImageName(page)), { force: true });
   try { await rm(path.join(dir, 'transcripts', transcriptFileName(page))); return { 전사있었음: true }; }
   catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { 전사있었음: false }; throw e; }
 }

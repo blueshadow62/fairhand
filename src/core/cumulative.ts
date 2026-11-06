@@ -1,5 +1,6 @@
 import path from 'node:path';
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { loadExcel } from './excel.js';
 import { fullScore, isConfirmed } from './key.js';
 import { DataError, studentKey, type AnswerKey, type Row, type Student } from './types.js';
 
@@ -41,7 +42,7 @@ export function buildCumulative(sets: SetSummary[], roster: Student[] | null, �
 }
 
 export async function writeCumulativeXlsx(c: CumulativeSheets, out: string): Promise<void> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await loadExcel()).Workbook();
   for (const s of c.반별) {
     const ws = wb.addWorksheet(`${c.학년}-${s.반}`); // 시트 이름은 학년-반, 예: 3-1
     ws.addRow(s.header);

@@ -57,7 +57,17 @@ export class EngineBridge {
     return new ApiProvider({ apiKey, model: p.모델 ?? DEFAULT_MODEL });
   }
 
-  async cliStatus(id: string): Promise<CliStatusView> {
+  private readonly statusInFlight = new Map<string, Promise<CliStatusView>>();
+  /** 배지와 시작 화면이 같은 때 부르면 외부 프로그램을 한 번만 띄운다 */
+  cliStatus(id: string): Promise<CliStatusView> {
+    const running = this.statusInFlight.get(id);
+    if (running) return running;
+    const p = this.cliStatusNow(id).finally(() => this.statusInFlight.delete(id));
+    this.statusInFlight.set(id, p);
+    return p;
+  }
+
+  private async cliStatusNow(id: string): Promise<CliStatusView> {
     const p = await this.profile(id);
     if (p.종류 !== 'cli') throw new DataError('CLI 프로필이 아닙니다');
     const program = locateClaude(this.env, existsSync, p.cliPath);

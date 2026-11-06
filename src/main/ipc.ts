@@ -118,11 +118,15 @@ export function registerIpc(d: IpcDeps): void {
   };
   h(CHANNELS.startRun, async (폴더: string, opts: { pages?: unknown; force?: unknown }) => d.bridge.startRun(await setDir(폴더), { pages: pageList(opts?.pages), force: opts?.force === true }, e => d.window()?.webContents.send(CHANNELS.progress, e)));
   h(CHANNELS.cancelRun, async () => d.bridge.cancel());
-  h(CHANNELS.addPages, async (폴더: string, jpegs: ArrayBuffer[]) => {
+  h(CHANNELS.addPages, async (폴더: string, jpegs: ArrayBuffer[], thumbs?: ArrayBuffer[]) => {
     const dir = await setDir(폴더);
-    await mkdir(path.join(dir, 'pages'), { recursive: true });
+    await mkdir(path.join(dir, 'pages', 'thumbs'), { recursive: true });
     let n = await nextPageNumber(dir); const made: number[] = [];
-    for (const j of jpegs) { await writeFile(pageFile(dir, n), Buffer.from(j)); made.push(n++); }
+    for (const [i, j] of jpegs.entries()) {
+      await writeFile(pageFile(dir, n), Buffer.from(j));
+      if (thumbs?.[i]) await writeFile(path.join(dir, 'pages', 'thumbs', path.basename(pageFile(dir, n))), Buffer.from(thumbs[i]!));
+      made.push(n++);
+    }
     return made;
   });
   h(CHANNELS.deletePage, async (폴더: string, page: number) => {

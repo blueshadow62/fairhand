@@ -4,4 +4,4 @@ declare global { interface Window { geulnun: GeulnunApi } }
 
 export const api: GeulnunApi = window.geulnun;
 
-export { imageUrl } from '../../shared/ipc.js';
+export { imageUrl, thumbUrl } from '../../shared/ipc.js';

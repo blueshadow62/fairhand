@@ -1,6 +1,6 @@
 import type { ProgressEvent, RunResult, SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
-import { api, imageUrl } from '../lib/api.js';
+import { api, imageUrl, thumbUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
@@ -11,6 +11,13 @@ import { parsePageSpec, tag } from '../lib/screen-utils.js';
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
 const PRICE_IN = 5, PRICE_OUT = 25;
 const BATCH = 10; // 한 번에 너무 큰 IPC 전송을 피한다
+const THUMB_W = 320; // 격자 칸(130~200px)의 두 배면 또렷하다. 원본(1650px)을 그대로 보이면 장당 디코드 60ms가 쌓여 화면이 끊긴다
+function shrink(c: HTMLCanvasElement, w: number): HTMLCanvasElement {
+  const s = document.createElement('canvas');
+  s.width = w; s.height = Math.round(c.height * w / c.width);
+  s.getContext('2d')!.drawImage(c, 0, 0, s.width, s.height);
+  return s;
+}
 
 export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
@@ -106,14 +113,15 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     saving = true; saveBtn.disabled = true;
     try {
       // 파일 순서대로, 파일 안에서는 쪽 순서대로 하나의 번호 흐름으로 이어 붙인다
-      let jpegs: ArrayBuffer[] = [], n = 0;
-      const flush = async () => { if (jpegs.length) { made.push(...await api.addPages(폴더, jpegs)); jpegs = []; uploadStatus.textContent = t('run.savedCount', { n: made.length, total }); } };
+      let jpegs: ArrayBuffer[] = [], thumbs: ArrayBuffer[] = [], n = 0;
+      const flush = async () => { if (jpegs.length) { made.push(...await api.addPages(폴더, jpegs, thumbs)); jpegs = []; thumbs = []; uploadStatus.textContent = t('run.savedCount', { n: made.length, total }); } };
       for (const { src, 지문, 크기 } of included()) {
         const before = made.length;
         for (let p = 1; p <= src.pageCount; p++) {
           n++;
           const c = await src.render(p, rotation, DPI_SCALE);
           jpegs.push(await canvasToJpeg(c));
+          thumbs.push(await canvasToJpeg(shrink(c, THUMB_W), 0.75));
           c.width = c.height = 0; // 200dpi 캔버스(장당 수십 MB)를 GC를 기다리지 않고 비운다
           uploadStatus.textContent = t('run.rendering', { n, total });
           if (jpegs.length >= BATCH) await flush();
@@ -165,7 +173,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const tr = data!.transcripts.find(x => x.page === p);
       const who = !tr ? t('run.untranscribed') : tr.이름 ?? (tr.반 !== null && tr.번호 !== null ? `${tr.반}-${tr.번호}` : t('run.unidentified'));
       return el('figure', { class: 'thumb' },
-        el('img', { src: imageUrl(data!.폴더, p), loading: 'lazy', alt: tag(p) }),
+        el('img', { src: thumbUrl(data!.폴더, p), loading: 'lazy', decoding: 'async', alt: tag(p),
+          onerror: (e: Event) => { const i = e.target as HTMLImageElement; if (i.src !== imageUrl(data!.폴더, p)) i.src = imageUrl(data!.폴더, p); } }), // 작은 그림이 없는 옛 세트는 원본으로
         el('figcaption', {}, el('span', { title: who }, `${tag(p)} · ${who}`),
           el('button', { class: 'danger', disabled: running, title: t('common.delete'), onclick: () => void deletePage(p) }, '×')));
     })));

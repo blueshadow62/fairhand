@@ -4,6 +4,8 @@ export type Rotation = 0 | 90 | 180 | 270;
 /** 장 그림을 불러오는 주소(메인의 프로토콜 처리와 렌더러 img.src가 같은 규칙) */
 export const IMG_SCHEME = 'geulnun-img';
 export const imageUrl = (폴더: string, page: number): string => `${IMG_SCHEME}://set/${encodeURIComponent(폴더)}/p${String(page).padStart(2, '0')}.jpg`;
+/** 저장할 때 만든 작은 그림(pages/thumbs/). 없는 세트(옛 세트·샘플)는 img.onerror에서 원본으로 */
+export const thumbUrl = (폴더: string, page: number): string => `${IMG_SCHEME}://set/${encodeURIComponent(폴더)}/thumbs/p${String(page).padStart(2, '0')}.jpg`;
 /** 전사에 쓸 모델과 노력 단계. 둘 다 low~max를 지원한다(Opus 5.5 기본 medium, Sonnet 5.5 기본 high). 글눈 기본은 Opus 5.5·medium(23장 비교에서 높음과 같은 정확도, 더 빠름) */
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'] as const;
 export type ModelId = typeof MODELS[number];
@@ -79,7 +81,7 @@ export interface GeulnunApi {
   startRun(폴더: string, opts: { pages?: number[]; force?: boolean }): Promise<RunResult>;
   cancelRun(): Promise<void>;
   onProgress(cb: (e: ProgressEvent) => void): () => void;
-  addPages(폴더: string, jpegs: ArrayBuffer[]): Promise<number[]>;
+  addPages(폴더: string, jpegs: ArrayBuffer[], thumbs?: ArrayBuffer[]): Promise<number[]>;   // thumbs[i]는 jpegs[i]의 작은 그림
   deletePage(폴더: string, page: number): Promise<{ 엑셀?: string; 엑셀오류?: string }>;   // 그림+전사 삭제, 남은 전사로 엑셀 다시
   recordUpload(폴더: string, r: Omit<UploadRecord, '일시'>): Promise<void>;
   saveTranscript(폴더: string, t: Transcript): Promise<{ 엑셀?: string; 엑셀오류?: string }>;

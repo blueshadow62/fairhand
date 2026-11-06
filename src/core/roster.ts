@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import { loadExcel } from './excel.js';
 import { DataError, studentKey, type Student } from './types.js';
 
 function toInt(v: unknown, where: string, line: number, col: string): number {
@@ -58,7 +59,7 @@ export async function readRoster(p: string): Promise<Student[]> {
     return parseRosterRows(rows, where);
   }
   if (ext === '.xlsx') {
-    const wb = new ExcelJS.Workbook();
+    const wb = new (await loadExcel()).Workbook();
     await wb.xlsx.readFile(p);
     const ws = wb.worksheets[0];
     if (!ws) throw new DataError(`${where}: 시트가 없습니다`);

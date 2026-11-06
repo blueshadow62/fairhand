@@ -74,8 +74,9 @@ export interface ClaudeStatus { installed: boolean; version?: string; tooOld?: b
 export async function claudeStatus(run: Runner = runClaude, locate: () => ClaudeProgram | null = () => locateClaude(), env: NodeJS.ProcessEnv = childEnv(process.env)): Promise<ClaudeStatus> {
   const program = locate();
   if (!program) return { installed: false };
-  const v = parseVersion((await run(program, ['--version'], env)).stdout) ?? undefined;
-  const auth = parseAuthStatus((await run(program, ['auth', 'status', '--json'], env)).stdout);
+  const [ver, st] = await Promise.all([run(program, ['--version'], env), run(program, ['auth', 'status', '--json'], env)]); // 서로 무관한 두 명령은 같이 띄운다(1초 안팎 단축)
+  const v = parseVersion(ver.stdout) ?? undefined;
+  const auth = parseAuthStatus(st.stdout);
   return { installed: true, version: v, tooOld: v ? compareVersion(v, MIN_CLI_VERSION) < 0 : undefined,
     loggedIn: auth?.loggedIn, authMethod: auth?.authMethod, subscriptionType: auth?.subscriptionType };
 }

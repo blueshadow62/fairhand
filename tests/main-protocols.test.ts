@@ -35,3 +35,11 @@ test('preload의 CHANNELS 복제가 shared/ipc.ts와 같다', () => {
   assert.ok(a && a.length > 100);
   assert.equal(b, a);
 });
+
+test('pageImageFor: thumbs/ 아래의 작은 그림도 세트의 pages/thumbs/로만', () => {
+  const sem = 'C:\\학기';
+  assert.equal(pageImageFor(new URL('geulnun-img://set/' + encodeURIComponent('2026 3학년') + '/thumbs/p07.jpg'), sem), path.join(sem, '2026 3학년', 'pages', 'thumbs', 'p07.jpg'));
+  // '..'은 URL 단계에서 정리돼 원본 그림을 가리킨다(pages/ 밖으로 못 나간다)
+  assert.equal(pageImageFor(new URL('geulnun-img://set/' + encodeURIComponent('2026 3학년') + '/thumbs/../p07.jpg'), sem), path.join(sem, '2026 3학년', 'pages', 'p07.jpg'));
+  assert.equal(pageImageFor(new URL('geulnun-img://set/' + encodeURIComponent('2026 3학년') + '/other/p07.jpg'), sem), null);
+});
