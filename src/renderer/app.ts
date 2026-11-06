@@ -88,6 +88,26 @@ async function start(): Promise<void> {
   }
   for (const tab of TABS) { const b = el('button', { onclick: () => goTo(tab.id) }, t(`app.tab.${tab.id}`)); buttons.set(tab.id, b); tabs.append(b); }
 
+  // 왼쪽 메뉴 맨 아래: 지금 쓰는 AI 프로필과 상태(이음오피스의 'Claude · 연결됨' 표시처럼). 누르면 설정으로
+  const badgeName = el('div', { class: 'name' }), badgeStatus = el('div', { class: 'status' });
+  tabs.append(el('button', { class: 'badge', title: t('app.badge.hint'), onclick: () => goTo('settings') }, el('span', { class: 'dot' }), el('div', {}, badgeName, badgeStatus)));
+  let badgeSeq = 0;
+  async function renderBadge(): Promise<void> {
+    const seq = ++badgeSeq;
+    const s = store.state.settings;
+    const p = s.프로필.find(x => x.id === s.사용중);
+    if (!p) { badgeName.textContent = t('app.badge.none'); badgeStatus.textContent = t('app.badge.hint'); return; }
+    badgeName.textContent = `${p.이름} · ${t(p.종류 === 'cli' ? 'app.badge.cli' : 'app.badge.api')}`;
+    badgeStatus.textContent = t('home.checking');
+    try {
+      const text = p.종류 === 'cli' ? settingsScreen.cliStatusText(await api.cliStatus(p.id)) : (await api.secretView(p.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');
+      if (seq === badgeSeq) badgeStatus.textContent = text;
+    } catch (e) { if (seq === badgeSeq) badgeStatus.textContent = (e as Error).message; }
+  }
+  let lastProfileKey = '';
+  store.subscribe(s => { const k = JSON.stringify([s.settings.사용중, s.settings.프로필]); if (k !== lastProfileKey) { lastProfileKey = k; void renderBadge(); } });
+  void renderBadge();
+
   const back = takeTabAfterReload();
   if (store.state.settings.학기폴더) {
     try { await store.refreshSets(); } catch (e) { showError(errText(e)); }

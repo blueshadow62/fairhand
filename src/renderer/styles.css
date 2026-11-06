@@ -92,3 +92,9 @@ progress { width: 320px; height: 18px; }
 .home-sets { max-width: 560px; }
 label.upload { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid #ccd; border-radius: 4px; background: #fff; cursor: pointer; }
 label.upload input { max-width: 220px; }
+
+/* 왼쪽 메뉴 아래 AI 프로필 배지 */
+#tabs button.badge { margin-top: auto; border-top: 1px solid #ccd; padding: 10px 12px; display: flex; gap: 10px; align-items: center; min-height: 56px; }
+#tabs button.badge .dot { width: 28px; height: 28px; border-radius: 50%; background: #2f5bd3; flex: none; }
+#tabs button.badge .name { font-weight: bold; font-size: 13px; }
+#tabs button.badge .status { font-size: 12px; color: #666; white-space: normal; }
