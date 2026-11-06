@@ -1,3 +1,5 @@
+<p align="right"><a href="README.md"><img alt="한국어" src="https://img.shields.io/badge/%ED%95%9C%EA%B5%AD%EC%96%B4-README-0969da?style=for-the-badge"></a></p>
+
 # geulnun (글눈)
 
 A desktop tool for teachers that transcribes scanned handwritten short-answer/essay answer sheets (PDF) question by question, compares them with an answer key, and writes the results to Excel.

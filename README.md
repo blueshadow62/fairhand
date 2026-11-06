@@ -1,3 +1,5 @@
+<p align="right"><a href="README.en.md"><img alt="English" src="https://img.shields.io/badge/English-README-0969da?style=for-the-badge"></a></p>
+
 # 글눈
 
 손글씨로 쓴 서·논술형 답안지(스캔 PDF)를 문항별 글자로 옮기고, 정답표와 비교해 엑셀로 정리하는 선생님용 프로그램입니다.
@@ -53,5 +55,3 @@
 
 ## 라이선스
 Apache-2.0. 가져온 부품은 [NOTICE](NOTICE)에 있습니다. 이 프로그램은 사용자가 설치한 Claude Code를 실행하며, Claude 사용은 사용자 본인의 Anthropic 약관을 따릅니다. Anthropic과 관련이 없는 개인 프로젝트입니다.
-
-English: [README.en.md](README.en.md)
