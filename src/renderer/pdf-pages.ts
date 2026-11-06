@@ -51,3 +51,34 @@ export async function pdfPageJpeg(file: File, n: number, rotation: Rotation): Pr
   const pdf = await openPdf(file);
   try { return await canvasToJpeg(await pdf.renderPage(n, { rotation, scale: DPI_SCALE })); } finally { pdf.close(); }
 }
+
+/** 스캐너가 낸 사진 파일(jpg·png)을 회전만 해서 캔버스로. 크기는 그대로 */
+export async function imageToCanvas(file: File, rotation: Rotation, scale = 1): Promise<HTMLCanvasElement> {
+  const bmp = await createImageBitmap(file);
+  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+  const c = document.createElement('canvas');
+  const swap = rotation === 90 || rotation === 270;
+  c.width = swap ? h : w; c.height = swap ? w : h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rotation * Math.PI / 180);
+  ctx.drawImage(bmp, -w / 2, -h / 2, w, h);
+  bmp.close();
+  return c;
+}
+
+/** 올린 파일 하나: PDF(여러 쪽) 또는 사진(한 쪽). 이름순(숫자 인식)으로 정렬해 쓴다 */
+export interface SheetSource { name: string; pageCount: number; render(n: number, rotation: Rotation, scale: number): Promise<HTMLCanvasElement>; close(): void }
+
+export async function openSheetSource(file: File): Promise<SheetSource> {
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+    const pdf = await openPdf(file);
+    return { name: file.name, pageCount: pdf.pageCount, render: (n, rotation, scale) => pdf.renderPage(n, { rotation, scale }), close: () => pdf.close() };
+  }
+  if (/^image\//.test(file.type) || /\.(jpe?g|png|webp|bmp)$/i.test(file.name)) {
+    return { name: file.name, pageCount: 1, render: (_n, rotation, scale) => imageToCanvas(file, rotation, scale === DPI_SCALE ? 1 : scale / DPI_SCALE), close: () => undefined };
+  }
+  throw new Error('PDF나 사진(jpg·png)만 올릴 수 있습니다');
+}
+
+export const byNaturalName = <T extends { name: string }>(a: T, b: T): number => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });

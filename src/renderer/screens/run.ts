@@ -3,7 +3,7 @@ import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
-import { canvasToJpeg, DPI_SCALE, openPdf, type OpenedPdf, type Rotation } from '../pdf-pages.js';
+import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
 
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
 const PRICE_IN = 5, PRICE_OUT = 25;
@@ -27,7 +27,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
   let shownFor: string | null | undefined;
   let data: SetData | null = null;
-  let pdf: OpenedPdf | null = null;
+  let sources: SheetSource[] = []; // 올린 파일들(이름순). 한 번에 이어서 쪽으로 나눈다
+  const totalPages = () => sources.reduce((n, s) => n + s.pageCount, 0);
   let rotation: Rotation = store.state.settings.기본회전;
   let running = false;
 
@@ -61,43 +62,51 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   // ── PDF 올리기 ──
-  const fileInput = el('input', { type: 'file', accept: '.pdf' });
-  fileInput.addEventListener('change', () => void pickPdf());
+  const fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.webp,.bmp', multiple: true });
+  fileInput.addEventListener('change', () => void pickFiles());
   const uploadStatus = el('div', { class: 'muted' });
 
-  async function pickPdf(): Promise<void> {
-    const f = fileInput.files?.[0];
-    if (!f) return;
-    pdf?.close(); pdf = null;
-    try { pdf = await openPdf(f); } catch (e) { showError(t('run.pdfOpenFailed', { error: (e as Error).message })); return; }
+  async function pickFiles(): Promise<void> {
+    const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
+    if (!files.length) return;
+    for (const s of sources) s.close();
+    sources = [];
+    for (const f of files) {
+      try { sources.push(await openSheetSource(f)); }
+      catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
+    }
     rotation = store.state.settings.기본회전;
     renderUpload(); await drawPreview();
   }
 
   async function drawPreview(): Promise<void> {
-    if (!pdf) return;
-    const c = await pdf.renderPage(1, { rotation, scale: 0.4 });
+    const first = sources[0];
+    if (!first) return;
+    const c = await first.render(1, rotation, 0.4);
     preview.width = c.width; preview.height = c.height;
     preview.getContext('2d')!.drawImage(c, 0, 0);
   }
 
   async function savePages(): Promise<void> {
-    if (!pdf || !data) return;
-    const 폴더 = data.폴더, total = pdf.pageCount;
+    if (!sources.length || !data) return;
+    const 폴더 = data.폴더, total = totalPages();
     const made: number[] = [];
     saveBtn.disabled = true;
     try {
-      for (let start = 1; start <= total; start += BATCH) {
-        const jpegs: ArrayBuffer[] = [];
-        for (let n = start; n < start + BATCH && n <= total; n++) {
-          jpegs.push(await canvasToJpeg(await pdf.renderPage(n, { rotation, scale: DPI_SCALE })));
+      // 파일 순서대로, 파일 안에서는 쪽 순서대로 하나의 번호 흐름으로 이어 붙인다
+      let jpegs: ArrayBuffer[] = [], n = 0;
+      const flush = async () => { if (jpegs.length) { made.push(...await api.addPages(폴더, jpegs)); jpegs = []; uploadStatus.textContent = t('run.savedCount', { n: made.length, total }); } };
+      for (const src of sources) {
+        for (let p = 1; p <= src.pageCount; p++) {
+          n++;
+          jpegs.push(await canvasToJpeg(await src.render(p, rotation, DPI_SCALE)));
           uploadStatus.textContent = t('run.rendering', { n, total });
+          if (jpegs.length >= BATCH) await flush();
         }
-        made.push(...await api.addPages(폴더, jpegs));
-        uploadStatus.textContent = t('run.savedCount', { n: made.length, total });
       }
+      await flush();
       showInfo(t('run.pagesSaved', { from: tag(made[0]!), to: tag(made[made.length - 1]!) }));
-      pdf.close(); pdf = null; fileInput.value = '';
+      for (const s of sources) s.close(); sources = []; fileInput.value = '';
       data = await api.readSet(폴더); renderCounts(); renderUpload(); await store.refreshSets();
     } catch (e) { showError((e as Error).message); }
     finally { saveBtn.disabled = false; }
@@ -107,10 +116,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderUpload(): void {
     clear(uploadBox);
     uploadBox.append(el('div', { class: 'row' }, fileInput), uploadStatus);
-    if (!pdf || !data) return;
+    if (!sources.length || !data) return;
     const next = data.pages.length ? Math.max(...data.pages) + 1 : 1;
     put(uploadBox,
-      el('div', { class: 'row' }, t('run.pagesRotation', { n: pdf.pageCount }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
+      el('div', { class: 'muted' }, sources.map(s => t('run.fileLine', { name: s.name, n: s.pageCount })).join(' · ')),
+      el('div', { class: 'row' }, t('run.filesRotation', { files: sources.length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
         el('button', { class: r === rotation ? 'primary' : '', onclick: () => { rotation = r; renderUpload(); void drawPreview(); } }, `${r}°`)),
         el('span', { class: 'muted' }, t('run.rotationHelp'))),
       preview,

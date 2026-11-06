@@ -128,7 +128,10 @@ const ko = {
   // 채점 실행
   'run.title': '채점 실행',
   'run.notice': '학생 답안지에는 학년, 반, 번호만 입력되어 있는 걸 추천합니다. 이름이 있으면 그림과 함께 Anthropic 서버로 전송됩니다.',
-  'run.upload': '답안지 PDF 올리기',
+  'run.upload': '답안지 파일 올리기(PDF·사진, 여러 개 가능)',
+  'run.openFailed': '{name}을(를) 열지 못했습니다: {error}',
+  'run.fileLine': '{name}: {n}쪽',
+  'run.filesRotation': '파일 {files}개 · 모두 {n}쪽 · 회전: ',
   'run.transcribe': '전사',
   'run.counts': '답안지 {pages}장 · 전사 {transcripts}장',
   'run.pdfOpenFailed': 'PDF를 열지 못했습니다: {error}',
@@ -469,7 +472,10 @@ const en: Record<Key, string> = {
 
   'run.title': 'Run',
   'run.notice': 'We recommend that answer sheets carry only grade, class and number. If a name is written, it is sent to Anthropic servers together with the image.',
-  'run.upload': 'Upload answer-sheet PDF',
+  'run.upload': 'Upload answer-sheet files (PDF or photos, several at once)',
+  'run.openFailed': 'Could not open {name}: {error}',
+  'run.fileLine': '{name}: {n} page(s)',
+  'run.filesRotation': '{files} file(s) · {n} pages in all · rotation: ',
   'run.transcribe': 'Transcription',
   'run.counts': '{pages} sheets · {transcripts} transcribed',
   'run.pdfOpenFailed': 'Could not open the PDF: {error}',
