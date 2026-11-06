@@ -22,7 +22,7 @@ test('decodeText·extractText: utf-8 BOM, cp949, 확장자별 안내', () => {
   assert.equal(decodeText(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('한글', 'utf-8')])), '한글');
   assert.equal(decodeText(Buffer.from([0xc7, 0xd1, 0xb1, 0xdb])), '한글'); // cp949 '한글'
   assert.equal(extractText('a.txt', Buffer.from('x')), 'x');
-  assert.throws(() => extractText('a.hwp', Buffer.alloc(0)), (e: unknown) => e instanceof DataError && /hwpx 또는 pdf/.test(e.message));
+  assert.throws(() => extractText('a.doc', Buffer.alloc(0)), (e: unknown) => e instanceof DataError && /docx나 pdf/.test(e.message));
   assert.throws(() => extractText('a.xyz', Buffer.alloc(0)), DataError);
   assert.throws(() => extractHwpxText(Buffer.from('not a zip')), DataError);
 });
@@ -45,4 +45,16 @@ test('extractHwpxText: 너무 큰 항목은 거절(압축 폭탄 방지)', () =>
 test('hwpxSectionText: 문단 끝 표식이 많아도 선형 시간', () => {
   const big = '<hp:p><hp:t>가</hp:t></hp:p>'.repeat(50000) + '<hp:t'.repeat(20000);
   const t0 = Date.now(); const out = hwpxSectionText(big); assert.ok(Date.now() - t0 < 1500); assert.ok(out.startsWith('가\n가'));
+});
+
+test('extractDocxText: 문단·표 안 글을 뽑고 빈 w:t는 무시', () => {
+  const t = extractText('문항지.docx', fx('문항지.docx'));
+  assert.equal(t, '시험 문항지(docx)\n1. 최 __ 과장은 누구인가.\n표 안 글');
+});
+
+test('extractHwpText: rhwp로 만든 hwp(압축 본문, 표 포함)에서 글을 뽑는다', () => {
+  const t = extractText('문항지.hwp', fx('문항지.hwp'));
+  assert.ok(t.includes('시험 문항지(hwp)'), t);
+  assert.ok(t.includes('1. 최 __ 과장은 누구인가.') && t.includes('근로 __ 미작성'), t);
+  assert.throws(() => extractText('a.hwp', Buffer.from('not ole')), (e: unknown) => e instanceof DataError && /OLE/.test(e.message));
 });

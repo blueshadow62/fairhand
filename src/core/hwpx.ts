@@ -1,4 +1,5 @@
 import { inflateRawSync } from 'node:zlib';
+import { extractHwpText } from './hwp.js';
 import { DataError } from './types.js';
 
 /**
@@ -10,7 +11,7 @@ interface ZipEntry { name: string; method: number; compressedSize: number; uncom
 /** 압축 폭탄 방지: 항목 하나 20MB, 본문 모두 합쳐 50MB까지만 푼다(문항지 글은 수십 KB) */
 const MAX_ENTRY = 20 * 1024 * 1024, MAX_TOTAL = 50 * 1024 * 1024;
 
-function zipEntries(buf: Buffer): ZipEntry[] {
+export function zipEntries(buf: Buffer): ZipEntry[] {
   // 끝의 central directory 끝 표식(0x06054b50)을 뒤에서부터 찾는다(주석이 있을 수 있어 최대 64KB)
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
@@ -31,7 +32,7 @@ function zipEntries(buf: Buffer): ZipEntry[] {
   return out;
 }
 
-function zipRead(buf: Buffer, e: ZipEntry, budget = MAX_ENTRY): Buffer {
+export function zipRead(buf: Buffer, e: ZipEntry, budget = MAX_ENTRY): Buffer {
   const p = e.localOffset;
   if (p + 30 > buf.length || buf.readUInt32LE(p) !== 0x04034b50) throw new DataError('zip 항목이 깨졌습니다');
   if (e.uncompressedSize > budget) throw new DataError(`zip 항목 ${e.name}이 너무 큽니다(${Math.round(e.uncompressedSize / 1048576)}MB)`);
@@ -88,6 +89,33 @@ export function extractHwpxText(buf: Buffer): string {
   return texts.filter(Boolean).join('\n\n');
 }
 
+/** docx(zip 안 word/document.xml): 문단(w:p) 안의 w:t를 잇고 문단은 줄바꿈. 표 안 글도 문단이라 함께 나온다 */
+export function docxSectionText(xml: string): string {
+  const paras: string[] = [];
+  let cur = '', i = 0, t = -2, pe = -2;
+  for (;;) {
+    if (t !== -1 && t < i) t = xml.indexOf('<w:t', i);
+    if (pe !== -1 && pe < i) pe = xml.indexOf('</w:p>', i);
+    if (pe >= 0 && (t < 0 || pe < t)) { if (cur) paras.push(cur); cur = ''; i = pe + 6; continue; }
+    if (t < 0) break;
+    const open = xml.indexOf('>', t); if (open < 0) break;
+    const tag = xml.slice(t + 4, open); // '' 또는 ' xml:space…' 이면 w:t, 'bl'·'c' 등이면 다른 태그(w:tbl, w:tc)
+    if (tag !== '' && !/^\s/.test(tag) && tag !== '/') { i = open + 1; continue; }
+    if (tag === '/') { i = open + 1; continue; } // <w:t/>
+    const close = xml.indexOf('</w:t>', open + 1); if (close < 0) break;
+    cur += unescapeXml(xml.slice(open + 1, close));
+    i = close + 6;
+  }
+  if (cur) paras.push(cur);
+  return paras.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+export function extractDocxText(buf: Buffer): string {
+  const e = zipEntries(buf).find(x => x.name === 'word/document.xml');
+  if (!e) throw new DataError('docx 안에 본문(word/document.xml)이 없습니다');
+  return docxSectionText(zipRead(buf, e).toString('utf8'));
+}
+
 /** utf-8(BOM 허용)로 읽되, 깨진 글자가 나오면 cp949로 다시 읽는다(메모장 옛 저장본) */
 export function decodeText(buf: Buffer): string {
   const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
@@ -100,7 +128,8 @@ export function extractText(name: string, buf: Buffer): string {
   const ext = (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toLowerCase();
   if (ext === 'txt' || ext === 'md') return decodeText(buf);
   if (ext === 'hwpx') return extractHwpxText(buf);
-  if (ext === 'hwp') throw new DataError(`${name}: hwp(옛 형식)는 아직 읽지 못합니다. 한글에서 '다른 이름으로 저장'으로 hwpx 또는 pdf로 저장해 주세요`);
-  if (ext === 'docx') throw new DataError(`${name}: docx는 아직 읽지 못합니다. pdf로 저장해 주세요`);
-  throw new DataError(`${name}: 글을 뽑을 수 없는 형식입니다(txt, hwpx 가능. pdf와 그림은 그림으로 보냅니다)`);
+  if (ext === 'hwp') { try { return extractHwpText(buf); } catch (e) { throw new DataError(`${name}: ${(e as Error).message}`); } }
+  if (ext === 'docx') return extractDocxText(buf);
+  if (ext === 'doc') throw new DataError(`${name}: doc(옛 Word 형식)는 읽지 못합니다. Word에서 docx나 pdf로 저장해 주세요`);
+  throw new DataError(`${name}: 글을 뽑을 수 없는 형식입니다(txt, hwp, hwpx, docx 가능. pdf와 그림은 그림으로 보냅니다)`);
 }

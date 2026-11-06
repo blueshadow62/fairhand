@@ -85,6 +85,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         try { status.textContent = cliStatusText(await api.cliStatus(p.id)); } catch (e) { status.textContent = (e as Error).message; }
       });
       card.append(
+        el('div', { class: 'band info' }, t('settings.cli.howto')),
         el('div', { class: 'row' }, t('settings.cliFile'), p.cliPath ? el('span', { class: 'path' }, p.cliPath) : el('span', { class: 'muted' }, t('settings.autoFind')),
           el('button', { onclick: () => guard(async () => { const f = await api.pickFile('exe'); if (!f) return; p.cliPath = f; dirty = true; renderProfiles(); }) }, t('settings.pickCliFile')),
           el('button', { disabled: !p.cliPath, onclick: () => { delete p.cliPath; dirty = true; renderProfiles(); } }, t('settings.toAutoFind'))),
