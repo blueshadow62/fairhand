@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineBridge } from './engine-bridge.js';
 import { registerIpc } from './ipc.js';
+import { installLog } from './log.js';
 import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
@@ -21,6 +22,8 @@ const APP_URL = `${APP_SCHEME}://app/index.html`;
 
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
+  const log = installLog(path.join(userData, 'logs')); // console.error·warn이 userData/logs/YYYY-MM-DD.log에도 남는다
+  log.write('info', `시작 ${app.getVersion()}${app.isPackaged ? '' : ' (개발 실행)'}`);
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   const secrets = new SecretStore(path.join(userData, 'secrets.json'), safeStorage);
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion() });
