@@ -89,7 +89,8 @@ export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; 
   const stop = scheduleChecks(() => void check(), { firstDelayMs: FIRST_DELAY_MS, intervalMs: INTERVAL_MS, setTimeout, setInterval, clearTimeout, clearInterval });
   return {
     check, status: () => status, stop,
-    install: () => { if (status.kind === 'downloaded') au?.quitAndInstall(); },
+    // 조용히(/S) 설치하고 끝나면 다시 띄운다. 기본값으로 부르면 설치 마법사가 떠서 사용자가 눌러야 한다(0.2.2까지의 문제)
+    install: () => { if (status.kind === 'downloaded') au?.quitAndInstall(true, true); },
     setEnabled: on => set({ type: on ? 'on' : 'off' }),
   };
 }
