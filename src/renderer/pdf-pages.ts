@@ -1,3 +1,5 @@
+import { t } from './lib/i18n.js';
+
 type PdfJs = typeof import('pdfjs-dist');
 export type Rotation = 0 | 90 | 180 | 270;
 
@@ -20,9 +22,9 @@ export interface OpenedPdf {
   close(): void;
 }
 
-export async function openPdf(file: File): Promise<OpenedPdf> {
+export async function openPdf(file: File, bytes?: ArrayBuffer): Promise<OpenedPdf> {
   const m = await pdfjs();
-  const task = m.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const task = m.getDocument({ data: new Uint8Array(bytes ?? await file.arrayBuffer()) });
   const doc = await task.promise;
   return {
     pageCount: doc.numPages,
@@ -44,7 +46,7 @@ export async function openPdf(file: File): Promise<OpenedPdf> {
 }
 
 export function canvasToJpeg(c: HTMLCanvasElement, quality = 0.85): Promise<ArrayBuffer> {
-  return new Promise((res, rej) => c.toBlob(b => (b ? b.arrayBuffer().then(res, rej) : rej(new Error('그림을 JPEG로 바꾸지 못했습니다'))), 'image/jpeg', quality));
+  return new Promise((res, rej) => c.toBlob(b => (b ? b.arrayBuffer().then(res, rej) : rej(new Error(t('pdf.jpegFailed')))), 'image/jpeg', quality));
 }
 
 /** PDF 한 파일의 지정한 쪽을 JPEG로(한 장 시험용) */
@@ -71,15 +73,15 @@ export async function imageToCanvas(file: File, rotation: Rotation, scale = 1): 
 /** 올린 파일 하나: PDF(여러 쪽) 또는 사진(한 쪽). 이름순(숫자 인식)으로 정렬해 쓴다 */
 export interface SheetSource { name: string; pageCount: number; render(n: number, rotation: Rotation, scale: number): Promise<HTMLCanvasElement>; close(): void }
 
-export async function openSheetSource(file: File): Promise<SheetSource> {
+export async function openSheetSource(file: File, bytes?: ArrayBuffer): Promise<SheetSource> {
   if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
-    const pdf = await openPdf(file);
+    const pdf = await openPdf(file, bytes);
     return { name: file.name, pageCount: pdf.pageCount, render: (n, rotation, scale) => pdf.renderPage(n, { rotation, scale }), close: () => pdf.close() };
   }
   if (/^image\//.test(file.type) || /\.(jpe?g|png|webp|bmp)$/i.test(file.name)) {
     return { name: file.name, pageCount: 1, render: (_n, rotation, scale) => imageToCanvas(file, rotation, scale === DPI_SCALE ? 1 : scale / DPI_SCALE), close: () => undefined };
   }
-  throw new Error('PDF나 사진(jpg·png)만 올릴 수 있습니다');
+  throw new Error(t('pdf.onlyPdfOrImage'));
 }
 
 export const byNaturalName = <T extends { name: string }>(a: T, b: T): number => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });

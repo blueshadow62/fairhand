@@ -6,24 +6,11 @@ import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
 import type { UploadRecord } from '../../core/types.js';
 import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
+import { parsePageSpec, tag } from '../lib/screen-utils.js';
 
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
 const PRICE_IN = 5, PRICE_OUT = 25;
 const BATCH = 10; // 한 번에 너무 큰 IPC 전송을 피한다
-const tag = (p: number) => `p${String(p).padStart(2, '0')}`;
-
-/** "1-3,7" → [1,2,3,7] */
-function parsePageSpec(spec: string): number[] | null {
-  const out = new Set<number>();
-  for (const part of spec.split(',').map(s => s.trim()).filter(Boolean)) {
-    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part);
-    if (!m) return null;
-    const a = Number(m[1]), b = Number(m[2] ?? m[1]);
-    if (b < a) return null;
-    for (let p = a; p <= b; p++) out.add(p);
-  }
-  return out.size ? [...out].sort((x, y) => x - y) : null;
-}
 
 export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
@@ -88,17 +75,18 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     picked = [];
     for (const f of files) {
       try {
-        const 지문 = await sha256(f);
+        const bytes = await f.arrayBuffer(); // 지문과 열기가 같은 버퍼를 쓴다(큰 스캔을 두 번 읽지 않게)
+        const 지문 = await sha256(bytes);
         const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
-        picked.push({ src: await openSheetSource(f), 지문, 크기: f.size, 이전, 포함: !이전 });
+        picked.push({ src: await openSheetSource(f, bytes), 지문, 크기: f.size, 이전, 포함: !이전 });
       } catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
     }
     rotation = store.state.settings.기본회전;
     renderUpload(); await drawPreview();
   }
 
-  async function sha256(f: File): Promise<string> {
-    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', await f.arrayBuffer()));
+  async function sha256(bytes: ArrayBuffer): Promise<string> {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
     return [...h].map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
@@ -124,7 +112,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         const before = made.length;
         for (let p = 1; p <= src.pageCount; p++) {
           n++;
-          jpegs.push(await canvasToJpeg(await src.render(p, rotation, DPI_SCALE)));
+          const c = await src.render(p, rotation, DPI_SCALE);
+          jpegs.push(await canvasToJpeg(c));
+          c.width = c.height = 0; // 200dpi 캔버스(장당 수십 MB)를 GC를 기다리지 않고 비운다
           uploadStatus.textContent = t('run.rendering', { n, total });
           if (jpegs.length >= BATCH) await flush();
         }

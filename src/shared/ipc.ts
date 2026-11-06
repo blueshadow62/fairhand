@@ -1,6 +1,9 @@
 import type { AnswerKey, Student, Transcript, UploadRecord } from '../core/types.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
+/** 장 그림을 불러오는 주소(메인의 프로토콜 처리와 렌더러 img.src가 같은 규칙) */
+export const IMG_SCHEME = 'geulnun-img';
+export const imageUrl = (폴더: string, page: number): string => `${IMG_SCHEME}://set/${encodeURIComponent(폴더)}/p${String(page).padStart(2, '0')}.jpg`;
 /** 전사에 쓸 모델과 노력 단계. 둘 다 low~max를 지원한다(Opus 5.5 기본 medium, Sonnet 5.5 기본 high). 글눈 기본은 Opus 5.5·medium(23장 비교에서 높음과 같은 정확도, 더 빠름) */
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'] as const;
 export type ModelId = typeof MODELS[number];

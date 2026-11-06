@@ -22,7 +22,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       statusBox),
     setsBox);
 
+  let statusSeq = 0;
   async function renderStatus(): Promise<void> {
+    const seq = ++statusSeq;
     clear(statusBox);
     const s = store.state.settings;
     const profile = s.프로필.find(p => p.id === s.사용중);
@@ -33,9 +35,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       profileLine, detail);
     if (!profile) return;
     try {
-      detail.textContent = profile.종류 === 'cli' ? cliStatusText(await api.cliStatus(profile.id))
+      const text = profile.종류 === 'cli' ? cliStatusText(await api.cliStatus(profile.id))
         : (await api.secretView(profile.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');
-    } catch (e) { detail.textContent = (e as Error).message; }
+      if (seq === statusSeq) detail.textContent = text;
+    } catch (e) { if (seq === statusSeq) detail.textContent = (e as Error).message; }
   }
 
   function renderSets(): void {
@@ -60,6 +63,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     setsBox.append(list);
   }
 
-  store.subscribe(() => { renderSets(); void renderStatus(); });
+  // CLI 상태 점검은 외부 프로그램을 띄우므로 프로필·학기 폴더가 바뀔 때만(세트 목록·저장마다 돌지 않게)
+  const statusKey = () => JSON.stringify([store.state.settings.사용중, store.state.settings.프로필, store.state.settings.학기폴더]);
+  let lastStatusKey = statusKey();
+  store.subscribe(() => { renderSets(); const k = statusKey(); if (k !== lastStatusKey) { lastStatusKey = k; void renderStatus(); } });
   renderSets(); void renderStatus();
 }

@@ -18,7 +18,9 @@ async function imageToJpeg(file: File): Promise<ArrayBuffer> {
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.drawImage(bmp, 0, 0, c.width, c.height);
   bmp.close();
-  return canvasToJpeg(c);
+  const jpeg = await canvasToJpeg(c);
+  c.width = c.height = 0;
+  return jpeg;
 }
 
 /** 형식 제한 없이 받되, 그림·PDF는 그림으로, 그 밖은 메인이 글을 뽑는다(못 뽑는 형식은 메인의 안내 오류를 notes로) */

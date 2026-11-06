@@ -5,8 +5,8 @@ import { api, imageUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
+import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
 
-const tag = (p: number) => `p${String(p).padStart(2, '0')}`;
 const sid = (t: { 학년: number | null; 반: number | null; 번호: number | null }) => `${t.학년 ?? '?'}-${t.반 ?? '?'}-${t.번호 ?? '?'}`;
 const numOrNull = (v: string) => (v.trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 /** 비고 문장에 단위 id가 들어 있는지('1-1'이 '1-10'에 걸리지 않게) */
@@ -25,7 +25,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const remember = (on: boolean) => { try { localStorage.setItem(CASE_PREF, on ? '1' : '0'); } catch { /* 저장 못 해도 기본값(켬)으로 */ } };
   const filter: Filter = { 비고만: false, 문제먼저: true, 반: null, 검색: '', 미확인만: false };
 
-  const guard = async (fn: () => Promise<void>) => { try { await fn(); } catch (e) { showError((e as Error).message); } };
+  const guard = makeGuard(showError);
 
   const top = el('div', { class: 'row' });
   const notice = el('div');
@@ -75,7 +75,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderFilters();
     const pages = order();
     const target = keepPage !== undefined && pages.includes(keepPage) ? keepPage : T && pages.includes(T.page) ? T.page : pages[0];
-    if (target !== undefined) openPage(target, true); else { T = null; renderEditor(); renderList(); }
+    if (target !== undefined) openPage(target); else { T = null; renderEditor(); renderList(); }
   }
 
   function renderFilters(): void {
@@ -96,7 +96,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     listItems.append(el('div', { class: 'item muted' }, t('review.checked', { done, total: data.transcripts.length })));
     for (const i of items) {
       const 학생 = i.학년 === null && i.반 === null && i.번호 === null ? t('review.unidentified') : sid(i);
-      listItems.append(el('div', { class: `item${T?.page === i.page ? ' active' : ''}${i.중복 || i.식별확신 === '불명' ? ' bad' : ''}`, onclick: () => go(i.page) },
+      listItems.append(el('button', { class: `item${T?.page === i.page ? ' active' : ''}${i.중복 || i.식별확신 === '불명' ? ' bad' : ''}`, onclick: () => go(i.page) },
         [tag(i.page), 학생, i.이름, i.식별확신 !== '확실' ? t(`hwaksin.${i.식별확신}`) : null, i.중복 ? t('review.duplicate') : null, i.비고수 ? t('review.notesCount', { n: i.비고수 }) : null, i.확인완료 ? '✓' : null].filter(Boolean).join(' · ')));
     }
     for (const p of untranscribed()) listItems.append(el('div', { class: `item bad${T?.page === p ? ' active' : ''}`, onclick: () => go(p) }, t('review.noTranscript', { page: tag(p) })));
@@ -111,24 +111,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       정성: Object.fromEntries(k.정성.map(u => [u.id, { 응답: false, 답: '' }])), 비고: [], 확인완료: false };
   }
 
-  /** 저장하지 않은 변경이 있으면 운영체제 대화상자로 묻는다(저장 후 나가기/저장하지 않고 나가기/나가지 않기). */
-  async function leaveOk(): Promise<boolean> {
-    if (!dirty) return true;
-    const c = await api.askLeave();
-    if (c === 'stay') return false;
-    if (c === 'save') { await save(); return !dirty; }
-    dirty = false; return true;
-  }
+  const leaveOk = makeLeaveGuard(api, { isDirty: () => dirty, save, discard: () => { dirty = false; } });
   ctx.setLeaveGuard(leaveOk);
 
   function go(page: number): void {
     if (T?.page === page) return;
-    void leaveOk().then(ok => { if (ok) openPage(page, true); });
+    void leaveOk().then(ok => { if (ok) openPage(page); });
   }
 
-  function openPage(page: number, force = false): void {
+  function openPage(page: number): void {
     if (!data) return;
-    if (!force && dirty && !confirm(t('review.discardConfirm'))) return;
     const saved = data.transcripts.find(x => x.page === page);
     T = saved ? structuredClone(saved) : blankTranscript(page);
     dirty = false;
@@ -181,7 +173,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           r = res;
         } catch (e) { caseError = (e as Error).message; break; }
       }
-      await reload(tr.page); // reload가 notice를 비우므로 안내는 그 뒤에
+      await reload(store.state.current === 폴더 ? tr.page : undefined); // reload가 notice를 비우므로 안내는 그 뒤에
       if (caseError) showError(caseError);
       if (recordCases && cases.length) {
         const others텍스트 = others.size ? t('review.othersChanged', { list: [...others].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ') }) : t('review.noOthers');
@@ -210,8 +202,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(editor);
     if (!T || !data) { editor.append(el('div', { class: 'muted' }, t('review.noTranscriptEditor'))); return; }
     const tr = T, key = data.key;
-    const numIn = (k: '학년' | '반' | '번호') => { const i = el('input', { type: 'number', min: '1', value: tr[k] === null ? '' : String(tr[k]), oninput: () => { tr[k] = numOrNull(i.value); touch(); } }); i.style.width = '64px'; return i; };
-    const nameIn = el('input', { value: tr.이름 ?? '', oninput: () => { tr.이름 = nameIn.value.trim() || null; touch(); } });
+    const numIn = (k: '학년' | '반' | '번호') => { const i = el('input', { type: 'number', min: '1', 'aria-label': t(k === '학년' ? 'review.grade' : k === '반' ? 'review.class' : 'review.number'), value: tr[k] === null ? '' : String(tr[k]), oninput: () => { tr[k] = numOrNull(i.value); touch(); } }); i.style.width = '64px'; return i; };
+    const nameIn = el('input', { 'aria-label': t('review.name'), value: tr.이름 ?? '', oninput: () => { tr.이름 = nameIn.value.trim() || null; touch(); } });
     const conf = el('select', { onchange: () => { tr.식별확신 = conf.value as Hwaksin; touch(); } }, ...(['확실', '추정', '불명'] as Hwaksin[]).map(v => el('option', { value: v, selected: v === tr.식별확신 }, t(`hwaksin.${v}`))));
     const notes = el('textarea', { rows: 3, oninput: () => { tr.비고 = notes.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean); touch(); markNotes(); } });
     notes.value = tr.비고.join('\n');
@@ -252,7 +244,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
     else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   });
-  store.subscribe(s => { if (s.current !== shownFor && !dirty) void reload(); });
+  store.subscribe(s => {
+    if (s.current === shownFor) return;
+    if (!dirty) { void reload(); return; }
+    if (!notice.querySelector('.set-changed')) notice.append(el('div', { class: 'band warn set-changed' }, t('review.setChanged', { name: s.current ?? '' }))); // 고치던 것이 있으면 바꾸지 않고 알린다
+  });
   // 다른 탭에서 전사가 바뀌었을 수 있어 탭이 다시 보일 때 새로 읽는다(고치던 것이 있으면 그대로)
   new MutationObserver(() => { if (!root.classList.contains('hidden') && !dirty) void reload(); }).observe(root, { attributes: true, attributeFilter: ['class'] });
   void reload();

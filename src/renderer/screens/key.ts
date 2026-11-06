@@ -4,6 +4,7 @@ import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { locale, t } from '../lib/i18n.js';
+import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-utils.js';
 import { filesToDraft } from '../lib/draft-files.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
@@ -38,7 +39,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let editing = false;
   let 전사수 = 0;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
 
-  const guard = async (fn: () => Promise<void>) => { try { await fn(); } catch (e) { showError((e as Error).message); } };
+  const guard = makeGuard(showError);
   const touch = () => { if (!dirty) { dirty = true; renderStatus(); } };
 
   const listBox = el('div', { class: 'setlist' });
@@ -49,14 +50,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const tryBox = el('div');
   root.append(el('h2', {}, t('key.title')), el('div', { class: 'split' }, el('div', {}, listBox), editor));
 
-  /** 저장하지 않은 변경이 있으면 운영체제 대화상자로 묻는다. 저장을 골랐는데 저장이 안 되면(검증 오류) 머문다. */
-  async function leaveOk(): Promise<boolean> {
-    if (!dirty) return true;
-    const c = await api.askLeave();
-    if (c === 'stay') return false;
-    if (c === 'save') { await save(); return !dirty; }
-    dirty = false; return true;
-  }
+  // 나가기 경로의 저장은 재판정을 묻지 않는다(운영체제 대화상자 → 브라우저 confirm → 긴 재판정이 연달아 뜨지 않게)
+  const leaveOk = makeLeaveGuard(api, { isDirty: () => dirty, save: () => save({ askRejudge: false }), discard: () => { dirty = false; } });
   ctx.setLeaveGuard(leaveOk);
 
   // 휴지통: 세트 목록 아래 버튼, 누르면 목록(되살리기·영구 삭제)
@@ -191,16 +186,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const body = rows.map((r, i) => {
       const off = { ans: r.유형 === '요소형' || r.유형 === '확장', allow: r.유형 === '요소형' || r.유형 === '확장', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
       const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
-      const num = el('input', { type: 'number', min: '1', value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
-      const type = el('select', { onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
+      const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
+      const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
       return el('tr', {},
         el('td', {}, num), el('td', {}, type),
-        el('td', {}, bind(el('input', {}), '설명')),
-        el('td', {}, bind(el('input', { disabled: off.ans }), '정답')),
-        el('td', {}, bind(el('input', { disabled: off.allow }), '허용')),
-        el('td', {}, bind(el('input', { disabled: off.kw }), '핵심')),
-        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el }), '요소')),
+        el('td', {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')),
+        el('td', {}, bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답')),
+        el('td', {}, bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용')),
+        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심')),
+        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
         el('td', {}, el('div', { class: 'row' },
           el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
           el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('common.delete')))));
@@ -250,10 +245,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
   function showJudge(r: RejudgeResult & { failed?: { page: number; error: string }[] }, extra = ''): void {
     clear(judgeBox);
-    const tagP = (p: number) => `p${String(p).padStart(2, '0')}`;
-    const text = r.바뀐장.length ? t('key.changedPages', { n: r.바뀐장.length, list: r.바뀐장.map(c => `${tagP(c.page)}(${c.변경.join(', ')})`).join(', ') }) : t('key.noChangedPages');
+    const text = r.바뀐장.length ? t('key.changedPages', { n: r.바뀐장.length, list: r.바뀐장.map(c => `${tag(c.page)}(${c.변경.join(', ')})`).join(', ') }) : t('key.noChangedPages');
     put(judgeBox, el('div', { class: 'band info' }, [text, extra].filter(Boolean).join('\n')),
-      r.failed?.length ? el('div', { class: 'band error' }, t('key.failedPages', { list: r.failed.map(f => `${tagP(f.page)} ${f.error}`).join(' / ') })) : null,
+      r.failed?.length ? el('div', { class: 'band error' }, t('key.failedPages', { list: r.failed.map(f => `${tag(f.page)} ${f.error}`).join(' / ') })) : null,
       r.엑셀오류 ? el('div', { class: 'band warn' }, t('common.excelFailed', { error: r.엑셀오류 })) : null);
   }
   const ruleBtn = el('button', { onclick: () => guard(async () => {
@@ -265,7 +259,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!폴더) return;
     if (dirty) { showError(t('common.saveKeyFirst')); return; }
     const spec = judgePages.value.trim();
-    const pages = spec ? parsePages(spec) ?? null : undefined;
+    const pages = spec ? parsePageSpec(spec) ?? null : undefined;
     if (pages === null) { showError(t('common.badPageSpec')); return; }
     if (!confirm(t('key.modelConfirm', { scope: pages ? t('key.nPages', { n: pages.length }) : t('key.allTranscribed') }))) return;
     modelBtn.disabled = true;
@@ -286,7 +280,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderStatus();
   }
 
-  async function save(): Promise<void> {
+  async function save(opts: { askRejudge?: boolean } = {}): Promise<void> {
     const errs = validateRows(meta, rows);
     if (errs.length) { showError(errs.join('\n')); return; }
     await guard(async () => {
@@ -302,7 +296,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
       showInfo(확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'));
-      if (전사수 > 0 && confirm(t('key.rejudgeConfirm', { n: 전사수 }))) {
+      if (전사수 > 0 && opts.askRejudge !== false && confirm(t('key.rejudgeConfirm', { n: 전사수 }))) {
         showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
     });
@@ -313,12 +307,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function tryOne(): Promise<void> {
     const f = tryInput.files?.[0]; tryInput.value = '';
     if (!f || !폴더) return;
+    const key = rowsToKey(meta, rows, 확인, 사례); // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
     clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('key.trying')));
     try {
       const jpeg = await fileToJpeg(f, store.state.settings.기본회전);
       const tr = await api.tryPage(폴더, jpeg);
-      const d = await api.readSet(폴더);
-      clear(tryBox); tryBox.append(transcriptTable(d.key, tr));
+      clear(tryBox); tryBox.append(transcriptTable(key, tr));
     } catch (e) { clear(tryBox); showError((e as Error).message); }
   }
 
@@ -376,16 +370,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   renderEditor();
 }
 
-/** "1-3,7" → [1,2,3,7], 형식이 틀리면 null */
-function parsePages(spec: string): number[] | null {
-  const out = new Set<number>();
-  for (const part of spec.split(',').map(x => x.trim()).filter(Boolean)) {
-    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part);
-    if (!m) return null;
-    for (let p = Number(m[1]); p <= Number(m[2] ?? m[1]); p++) out.add(p);
-  }
-  return out.size ? [...out] : null;
-}
 
 /** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
 async function fileToJpeg(f: File, rotation: Rotation): Promise<ArrayBuffer> {

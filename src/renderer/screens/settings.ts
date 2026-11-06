@@ -3,6 +3,7 @@ import { reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
 import { t, type Key } from '../lib/i18n.js';
+import { makeGuard } from '../lib/screen-utils.js';
 
 function updateText(s: UpdateStatus): string {
   if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : t('settings.update.status.off');
@@ -32,7 +33,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let 사용중 = store.state.settings.사용중;
   let dirty = false;
 
-  const guard = async (fn: () => Promise<void>) => { try { await fn(); } catch (e) { showError((e as Error).message); } };
+  const guard = makeGuard(showError);
   const persist = async () => {
     const s = await api.saveSettings({ 프로필: profiles, 사용중 });
     store.update({ settings: s });

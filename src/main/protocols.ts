@@ -3,7 +3,8 @@ import path from 'node:path';
 import { resolveSetDir } from './paths.js';
 
 export const APP_SCHEME = 'geulnun';
-export const IMG_SCHEME = 'geulnun-img';
+import { IMG_SCHEME, imageUrl } from '../shared/ipc.js';
+export { IMG_SCHEME, imageUrl };
 export const CSP = `default-src 'self'; img-src ${IMG_SCHEME}: blob: data:; style-src 'self'; worker-src 'self' blob:`;
 export interface AppRoots { html: string; dist: string; pdfjs: string; fonts: string }
 
@@ -27,7 +28,6 @@ export function appFileFor(url: URL, roots: AppRoots): string | null {
   return null;
 }
 
-export const imageUrl = (폴더: string, page: number): string => `${IMG_SCHEME}://set/${encodeURIComponent(폴더)}/p${String(page).padStart(2, '0')}.jpg`;
 
 export function pageImageFor(url: URL, semesterDir: string | null): string | null {
   if (!semesterDir || url.protocol !== `${IMG_SCHEME}:` || url.host !== 'set') return null;
