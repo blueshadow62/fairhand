@@ -17,6 +17,8 @@ protocol.registerSchemesAsPrivileged([
 
 let win: BrowserWindow | null = null;
 
+const APP_URL = `${APP_SCHEME}://app/index.html`;
+
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
@@ -42,10 +44,11 @@ app.whenReady().then(async () => {
   // 렌더러의 경고·오류(CSP 위반 포함)를 메인 로그로: 개발자 도구 없이도 확인할 수 있게
   win.webContents.on('console-message', (e) => { if (e.level === 'warning' || e.level === 'error') console.error(`[renderer:${e.level}] ${e.message} (${e.sourceId}:${e.lineNumber})`); });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', e => e.preventDefault());
+  // 다른 주소로는 못 가게 막되, 앱 자신의 주소로 가는 것(언어를 바꾼 뒤 새로 고침)은 허용한다
+  win.webContents.on('will-navigate', (e, url) => { if (url !== APP_URL) e.preventDefault(); });
   // 메뉴가 없어도 개발자 도구는 F12로(문제 보고용)
   win.webContents.on('before-input-event', (_e, input) => { if (input.type === 'keyDown' && input.key === 'F12') win?.webContents.toggleDevTools(); });
   win.on('closed', () => { bridge.cancel(); win = null; });
-  await win.loadURL(`${APP_SCHEME}://app/index.html`);
+  await win.loadURL(APP_URL);
 });
 app.on('window-all-closed', () => app.quit());
