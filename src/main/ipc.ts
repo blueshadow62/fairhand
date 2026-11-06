@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -17,10 +17,11 @@ import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js'
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
+import { copySampleSet, makeDefaultSemester } from './sample.js';
 
 const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/geulnun#readme' };
 
-export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater }
+export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater; sampleDir: string }
 
 async function wrap<T>(fn: () => Promise<T>): Promise<IpcResult<T>> {
   try { return { ok: true, value: await fn() }; }
@@ -114,6 +115,8 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
   h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));
   h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: number[] }) => d.bridge.judgeWithModel(await setDir(폴더), opts?.pages, e => d.window()?.webContents.send(CHANNELS.progress, e)));
+  h(CHANNELS.createSampleSet, async () => ({ 폴더: await copySampleSet(d.sampleDir, await semester()) }));
+  h(CHANNELS.makeDefaultSemester, async () => { const p = await makeDefaultSemester(app.getPath('documents')); await d.settings.save({ 학기폴더: p }); return p; });
   h(CHANNELS.updateStatus, async () => d.updater.status());
   h(CHANNELS.checkUpdate, () => d.updater.check());
   h(CHANNELS.installUpdate, async () => d.updater.install());

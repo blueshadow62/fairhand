@@ -69,6 +69,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         store.update({ settings: await api.saveSettings({ 학기폴더: p }), current: null });
         await store.refreshSets(); renderBasics(); showInfo(t('settings.semesterChanged'));
       }) }, t('settings.choose'))),
+      ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, el('button', { class: 'primary', onclick: () => guard(async () => {
+        const p = await api.makeDefaultSemester();
+        store.update({ settings: await api.getSettings(), current: null });
+        await store.refreshSets(); renderBasics(); showInfo(t('settings.defaultMade', { path: p }));
+      }) }, t('settings.makeDefault')))]),
       el('div', { class: 'muted' }, t('settings.semesterHelp')));
     clear(rosterBox);
     rosterBox.append(el('div', { class: 'row' }, t('settings.roster'), s.명단 ? el('span', { class: 'path' }, s.명단) : el('span', { class: 'muted' }, t('settings.none')),

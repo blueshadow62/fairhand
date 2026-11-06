@@ -11,6 +11,7 @@ const CHANNELS = {
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
+  createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
 } as const;
 
 async function call<T>(ch: string, ...args: unknown[]): Promise<T> {
@@ -64,6 +65,8 @@ const api: GeulnunApi = {
   updateStatus: () => call(CHANNELS.updateStatus),
   checkUpdate: () => call(CHANNELS.checkUpdate),
   installUpdate: () => call(CHANNELS.installUpdate),
+  createSampleSet: () => call(CHANNELS.createSampleSet),
+  makeDefaultSemester: () => call(CHANNELS.makeDefaultSemester),
   onUpdate: (cb) => { const h = (_e: unknown, s: UpdateStatus) => cb(s); ipcRenderer.on(CHANNELS.updateStatus, h); return () => ipcRenderer.removeListener(CHANNELS.updateStatus, h); },
 };
 contextBridge.exposeInMainWorld('geulnun', api);

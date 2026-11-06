@@ -8,6 +8,7 @@ import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
 import { startUpdater } from './update.js';
+import { SAMPLE_DIR } from './sample.js';
 import { CHANNELS } from '../shared/ipc.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url)); // dist/src/main → 저장소 루트
@@ -42,7 +43,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
     () => settingsCache.학기폴더);
-  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater });
+  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater, sampleDir: SAMPLE_DIR(ROOT) });
 
   session.defaultSession.webRequest.onHeadersReceived((details, cb) => cb({ responseHeaders: { ...details.responseHeaders,
     'Content-Security-Policy': [CSP] } }));

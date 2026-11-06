@@ -31,6 +31,7 @@ export const CHANNELS = {
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
+  createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
 } as const;
 
 /** preload가 렌더러에 노출하는 전부. 렌더러는 이것만 안다. */
@@ -85,4 +86,8 @@ export interface GeulnunApi {
   /** 받아 둔 새 버전으로 다시 시작 */
   installUpdate(): Promise<void>;
   onUpdate(cb: (s: UpdateStatus) => void): () => void;
+  /** 학기 폴더에 샘플 세트(인쇄 글자 답안지 3장, 전사 포함)를 넣는다. 이미 있으면 ' (2)' */
+  createSampleSet(): Promise<{ 폴더: string }>;
+  /** 문서\글눈\YYYY-N학기를 만들고 학기 폴더로 저장한다. 만든 경로를 돌려준다 */
+  makeDefaultSemester(): Promise<string>;
 }
