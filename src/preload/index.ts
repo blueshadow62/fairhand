@@ -7,7 +7,7 @@ const CHANNELS = {
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
-  draftKey: 'ai:draft-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
+  draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
 } as const;
@@ -44,6 +44,7 @@ const api: GeulnunApi = {
   readSourceText: (폴더) => call(CHANNELS.readSourceText, 폴더),
   draftKey: (input) => call(CHANNELS.draftKey, input),
   extractText: (name, data) => call(CHANNELS.extractText, name, data),
+  reviseKey: (input) => call(CHANNELS.reviseKey, input),
   tryPage: (폴더, jpeg) => call(CHANNELS.tryPage, 폴더, jpeg),
   startRun: (폴더, opts) => call(CHANNELS.startRun, 폴더, opts),
   cancelRun: () => call(CHANNELS.cancelRun),

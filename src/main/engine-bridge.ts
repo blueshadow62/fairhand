@@ -9,7 +9,7 @@ import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { childEnv } from '../engine/env.js';
 import { judgePage } from '../engine/judge.js';
-import { draftKey, type KeyDraftInput } from '../engine/keydraft.js';
+import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
 import { EngineError, userFacingMessage, type TranscribeProvider } from '../engine/provider.js';
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
@@ -86,6 +86,12 @@ export class EngineBridge {
   async draftKey(input: KeyDraftInput): Promise<KeyDraftResult> {
     const ac = new AbortController();
     return draftKey(await this.provider(), input, ac.signal);
+  }
+
+  async reviseKey(input: KeyReviseInput): Promise<KeyDraftResult> {
+    if (!input.지시.trim()) throw new DataError('수정 지시가 비었습니다');
+    const ac = new AbortController();
+    return reviseKeyDraft(await this.provider(), input, ac.signal);
   }
 
   private async roster(): Promise<Student[] | null> {

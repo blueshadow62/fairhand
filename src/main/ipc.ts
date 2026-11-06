@@ -87,6 +87,10 @@ export function registerIpc(d: IpcDeps): void {
     if (imgs(input.문제그림).length + imgs(input.지문그림).length > 40) throw new DataError('그림은 모두 합쳐 40장까지만 보낼 수 있습니다');
     return d.bridge.draftKey({ 글: input.글, 문제: input.문제, 지문: input.지문, 문제그림: imgs(input.문제그림), 지문그림: imgs(input.지문그림) });
   });
+  h(CHANNELS.reviseKey, (input: { 글: string; 문제: string; 지문?: string; 문제그림?: ArrayBuffer[]; 지문그림?: ArrayBuffer[]; 현재: { 정량: AnswerKey['정량']; 정성: AnswerKey['정성'] }; 지시: string; 앞선지시?: string[] }) => {
+    const imgs = (a?: ArrayBuffer[]) => (a ?? []).map(b => Buffer.from(b).toString('base64'));
+    return d.bridge.reviseKey({ 글: input.글, 문제: input.문제, 지문: input.지문, 문제그림: imgs(input.문제그림), 지문그림: imgs(input.지문그림), 현재: input.현재, 지시: input.지시, 앞선지시: input.앞선지시?.slice(-5) });
+  });
   h(CHANNELS.extractText, async (name: string, data: ArrayBuffer) => (await import('../core/hwpx.js')).extractText(name, Buffer.from(data)));
   h(CHANNELS.tryPage, async (폴더: string, jpeg: ArrayBuffer) => d.bridge.tryPage(await setDir(폴더), Buffer.from(jpeg)));
   h(CHANNELS.startRun, async (폴더: string, opts: { pages?: number[]; force?: boolean }) => d.bridge.startRun(await setDir(폴더), opts ?? {}, e => d.window()?.webContents.send(CHANNELS.progress, e)));

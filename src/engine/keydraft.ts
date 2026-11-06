@@ -5,6 +5,8 @@ import { loadRules, type Rules } from './rules.js';
 /** 문제·지문은 글로, 또는 그림(문항지 사진·pdf 쪽)으로 준다. 둘 다 있어도 된다. */
 export interface KeyDraftInput { 글: string; 문제: string; 지문?: string; 문제그림?: string[]; 지문그림?: string[]; effort?: Effort }
 export interface KeyDraft { 정량: QtyUnit[]; 정성: QualUnit[]; 주의: string[] }
+/** 이미 있는 초안을 말로 고친다: 현재 초안 전체 + 이번 지시(+앞선 지시)를 보내고 고친 초안 전체를 받는다 */
+export interface KeyReviseInput extends KeyDraftInput { 현재: { 정량: QtyUnit[]; 정성: QualUnit[] }; 지시: string; 앞선지시?: string[] }
 
 const ID = /^[a-zA-Z0-9_.-]{1,64}$/;
 const str = { type: 'string' }, strs = { type: 'array', items: { type: 'string' } };
@@ -32,6 +34,15 @@ export function keyDraftRequest(input: KeyDraftInput, rules: Rules): StructuredR
   const user = ['# 글', input.글, '', '# 문항지', 문제 || '(문항지 없음)', '', '# 지문', 지문 || '(지문 없음: 답은 추정이며 cautions에 적는다)'].join('\n');
   const images = [...(input.문제그림 ?? []), ...(input.지문그림 ?? [])];
   return { system: rules.본문.trimEnd(), user, ...(images.length ? { images } : {}), schema: keyDraftSchema(), effort: input.effort ?? 'high' };
+}
+
+export function keyReviseRequest(input: KeyReviseInput, rules: Rules): StructuredRequest {
+  const base = keyDraftRequest(input, rules);
+  const prev = input.앞선지시?.length ? ['# 앞선 지시(이미 반영됨)', ...input.앞선지시.map(x => `- ${x}`), ''] : [];
+  const user = [base.user, '', '# 현재 초안(JSON)', JSON.stringify({ quant: input.현재.정량, qual: input.현재.정성 }, null, 1), '',
+    ...prev, '# 이번 지시', input.지시.trim(), '',
+    '# 할 일', '현재 초안을 이번 지시대로만 고쳐 초안 전체를 다시 낸다. 지시와 무관한 단위는 글자 하나 바꾸지 않는다. 단위를 더하거나 뺄 때 id 규칙(문항-순번, E1…)을 지킨다. 무엇을 바꿨는지 cautions 첫 줄에 한 문장으로 적는다.'].join('\n');
+  return { ...base, user };
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -62,5 +73,11 @@ export function fromKeyDraftOutput(raw: unknown): KeyDraft {
 export async function draftKey(provider: StructuredProvider, input: KeyDraftInput, signal: AbortSignal, rules?: Rules): Promise<KeyDraft> {
   const r = rules ?? await loadRules('keydraft-v1');
   const raw = await withRetry(() => provider.complete(keyDraftRequest(input, r), signal), signal);
+  return fromKeyDraftOutput(raw.output);
+}
+
+export async function reviseKeyDraft(provider: StructuredProvider, input: KeyReviseInput, signal: AbortSignal, rules?: Rules): Promise<KeyDraft> {
+  const r = rules ?? await loadRules('keydraft-v1');
+  const raw = await withRetry(() => provider.complete(keyReviseRequest(input, r), signal), signal);
   return fromKeyDraftOutput(raw.output);
 }

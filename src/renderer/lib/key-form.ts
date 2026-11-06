@@ -93,4 +93,14 @@ export function parseHeadcount(s: string): Record<string, number> {
   return out;
 }
 export const formatHeadcount = (r: Record<string, number>): string => Object.entries(r).map(([k, v]) => `${k}:${v}`).join(', ');
-export const parseClasses = (s: string): number[] => list(s, /[,\s]+/).map(Number).filter(n => Number.isInteger(n) && n > 0);
+/** "1, 3" · "1~6" · "1-6" · "1-3 5" 모두 허용. 범위는 펼치고 겹침은 하나로, 오름차순 */
+export function parseClasses(s: string): number[] {
+  const out = new Set<number>();
+  for (const tok of list(s, /[,\s]+/)) {
+    const m = /^(\d+)\s*[-~–]\s*(\d+)$/.exec(tok);
+    if (m) { const a = Number(m[1]), b = Number(m[2]); for (let n = Math.min(a, b); n <= Math.max(a, b) && n - Math.min(a, b) < 100; n++) out.add(n); continue; }
+    const n = Number(tok);
+    if (Number.isInteger(n) && n > 0) out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}

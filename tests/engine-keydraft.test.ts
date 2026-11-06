@@ -58,3 +58,14 @@ test('keyDraftRequest: 문항지·지문 그림을 순서대로 붙이고 글에
   assert.ok(r.user.includes('그림 1~2장이 문항지') && r.user.includes('그림 3~3장이 지문'));
   assert.equal(keyDraftRequest({ 글: 'g', 문제: 'q' }, rules).images, undefined);
 });
+
+test('keyReviseRequest: 현재 초안과 지시, 앞선 지시가 들어가고 스키마는 초안과 같다', async () => {
+  const { keyReviseRequest } = await import('../src/engine/keydraft.js');
+  const rules = await loadRules('keydraft-v1');
+  const cur = { 정량: [{ id: '1-1', 문항: 1, 설명: 'a', 정답: 'b' }], 정성: [] };
+  const r = keyReviseRequest({ 글: 'g', 문제: 'q', 현재: cur, 지시: '1번 정답을 c로', 앞선지시: ['앞의 것'] }, rules);
+  assert.ok(r.user.includes('# 현재 초안(JSON)') && r.user.includes('"id": "1-1"'));
+  assert.ok(r.user.includes('# 이번 지시') && r.user.includes('1번 정답을 c로'));
+  assert.ok(r.user.includes('# 앞선 지시') && r.user.includes('- 앞의 것'));
+  assert.deepEqual(r.schema, keyDraftSchema());
+});

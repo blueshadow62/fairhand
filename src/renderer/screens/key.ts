@@ -114,6 +114,32 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     })());
     return el('label', { class: 'upload' }, kind === '문제' ? t('key.uploadProblem') : t('key.uploadSource'), input);
   }
+  // 초안 수정 채팅: 현재 표 + 지시를 보내 고친 표를 받는다
+  const chatLog = el('div', { class: 'chat-log' });
+  const chatInput = el('input', { placeholder: t('key.chatPlaceholder'), class: 'chat-input' });
+  const chatBtn = el('button', { onclick: () => void sendChat() }, t('key.chatSend'));
+  chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); void sendChat(); } });
+  const chatHistory: string[] = [];
+  function chatLine(who: 'me' | 'ai', text: string): void { chatLog.append(el('div', { class: `chat-msg ${who}` }, el('b', {}, who === 'me' ? t('key.chatMe') : t('key.chatAi')), ' ', text)); chatLog.scrollTop = chatLog.scrollHeight; }
+  async function sendChat(): Promise<void> {
+    const 지시 = chatInput.value.trim();
+    if (!지시) return;
+    if (!rows.some(r => r.정답 || r.요소 || r.설명)) { showError(t('key.chatNoRows')); return; }
+    if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
+    chatInput.value = ''; chatLine('me', 지시);
+    const thinking = el('div', { class: 'chat-msg ai muted' }, t('key.chatThinking')); chatLog.append(thinking);
+    chatBtn.disabled = true; chatInput.disabled = true;
+    try {
+      const cur = rowsToKey(meta, rows, undefined, 사례);
+      const d = await api.reviseKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined, 문제그림: uploaded.문제, 지문그림: uploaded.지문, 현재: { 정량: cur.정량, 정성: cur.정성 }, 지시, 앞선지시: chatHistory.slice(-5) });
+      chatHistory.push(지시);
+      rows = draftToRows(d); touch(); renderTable();
+      thinking.remove(); chatLine('ai', t('key.chatApplied', { summary: d.주의[0] ?? `${d.정량.length + d.정성.length}` }));
+      clear(cautionBox);
+      if (d.주의.length > 1) cautionBox.append(el('div', { class: 'band warn' }, t('key.draftCaution', { notes: d.주의.slice(1).join(' / ') })));
+    } catch (e) { thinking.remove(); chatLine('ai', (e as Error).message); }
+    finally { chatBtn.disabled = false; chatInput.disabled = false; chatInput.focus(); }
+  }
   const clearUploads = el('button', { onclick: () => { uploaded.문제 = []; uploaded.지문 = []; uploadNotes.textContent = ''; } }, t('key.uploadClear'));
 
   async function makeDraft(): Promise<void> {
@@ -272,10 +298,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderStatus(): void {
     clear(statusBox);
     const done = 확인?.완료 === true;
-    confirmBox.checked = done;
+    confirmBox.checked = done; confirmBox.disabled = !폴더 || dirty;
     statusBox.append(el('div', { class: 'row' },
       el('button', { class: 'primary', onclick: () => void save() }, 폴더 ? t('common.save') : t('key.createSet')),
-      el('label', {}, confirmBox, t('key.confirmLabel')),
+      el('label', { title: (!폴더 || dirty) ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
+      (!폴더 || dirty) ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : null,
       dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null,
       폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
       el('button', { onclick: () => guard(async () => {
@@ -308,7 +335,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         problemArea, sourceArea,
         el('div', { class: 'row' }, draftBtn,
           폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
-        cautionBox),
+        cautionBox,
+        el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
       el('div', { class: 'card' }, el('h3', {}, t('key.rulesTitle')), rulesBox, casesBox, judgeBar, judgeBox),
       el('div', { class: 'card' }, el('h3', {}, t('key.tryTitle')),
         el('div', { class: 'muted' }, t('key.tryHelp')),

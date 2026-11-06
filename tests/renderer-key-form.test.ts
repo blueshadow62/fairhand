@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { draftToRows, keyToRows, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
+import { draftToRows, keyToRows, parseClasses, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const meta = { 글: '알바생 자르기(장강명)', 학기: '2026 2학기', 학년: 3, 반: [1, 3], 인원: {} };
@@ -56,4 +56,11 @@ test('채점규칙·사례: 기본값이면 필드 없음, 바꾸면 들어가�
   const back = keyToRows(k);
   assert.deepEqual(back.meta.채점규칙, { 맞춤법: '인정', 넓은말: '인정', 핵심어: '모두' });
   assert.deepEqual(rowsToKey(back.meta, back.rows, undefined, k.사례), k);
+});
+
+test('parseClasses: 범위(1~6, 1-6)와 섞어 쓰기, 겹침은 하나로', () => {
+  assert.deepEqual(parseClasses('1~6'), [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(parseClasses('1-3, 5'), [1, 2, 3, 5]);
+  assert.deepEqual(parseClasses('3 1 3'), [1, 3]);
+  assert.deepEqual(parseClasses('가, 0'), []);
 });
