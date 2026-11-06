@@ -9,10 +9,10 @@ import type { Effort } from '../src/engine/provider.js';
 import { DataError } from '../src/core/types.js';
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-  engine: { type: 'string', default: 'cli' }, pages: { type: 'string' }, effort: { type: 'string', default: 'high' },
+  engine: { type: 'string', default: 'cli' }, pages: { type: 'string' }, effort: { type: 'string', default: 'high' }, model: { type: 'string', default: 'claude-opus-5-5' },
   out: { type: 'string' }, force: { type: 'boolean', default: false } } });
 const setDir = positionals[0];
-if (!setDir) { console.error('사용법: npm run transcribe -- "<세트 폴더>" --engine cli|api [--pages 1-3,7] [--effort high] [--out <폴더>] [--force]'); process.exit(2); }
+if (!setDir) { console.error('사용법: npm run transcribe -- "<세트 폴더>" --engine cli|api [--pages 1-3,7] [--effort high] [--model claude-opus-5-5|claude-sonnet-5-5] [--out <폴더>] [--force]'); process.exit(2); }
 
 function parsePages(spec: string | undefined, all: number[]): number[] {
   if (!spec) return all;
@@ -30,7 +30,7 @@ try {
   const { key } = await loadSet(setDir);
   const rules = await loadRules();
   const pages = parsePages(values.pages, await listPages(setDir));
-  const provider = values.engine === 'api' ? new ApiProvider({ apiKey: process.env.ANTHROPIC_API_KEY }) : new CliProvider();
+  const provider = values.engine === 'api' ? new ApiProvider({ apiKey: process.env.ANTHROPIC_API_KEY, model: values.model }) : new CliProvider({ model: values.model });
   const ac = new AbortController();
   process.on('SIGINT', () => ac.abort());
   let inTok = 0, outTok = 0;
