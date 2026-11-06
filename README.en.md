@@ -7,6 +7,8 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 - Under development (phase 4: screens). Installation instructions will come with the first release.
 
 ## How to use
+The app starts in Korean. To switch to English, open **설정** (the last tab) and pick **English** in the **언어** box; the screens reload in English.
+
 1. **Settings**: choose the semester folder and an AI profile (Claude Code login or API key). A roster (xlsx/csv) is optional.
 2. **Questions**: create a set and enter the answer key (optionally get an AI draft from the questions and passage). Mark it confirmed before grading.
 3. **Run**: upload the answer-sheet PDF, fix rotation, split into pages, then start transcription. A result workbook is written to the set folder.
