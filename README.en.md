@@ -6,7 +6,7 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 - We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent to Anthropic's servers together with the image. The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
 
 ## Install
-1. Download `글눈-Setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/geulnun/releases).
+1. Download `geulnun-setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/geulnun/releases).
 2. Run it. Because it is not code-signed, Windows shows an 'Unknown publisher' / 'Windows protected your PC' warning. Press **More info → Run anyway**. No administrator rights are needed (per-user install).
 3. On first start, open **설정** (Settings) and press the button to create the default folder (Documents), or choose a semester folder, and set an AI profile.
 4. To transcribe with Claude Code, install it and log in ([setup guide](https://code.claude.com/docs/en/setup)). The Settings screen walks you through the login.
