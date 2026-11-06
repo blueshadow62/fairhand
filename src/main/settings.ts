@@ -7,6 +7,8 @@ export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Cod
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+// 렌더러가 보낸 값이라 형이 아니라 검사로 믿는다: 상대 경로는 실행 파일·삭제 기준 폴더가 엉뚱한 곳을 가리킬 수 있다
+const optAbs = (v: unknown): string | undefined => { const s = optStr(v); return s && path.isAbsolute(s) ? s : undefined; };
 
 export function defaultSettings(): Settings {
   return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true };
@@ -17,8 +19,8 @@ function parseProfile(v: unknown): Profile | null {
   const id = optStr(v.id), 이름 = optStr(v.이름);
   if (!id || !이름 || (v.종류 !== 'cli' && v.종류 !== 'api')) return null;
   const p: Profile = { id, 이름, 종류: v.종류 };
-  const cliPath = optStr(v.cliPath), configDir = optStr(v.configDir);
-  if (p.종류 === 'cli' && cliPath) p.cliPath = cliPath;
+  const cliPath = optAbs(v.cliPath), configDir = optAbs(v.configDir);
+  if (p.종류 === 'cli' && cliPath && /\.(exe|cmd)$/i.test(cliPath)) p.cliPath = cliPath;
   if (p.종류 === 'cli' && configDir) p.configDir = configDir;
   if ((MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as ModelId;
   if ((EFFORTS as readonly string[]).includes(v.노력 as string)) p.노력 = v.노력 as EffortLevel;
@@ -38,8 +40,8 @@ export function parseSettings(raw: unknown): Settings {
   const 프로필 = Array.isArray(raw.프로필) ? raw.프로필.map(parseProfile).filter((p): p is Profile => p !== null) : d.프로필;
   const seen = new Set<string>();
   return normalize({
-    학기폴더: optStr(raw.학기폴더) ?? null,
-    명단: optStr(raw.명단) ?? null,
+    학기폴더: optAbs(raw.학기폴더) ?? null,
+    명단: optAbs(raw.명단) ?? null,
     기본회전: ROTATIONS.includes(raw.기본회전 as Rotation) ? (raw.기본회전 as Rotation) : 0,
     프로필: 프로필.filter(p => !seen.has(p.id) && seen.add(p.id)),
     사용중: optStr(raw.사용중) ?? null,

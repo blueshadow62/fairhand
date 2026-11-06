@@ -86,15 +86,20 @@ export class EngineBridge {
     }
   }
 
+  /** 모델을 부르는 일은 한 번에 하나만. 창을 닫거나 '중단'하면 cancel()이 이것도 멈춘다 */
+  private async exclusive<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    if (this.current) throw new DataError('이미 실행 중입니다. 끝나거나 중단된 뒤 다시 하세요');
+    const ac = this.current = new AbortController();
+    try { return await fn(ac.signal); } finally { this.current = null; }
+  }
+
   async draftKey(input: KeyDraftInput): Promise<KeyDraftResult> {
-    const ac = new AbortController();
-    return draftKey(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, ac.signal);
+    return this.exclusive(async signal => draftKey(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, signal));
   }
 
   async reviseKey(input: KeyReviseInput): Promise<KeyDraftResult> {
     if (!input.지시.trim()) throw new DataError('수정 지시가 비었습니다');
-    const ac = new AbortController();
-    return reviseKeyDraft(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, ac.signal);
+    return this.exclusive(async signal => reviseKeyDraft(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, signal));
   }
 
   private async roster(): Promise<Student[] | null> {
@@ -110,9 +115,7 @@ export class EngineBridge {
 
   async tryPage(setDir: string, jpeg: Buffer): Promise<Transcript> {
     const { key } = await this.confirmedSet(setDir);
-    const ac = new AbortController();
-    const r = await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0, effort: await this.effort() }, ac.signal);
-    return r.transcript;
+    return this.exclusive(async signal => (await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0, effort: await this.effort() }, signal)).transcript);
   }
 
   /** 세트 폴더의 엑셀을 다시 만든다. 실패는 메시지로만 */

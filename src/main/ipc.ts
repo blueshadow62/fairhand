@@ -35,7 +35,7 @@ async function wrap<T>(fn: () => Promise<T>): Promise<IpcResult<T>> {
 
 export function registerIpc(d: IpcDeps): void {
   const semester = async () => { const s = await d.settings.load(); if (!s.학기폴더) throw new DataError('설정에서 학기 폴더를 먼저 고르세요'); return s.학기폴더; };
-  const setDir = async (폴더: string) => resolveSetDir(await semester(), 폴더);
+  const setDir = async (폴더: unknown) => { if (typeof 폴더 !== 'string') throw new DataError('세트 폴더 이름이 글자가 아닙니다'); return resolveSetDir(await semester(), 폴더); };
   const roster = async () => { const s = await d.settings.load(); return s.명단 ? (await import('../core/roster.js')).readRoster(s.명단) : null; };
   const h = <A extends unknown[], T>(ch: string, fn: (...a: A) => Promise<T>) => ipcMain.handle(ch, (_e, ...a: unknown[]) => wrap(() => fn(...(a as A))));
 
@@ -85,7 +85,18 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => d.bridge.saveKey(await setDir(폴더), raw));
   h(CHANNELS.importKey, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePaths[0]) return null; return parseKey(await readFile(r.filePaths[0], 'utf-8'), path.basename(r.filePaths[0])); });
   h(CHANNELS.exportKey, async (폴더: string) => { const dir = await setDir(폴더); const { key } = await loadSet(dir); const r = await dialog.showSaveDialog(d.window()!, { defaultPath: keyExportName(key), filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePath) return null; await writeFile(r.filePath, JSON.stringify(key, null, 1), 'utf-8'); return r.filePath; });
-  h(CHANNELS.attachSource, async (폴더: string) => { const dir = await setDir(폴더); const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '지문', extensions: ['pdf', 'txt'] }] }); if (r.canceled || !r.filePaths[0]) return null; await mkdir(path.join(dir, '원본'), { recursive: true }); const name = path.basename(r.filePaths[0]); await copyFile(r.filePaths[0], path.join(dir, '원본', name)); return name; });
+  h(CHANNELS.attachSource, async (폴더: string) => {
+    const dir = await setDir(폴더);
+    const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '지문', extensions: ['pdf', 'txt'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const src = r.filePaths[0], out = path.join(dir, '원본');
+    await mkdir(out, { recursive: true });
+    const { name: stem, ext } = path.parse(src);
+    let name = path.basename(src);
+    for (let i = 2; existsSync(path.join(out, name)); i++) name = `${stem} (${i})${ext}`; // 같은 이름의 지문을 덮어쓰지 않는다
+    await copyFile(src, path.join(out, name));
+    return name;
+  });
   h(CHANNELS.readSourceText, async (폴더: string) => { const dir = await setDir(폴더); try { return await readFile(path.join(dir, '원본', '지문.txt'), 'utf-8'); } catch { return ''; } });
 
   h(CHANNELS.draftKey, (input: { 글: string; 문제: string; 지문?: string; 문제그림?: ArrayBuffer[]; 지문그림?: ArrayBuffer[] }) => {

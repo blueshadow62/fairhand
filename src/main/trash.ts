@@ -59,8 +59,8 @@ export async function restoreSet(semesterDir: string, id: string): Promise<strin
   try { 원래이름 = (JSON.parse(await readFile(path.join(from, MANIFEST), 'utf-8')) as TrashEntry).원래이름 || 원래이름; } catch { /* 설명 파일 없으면 이름에서 */ }
   const 폴더 = uniqueFolderName(semesterDir, 원래이름, existsSync);
   const to = resolveSetDir(semesterDir, 폴더);
-  await rm(path.join(from, MANIFEST), { force: true });
   try { await rename(from, to); } catch (e) { throw new DataError(`되살리지 못했습니다: ${(e as Error).message}`); }
+  await rm(path.join(to, MANIFEST), { force: true }); // 옮기기가 실패해도 휴지통 목록의 설명이 남도록 뒤에 지운다
   return 폴더;
 }
 

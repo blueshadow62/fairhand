@@ -8,7 +8,8 @@ import type { SetInfo } from '../shared/ipc.js';
 /** 렌더러가 보낸 '폴더 이름'을 학기 폴더 바로 아래로만 푼다. 구분자·..·절대 경로는 거절. */
 export function resolveSetDir(semesterDir: string, 폴더: string): string {
   const name = 폴더.trim();
-  if (!name || name === '.' || name === '..' || /[\\/:*?"<>|\u0000-\u001f]/.test(name)) throw new DataError(`세트 폴더 이름이 잘못되었습니다: '${폴더}'`);
+  // Windows 예약 이름(CON, NUL…)은 장치로 풀려 읽기가 멈추고, 끝 점·공백은 다른 이름으로 풀린다
+  if (!name || name === '.' || name === '..' || /[\\/:*?"<>|\u0000-\u001f]/.test(name) || /^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i.test(name) || /[. ]$/.test(name)) throw new DataError(`세트 폴더 이름이 잘못되었습니다: '${폴더}'`);
   const dir = path.join(semesterDir, name);
   const rel = path.relative(semesterDir, dir);
   if (rel !== name || path.isAbsolute(rel)) throw new DataError(`세트 폴더가 학기 폴더 밖을 가리킵니다: '${폴더}'`);

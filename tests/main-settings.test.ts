@@ -51,3 +51,15 @@ test('parseSettings: 프로필의 모델·노력은 허용 값만 남는다', ()
   assert.equal(a.모델, 'claude-sonnet-5-5'); assert.equal(a.노력, 'low');
   assert.equal(b.모델, undefined); assert.equal(b.노력, undefined);
 });
+
+test('parseSettings: 경로는 절대 경로만, CLI 파일은 exe·cmd만 남는다', () => {
+  const s = parseSettings({ 학기폴더: 'local/학기', 명단: 'C:\\명단.xlsx', 프로필: [
+    { id: 'a', 이름: 'A', 종류: 'cli', cliPath: 'claude.exe', configDir: '.claude-max' },
+    { id: 'b', 이름: 'B', 종류: 'cli', cliPath: 'C:\\tools\\claude.cmd', configDir: 'C:\\Users\\t\\.claude-max' },
+    { id: 'c', 이름: 'C', 종류: 'cli', cliPath: 'C:\\tools\\evil.bat' }] });
+  assert.equal(s.학기폴더, null); assert.equal(s.명단, 'C:\\명단.xlsx');
+  const a = s.프로필.find(p => p.id === 'a')!, b = s.프로필.find(p => p.id === 'b')!, c = s.프로필.find(p => p.id === 'c')!;
+  assert.equal(a.cliPath, undefined); assert.equal(a.configDir, undefined);
+  assert.equal(b.cliPath, 'C:\\tools\\claude.cmd'); assert.equal(b.configDir, 'C:\\Users\\t\\.claude-max');
+  assert.equal(c.cliPath, undefined);
+});

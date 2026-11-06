@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { listSets, nextPageNumber, resolveSetDir, uniqueFolderName } from '../src/main/paths.js';
 import { DataError } from '../src/core/types.js';
 
+test('resolveSetDir: Windows 예약 이름과 끝 점·공백은 거절', () => {
+  for (const bad of ['CON', 'nul', 'COM1', 'con.txt', '세트.']) assert.throws(() => resolveSetDir('C:\\학기', bad), DataError, bad);
+  assert.equal(resolveSetDir('C:\\학기', 'console'), path.join('C:\\학기', 'console'));
+});
+
 test('resolveSetDir: 폴더 이름만 받고 학기 폴더 바로 아래로 제한', () => {
   assert.equal(resolveSetDir('D:\\학기', '2026 3학년'), path.join('D:\\학기', '2026 3학년'));
   for (const bad of ['', ' ', '..', '../x', 'a\\b', 'a/b', 'C:\\x', '2026 3학년\\..\\..\\etc'])

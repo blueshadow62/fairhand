@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(ROOT, 'dist-preload', 'preload.cjs') },
   });
   // 렌더러의 경고·오류(CSP 위반 포함)를 메인 로그로: 개발자 도구 없이도 확인할 수 있게
-  win.webContents.on('console-message', (e) => { if (e.level === 'warning' || e.level === 'error') console.error(`[renderer:${e.level}] ${e.message} (${e.sourceId}:${e.lineNumber})`); });
+  win.webContents.on('console-message', (e) => { if (e.level === 'warning' || e.level === 'error') console.error(`[renderer:${e.level}] ${e.message.split('\n')[0]!.slice(0, 200)} (${e.sourceId}:${e.lineNumber})`); }); // 예외 본문에 학생 답이 섞여도 로그에 길게 남지 않게
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // 다른 주소로는 못 가게 막되, 앱 자신의 주소로 가는 것(언어를 바꾼 뒤 새로 고침)은 허용한다
   win.webContents.on('will-navigate', (e, url) => { if (url !== APP_URL) e.preventDefault(); });
