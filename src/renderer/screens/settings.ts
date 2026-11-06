@@ -137,7 +137,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     el('section', {}, semesterBox, rosterBox, rotationBox),
     el('section', {}, el('h2', {}, t('settings.profiles')), profileBox),
     el('section', {}, el('h2', {}, t('settings.about')),
-      el('div', { class: 'row' }, t('settings.version'), versionText, el('button', { onclick: () => guard(() => api.openExternal('privacy')) }, t('settings.privacy'))),
+      el('div', { class: 'row' }, t('settings.version'), versionText,
+        el('button', { onclick: () => guard(() => api.openExternal('guide')) }, t('settings.guide')),
+        el('button', { onclick: () => guard(() => api.openExternal('privacy')) }, t('settings.privacy'))),
       el('div', { class: 'muted' }, t('settings.autoUpdate'))));
   renderBasics();
   renderProfiles();

@@ -10,7 +10,7 @@ test('화면 글 사전: 한국어와 영어의 키가 같고, 치환 자리도 
   for (const k of keys('ko') as Key[]) {
     assert.deepEqual(slots(DICT.en[k]), slots(DICT.ko[k]), `${k}: 치환 자리가 다름`);
     assert.ok(DICT.en[k].length > 0, `${k}: 영어가 비었음`);
-    assert.ok(!/[가-힣]/.test(DICT.en[k]), `${k}: 영어에 한글이 있음`);
+    if (k !== 'settings.language') assert.ok(!/[가-힣]/.test(DICT.en[k]), `${k}: 영어에 한글이 있음`); // 언어 라벨은 두 말을 함께 적는다
   }
 });
 
