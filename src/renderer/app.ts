@@ -60,7 +60,9 @@ async function start(): Promise<void> {
   const current = el('span', { class: 'current' });
   const tabs = el('nav', { id: 'tabs' });
   const main = el('main', { id: 'main' });
-  root.append(el('header', { id: 'top' }, el('span', { class: 'brand' }, '글눈'), current), tabs, main, el('div', { id: 'toast', class: 'hidden' }));
+  const version = el('span', { class: 'version' });
+  void api.version().then(v => { version.textContent = `v${v}`; }).catch(() => undefined);
+  root.append(el('header', { id: 'top' }, el('span', { class: 'brand' }, '글눈', version), current), tabs, main, el('div', { id: 'toast', class: 'hidden' }));
 
   store.update({ settings: await api.getSettings() });
   setLanguage(store.state.settings.언어); // 이 뒤의 t()가 모두 이 언어로 나온다
