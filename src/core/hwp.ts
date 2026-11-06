@@ -17,6 +17,8 @@ interface Entry { name: string; type: number; child: number; left: number; right
 function readCfb(buf: Buffer): { entries: Entry[]; stream(e: Entry): Buffer } {
   if (buf.length < 512 || buf.readUInt32LE(0) !== 0xe011cfd0 || buf.readUInt32LE(4) !== 0xe11ab1a1) throw new DataError('hwp 형식(OLE 복합 문서)이 아닙니다');
   const sectorSize = 1 << buf.readUInt16LE(0x1e), miniSize = 1 << buf.readUInt16LE(0x20);
+  if ((sectorSize !== 512 && sectorSize !== 4096) || miniSize !== 64) throw new DataError('hwp 파일의 섹터 크기가 이상합니다');
+  const maxSectors = Math.ceil(buf.length / sectorSize);
   const numFat = buf.readUInt32LE(0x2c), firstDir = buf.readUInt32LE(0x30), miniCutoff = buf.readUInt32LE(0x38);
   const firstMiniFat = buf.readUInt32LE(0x3c), numMiniFat = buf.readUInt32LE(0x40);
   let difatSector = buf.readUInt32LE(0x44);
@@ -25,17 +27,29 @@ function readCfb(buf: Buffer): { entries: Entry[]; stream(e: Entry): Buffer } {
   // DIFAT → FAT 섹터 번호 목록
   const fatSectors: number[] = [];
   for (let i = 0; i < 109 && fatSectors.length < numFat; i++) { const s = buf.readUInt32LE(0x4c + i * 4); if (s !== FREE) fatSectors.push(s); }
-  for (let guard = 0; difatSector !== END && difatSector !== FREE && guard < 1000; guard++) {
+  const seenDifat = new Set<number>();
+  for (; difatSector !== END && difatSector !== FREE && !seenDifat.has(difatSector) && seenDifat.size < 1000;) {
+    seenDifat.add(difatSector);
     const sec = sectorAt(difatSector);
     for (let i = 0; i < sectorSize / 4 - 1 && fatSectors.length < numFat; i++) { const s = sec.readUInt32LE(i * 4); if (s !== FREE) fatSectors.push(s); }
     difatSector = sec.readUInt32LE(sectorSize - 4);
   }
   const fat: number[] = [];
-  for (const s of fatSectors) { const sec = sectorAt(s); for (let i = 0; i < sectorSize / 4; i++) fat.push(sec.readUInt32LE(i * 4)); }
-  const chain = (start: number, table: number[]): number[] => { const out: number[] = []; for (let s = start, g = 0; s !== END && s !== FREE && g < table.length + 1; s = table[s] ?? END, g++) { if (s >= table.length) throw new DataError('hwp 파일의 섹터 사슬이 깨졌습니다'); out.push(s); } return out; };
-  const readChain = (start: number, size: number): Buffer => Buffer.concat(chain(start, fat).map(sectorAt)).subarray(0, size);
+  for (const s of new Set(fatSectors)) { const sec = sectorAt(s); for (let i = 0; i < sectorSize / 4; i++) fat.push(sec.readUInt32LE(i * 4)); }
+  /** 섹터 사슬. 같은 섹터로 되돌아오면(고리) 멈추고, 길이는 스트림 크기만큼으로 제한한다(조작된 파일의 메모리 소진 방지) */
+  const chain = (start: number, table: number[], maxLen: number): number[] => {
+    const out: number[] = []; const seen = new Set<number>();
+    for (let s = start; s !== END && s !== FREE && out.length < maxLen; s = table[s] ?? END) {
+      if (s >= table.length || seen.has(s)) throw new DataError('hwp 파일의 섹터 사슬이 깨졌습니다'); seen.add(s); out.push(s);
+    }
+    return out;
+  };
+  const readChain = (start: number, size: number): Buffer => {
+    if (size > MAX_SECTION) throw new DataError('hwp 스트림이 너무 큽니다');
+    return Buffer.concat(chain(start, fat, Math.min(maxSectors, Math.ceil(size / sectorSize))).map(sectorAt)).subarray(0, size);
+  };
   // 디렉터리
-  const dirData = Buffer.concat(chain(firstDir, fat).map(sectorAt));
+  const dirData = Buffer.concat(chain(firstDir, fat, Math.min(maxSectors, 4096)).map(sectorAt));
   const entries: Entry[] = [];
   for (let off = 0; off + 128 <= dirData.length; off += 128) {
     const nameLen = dirData.readUInt16LE(off + 64);
@@ -51,8 +65,9 @@ function readCfb(buf: Buffer): { entries: Entry[]; stream(e: Entry): Buffer } {
   let mini: Buffer | null = null, miniFat: number[] | null = null;
   const miniStream = (start: number, size: number): Buffer => {
     mini ??= readChain(root.start, root.size);
-    if (!miniFat) { miniFat = []; if (numMiniFat > 0) for (const s of chain(firstMiniFat, fat)) { const sec = sectorAt(s); for (let i = 0; i < sectorSize / 4; i++) miniFat.push(sec.readUInt32LE(i * 4)); } }
-    const parts = chain(start, miniFat).map(n => { const off = n * miniSize; if (off + miniSize > mini!.length) throw new DataError('hwp 파일의 미니 스트림이 잘렸습니다'); return mini!.subarray(off, off + miniSize); });
+    if (!miniFat) { miniFat = []; if (numMiniFat > 0) for (const s of chain(firstMiniFat, fat, Math.min(maxSectors, numMiniFat))) { const sec = sectorAt(s); for (let i = 0; i < sectorSize / 4; i++) miniFat.push(sec.readUInt32LE(i * 4)); } }
+    if (size > MAX_SECTION) throw new DataError('hwp 스트림이 너무 큽니다');
+    const parts = chain(start, miniFat, Math.ceil(size / miniSize)).map(n => { const off = n * miniSize; if (off + miniSize > mini!.length) throw new DataError('hwp 파일의 미니 스트림이 잘렸습니다'); return mini!.subarray(off, off + miniSize); });
     return Buffer.concat(parts).subarray(0, size);
   };
   return { entries, stream: e => (e.size < miniCutoff ? miniStream(e.start, e.size) : readChain(e.start, e.size)) };

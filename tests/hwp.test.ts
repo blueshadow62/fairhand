@@ -19,3 +19,16 @@ test('sectionParagraphs: PARA_TEXT 레코드만 모으고 큰 크기 표기도 �
   const data = Buffer.concat([rec(66, Buffer.alloc(8)), rec(67, u16('첫 문단')), rec(68, Buffer.alloc(4)), rec(67, u16('둘째'), true)]);
   assert.deepEqual(sectionParagraphs(data), ['첫 문단', '둘째']);
 });
+
+test('extractHwpText: 섹터 사슬이 고리를 이루는 조작 파일은 멈추지 않고 거절', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { extractHwpText } = await import('../src/core/hwp.js');
+  const buf = Buffer.from(readFileSync(new URL('../../tests/fixtures/문항지.hwp', import.meta.url)));
+  // 첫 FAT 섹터의 모든 항목을 자기 자신을 가리키게 바꿔 고리를 만든다
+  const fatSector = buf.readUInt32LE(0x4c), sectorSize = 1 << buf.readUInt16LE(0x1e);
+  const off = (fatSector + 1) * sectorSize;
+  for (let i = 0; i < sectorSize / 4; i++) buf.writeUInt32LE(i, off + i * 4);
+  const t0 = Date.now();
+  assert.throws(() => extractHwpText(buf));
+  assert.ok(Date.now() - t0 < 2000);
+});
