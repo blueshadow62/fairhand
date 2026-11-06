@@ -80,7 +80,8 @@
     "publish": {
       "provider": "github",
       "owner": "blueshadow62",
-      "repo": "geulnun"
+      "repo": "geulnun",
+      "releaseType": "draft"
     }
   }
 }

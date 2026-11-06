@@ -4,7 +4,20 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 
 - Transcription runs through the teacher's own locally installed Claude Code (their own subscription login). An Anthropic API key can be used instead.
 - We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent to Anthropic's servers together with the image. The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
-- Under development (phase 4: screens). Installation instructions will come with the first release.
+
+## Install
+1. Download `글눈-Setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/geulnun/releases).
+2. Run it. Because it is not code-signed, Windows shows an 'Unknown publisher' / 'Windows protected your PC' warning. Press **More info → Run anyway**. No administrator rights are needed (per-user install).
+3. On first start, open **설정** (Settings) and press the button to create the default folder (Documents), or choose a semester folder, and set an AI profile.
+4. To transcribe with Claude Code, install it and log in ([setup guide](https://code.claude.com/docs/en/setup)). The Settings screen walks you through the login.
+
+## Updates
+- The app checks GitHub for a new version 10 seconds after start and every 4 hours, and downloads it. A 'Restart to apply' button then appears in Settings; the update installs only when you press it.
+- To turn this off, uncheck 'Check for new versions automatically' under Settings → About. When off, the app does not contact GitHub.
+- The installer and updates are not code-signed. They are downloaded from GitHub Releases over HTTPS, and electron-updater checks each file against the SHA-512 listed in the release. An update installs only when the user presses the button.
+
+## Sample set
+When the start screen has no sets, a 'Try the sample set' button adds a short invented story ('봄비 오는 날') with **three fake answer sheets in printed type** and ready-made transcriptions, so you can try Review and Excel without AI. It says nothing about handwriting accuracy.
 
 ## How to use
 The app starts in Korean. To switch to English, open **설정** (the last tab) and pick **English** in the **언어** box; the screens reload in English.
@@ -20,9 +33,19 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 - After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
 - Every changed verdict is noted in the page's remarks; the student's answer text is never changed.
 
+## Known limitations
+- Scanned PDFs compressed with JBIG2 or JPEG2000 may fail to split into pages (ordinary JPEG scans are fine).
+
+## Reporting problems
+- Open an [issue](https://github.com/blueshadow62/geulnun/issues) with the steps and the screen name.
+- **Never attach answer sheets, rosters or files with student information.** Mask student details in any image.
+- Logs are in `%APPDATA%\글눈\logs\<date>.log`. Paste only the lines needed and remove student information.
+- Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
 ## Development
 - Requires Node 22+
 - `npm install` → `npm test` → `npm start` (builds first)
+- Installer: `npm run dist` → `release/글눈-Setup-<version>.exe` (`npm run pack` for a quick `release/win-unpacked/Geulnun.exe`). Pushing a `v*` tag makes GitHub Actions build the installer and create a draft release.
 - During development keep settings and keys under the ignored `local/` folder: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - Paths with spaces break when passed through `npm run`; after `npm run build`, call scripts directly, e.g. `node dist/scripts/transcribe-set.js "<set folder>" --engine cli`. To use another Claude Code account set `$env:CLAUDE_CONFIG_DIR` first.
 
