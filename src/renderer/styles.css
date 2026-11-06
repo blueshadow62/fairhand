@@ -1,6 +1,9 @@
+/* Pretendard 가변 글꼴(OFL). 한 파일로 모든 굵기를 낸다. 경로는 protocols.ts의 /fonts/ */
+@font-face { font-family: Pretendard; src: url('/fonts/PretendardVariable.woff2') format('woff2-variations'); font-weight: 45 920; font-display: swap; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 14px; color: #222; background: #f6f7f9; }
+body { font-family: Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 14px; color: #222; background: #f6f7f9; }
 button, input, select, textarea { font: inherit; }
 input, select { min-height: 32px; padding: 4px 8px; border: 1px solid #bbb; border-radius: 4px; background: #fff; }
 textarea { padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; }

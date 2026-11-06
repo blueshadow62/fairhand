@@ -5,7 +5,7 @@ import { resolveSetDir } from './paths.js';
 export const APP_SCHEME = 'geulnun';
 export const IMG_SCHEME = 'geulnun-img';
 export const CSP = `default-src 'self'; img-src ${IMG_SCHEME}: blob: data:; style-src 'self'; worker-src 'self' blob:`;
-export interface AppRoots { html: string; dist: string; pdfjs: string }
+export interface AppRoots { html: string; dist: string; pdfjs: string; fonts: string }
 
 /** root 안의 파일로만 푼다. 밖(..)이면 null */
 function inside(root: string, rel: string): string | null {
@@ -23,6 +23,7 @@ export function appFileFor(url: URL, roots: AppRoots): string | null {
   if (pathname === '/styles.css') return inside(roots.html, 'styles.css');
   if (pathname.startsWith('/dist/') && /\.js(\.map)?$/.test(pathname)) return inside(roots.dist, pathname.slice('/dist/'.length));
   if (pathname.startsWith('/pdfjs/') && /\.(mjs|js|map)$/.test(pathname)) return inside(roots.pdfjs, pathname.slice('/pdfjs/'.length));
+  if (pathname.startsWith('/fonts/') && /\.woff2$/.test(pathname)) return inside(roots.fonts, pathname.slice('/fonts/'.length));
   return null;
 }
 
@@ -35,7 +36,7 @@ export function pageImageFor(url: URL, semesterDir: string | null): string | nul
   try { return path.join(resolveSetDir(semesterDir, decodeURIComponent(m[1]!)), 'pages', m[2]!); } catch { return null; }
 }
 
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.map': 'application/json', '.jpg': 'image/jpeg' };
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.map': 'application/json', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
 
 async function fileResponse(file: string | null): Promise<Response> {
   if (!file) return new Response('not found', { status: 404 });

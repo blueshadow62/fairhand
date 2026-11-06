@@ -4,14 +4,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { appFileFor, imageUrl, pageImageFor } from '../src/main/protocols.js';
 
-const roots = { html: 'R:\\src\\renderer', dist: 'R:\\dist\\src', pdfjs: 'R:\\node_modules\\pdfjs-dist\\build' };
+const roots = { html: 'R:\\src\\renderer', dist: 'R:\\dist\\src', pdfjs: 'R:\\node_modules\\pdfjs-dist\\build', fonts: 'R:\\resources\\fonts' };
 
-test('appFileFor: 세 뿌리로만, 밖은 null', () => {
+test('appFileFor: 네 뿌리로만, 밖은 null', () => {
   assert.equal(appFileFor(new URL('geulnun://app/index.html'), roots), path.join(roots.html, 'index.html'));
   assert.equal(appFileFor(new URL('geulnun://app/styles.css'), roots), path.join(roots.html, 'styles.css'));
   assert.equal(appFileFor(new URL('geulnun://app/dist/renderer/app.js'), roots), path.join(roots.dist, 'renderer', 'app.js'));
   assert.equal(appFileFor(new URL('geulnun://app/dist/shared/ipc.js'), roots), path.join(roots.dist, 'shared', 'ipc.js'));
   assert.equal(appFileFor(new URL('geulnun://app/pdfjs/pdf.worker.min.mjs'), roots), path.join(roots.pdfjs, 'pdf.worker.min.mjs'));
+  assert.equal(appFileFor(new URL('geulnun://app/fonts/PretendardVariable.woff2'), roots), path.join(roots.fonts, 'PretendardVariable.woff2'));
+  assert.equal(appFileFor(new URL('geulnun://app/fonts/x.ttf'), roots), null); // woff2만
   assert.equal(appFileFor(new URL('geulnun://app/dist/../package.json'), roots), null);
   assert.equal(appFileFor(new URL('geulnun://app/..%2f..%2fx'), roots), null);
   assert.equal(appFileFor(new URL('geulnun://other/index.html'), roots), null);

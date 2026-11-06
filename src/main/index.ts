@@ -29,7 +29,7 @@ app.whenReady().then(async () => {
   settings.save = async (patch) => { settingsCache = await origSave(patch); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
   // 창 위 기본 메뉴(File·Edit…)는 쓰지 않는다. 설정·언어·정보는 프로그램 안 '설정' 화면에 있다. 복사·붙여넣기는 Windows가 메뉴 없이도 처리한다.
   Menu.setApplicationMenu(null);
-  registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build') },
+  registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
     () => settingsCache.학기폴더);
   registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win });
 
