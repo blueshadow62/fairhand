@@ -1,7 +1,7 @@
-import { readFile, mkdir, writeFile, rename, access } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { rejudgeTranscript } from '../core/rejudge.js';
-import { transcriptFileName } from '../core/setio.js';
+import { pageImageName, transcriptFileName, writeJsonAtomic } from '../core/setio.js';
 import type { AnswerKey, Transcript } from '../core/types.js';
 import { EngineError, toTranscript, userFacingMessage, withRetry, type Effort, type TranscribeInput, type TranscribeProvider } from './provider.js';
 import type { Rules } from './rules.js';
@@ -33,14 +33,6 @@ export interface TranscribeOptions {
 
 const exists = (p: string) => access(p).then(() => true, () => false);
 
-/** 쓰다가 끊겨도 깨지지 않게 임시 파일에 쓰고 바꿔치기. transcripts 밖(outDir)에도 쓸 수 있어 setio.saveTranscript 대신 둔다. */
-async function writeJson(dir: string, name: string, data: unknown): Promise<void> {
-  await mkdir(dir, { recursive: true });
-  const target = path.join(dir, name), tmp = `${target}.tmp`;
-  await writeFile(tmp, JSON.stringify(data, null, 1), 'utf-8');
-  await rename(tmp, target);
-}
-
 export async function transcribeSet(provider: TranscribeProvider, setDir: string, key: AnswerKey, rules: Rules, pages: number[], signal: AbortSignal, opts: TranscribeOptions = {})
   : Promise<{ ok: number[]; failed: { page: number; error: string }[]; skipped: number[] }> {
   const outDir = opts.outDir ?? path.join(setDir, 'transcripts');
@@ -51,9 +43,9 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
     const name = transcriptFileName(page);
     if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length }); continue; }
     try {
-      const image = (await readFile(path.join(setDir, 'pages', `p${String(page).padStart(2, '0')}.jpg`))).toString('base64');
+      const image = (await readFile(path.join(setDir, 'pages', pageImageName(page)))).toString('base64');
       const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort }, signal);
-      await writeJson(outDir, name, rejudgeTranscript(key, r.transcript).transcript); // 사례·정답 정확 일치는 저장 전에 맞춘다
+      await writeJsonAtomic(outDir, name, rejudgeTranscript(key, r.transcript).transcript); // 잠긴 파일이면 사람 말 오류(검토 저장과 같은 길) // 사례·정답 정확 일치는 저장 전에 맞춘다
       ok.push(page); done++;
       opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
     } catch (e) {

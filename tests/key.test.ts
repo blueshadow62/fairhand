@@ -57,3 +57,13 @@ test('채점규칙 기본값과 검증, 사례 검증', () => {
   assert.throws(() => parseKey(JSON.stringify({ ...base, 사례: [{ 단위: '9-9', 답: 'x', 판정: 'O', 일시: '', 출처: '' }] })), /사례/);
   assert.throws(() => parseKey(JSON.stringify({ ...base, 사례: [{ 단위: '1-1', 답: '', 판정: 'O', 일시: '', 출처: '' }] })), /사례/);
 });
+
+test('keyProblems: id 형식과 허용·핵심 자료형을 저장 때 잡는다(첫 전사에서 멈추지 않게)', () => {
+  const p = keyProblems({ 학기: '2026 2학기', 대상: { 학년: 3, 반: [1] },
+    정량: [{ id: '1-①', 문항: 1, 설명: '', 정답: 'a' }, { id: '2-1', 문항: '2', 설명: '', 정답: 'b', 허용: [15], 핵심: 'x' }], 정성: [] });
+  assert.ok(p.some(s => s.includes("id '1-①'")));
+  assert.ok(p.some(s => s.includes('2-1: 문항 번호')));
+  assert.ok(p.some(s => s.includes('2-1: 허용은 글자 목록')));
+  assert.ok(p.some(s => s.includes('2-1: 핵심은 글자 목록')));
+  assert.deepEqual(keyProblems({ 학기: '2026 2학기', 대상: { 학년: 3, 반: [1] }, 정량: [{ id: 'E_1.a', 문항: 1, 설명: '', 정답: 'a', 허용: ['b'] }], 정성: [] }), []);
+});

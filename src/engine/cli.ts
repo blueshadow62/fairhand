@@ -42,6 +42,7 @@ export class CliProvider implements TranscribeProvider {
     const program = this.program;
     const args = [...program.prefixArgs, ...launchArgs(req.schema, req.effort, this.model)];
     const cwd = await mkdtemp(path.join(tmpdir(), 'geulnun-cli-')); // 다른 폴더의 CLAUDE.md·설정이 끼어들지 않게 빈 폴더에서
+    if (signal.aborted) { await rm(cwd, { recursive: true, force: true }).catch(() => undefined); throw new EngineError('cancelled', '중단됨'); } // 이미 abort된 signal에는 아래 리스너가 울리지 않는다
     const turn = new CliTurn(userLine(requestImages(req), req.user));
     try {
       return await new Promise<RawResult>((resolve, reject) => {

@@ -57,7 +57,7 @@ export function buildRows(key: AnswerKey, roster: Student[] | null, ts: Transcri
     if (!identified(t)) { toUnmatched(t, '학생 식별 불가'); continue; }
     const k = studentKey(t.학년!, t.반!, t.번호!);
     if (dups.has(k)) { toUnmatched(t, `번호 중복(${pagesText(dups.get(k)!)})`); continue; }
-    if (!inTarget(key, t)) { toUnmatched(t, roster ? '명단에 없음' : '대상 반 아님'); continue; }
+    if (!inTarget(key, t)) { toUnmatched(t, '대상 반 아님'); continue; } // 명단에 있어도 대상 반이 아니면 이 말이 맞다
     if (!target.has(k)) { toUnmatched(t, '명단에 없음'); continue; }
     byStudent.set(k, t);
   }

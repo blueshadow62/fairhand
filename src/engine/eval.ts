@@ -1,5 +1,5 @@
 import { scoreOne } from '../core/score.js';
-import type { AnswerKey, Transcript } from '../core/types.js';
+import { pageTag, type AnswerKey, type Transcript } from '../core/types.js';
 
 export interface EvalSummary {
   장수: number; 비교장수: number; 식별정확: number;
@@ -40,7 +40,7 @@ export function formatSummary(s: EvalSummary): string {
     `응답 일치 ${s.응답일치}/${s.응답총수} (${pct(s.응답일치, s.응답총수)})`,
     `합계 차이: ${Object.entries(s.합계차이).sort(([a], [b]) => Number(a) - Number(b)).map(([d, n]) => `${d}:${n}장`).join(', ')}`,
     ...s.장별.filter(p => !p.식별 || p.판정불일치.length || p.응답불일치.length)
-      .map(p => `  p${String(p.page).padStart(2, '0')}: ${p.식별 ? '' : '식별 틀림 '}${p.판정불일치.length ? `판정 ${p.판정불일치.join(',')} ` : ''}${p.응답불일치.length ? `응답 ${p.응답불일치.join(',')} ` : ''}합계차 ${p.합계차}`),
+      .map(p => `  ${pageTag(p.page)}: ${p.식별 ? '' : '식별 틀림 '}${p.판정불일치.length ? `판정 ${p.판정불일치.join(',')} ` : ''}${p.응답불일치.length ? `응답 ${p.응답불일치.join(',')} ` : ''}합계차 ${p.합계차}`),
   ];
   return lines.join('\n');
 }

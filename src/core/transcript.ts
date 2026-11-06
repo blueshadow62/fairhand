@@ -6,7 +6,8 @@ const HWAKSIN = new Set(['확실', '추정', '불명']);
 export function parseTranscript(text: string, where: string): Transcript {
   let t: Record<string, any>;
   try { t = JSON.parse(text); } catch (e) { throw new DataError(`${where}: JSON 오류 ${(e as Error).message}`); }
-  if (typeof t?.page !== 'number') throw new DataError(`${where}: page가 없습니다`);
+  // 1.5·-1·NaN이면 p1.5.json처럼 저장돼 다음 로드에서 조용히 사라진다
+  if (!Number.isInteger(t?.page) || t.page < 1) throw new DataError(`${where}: page가 없거나 1 이상 정수가 아닙니다 (${String(t?.page)})`);
   // 옛 양식: 이름확신 → 식별확신
   if (t.식별확신 === undefined && t.이름확신 !== undefined) t.식별확신 = t.이름확신;
   delete t.이름확신;
@@ -33,12 +34,14 @@ export function validateTranscripts(key: AnswerKey, ts: Transcript[]): void {
     const where = pageTag(t.page);
     for (const [uid, v] of Object.entries(t.정량)) {
       if (!qty.has(uid)) throw new DataError(`${where}: 정답표에 없는 단위 ${uid}`);
+      if (typeof v?.답 !== 'string') throw new DataError(`${where}: ${uid}의 답은 글자여야 함 (${JSON.stringify(v?.답)})`);
       if (!PANJEONG.has(v?.판정)) throw new DataError(`${where}: ${uid}의 판정 값이 잘못됨 (${v?.판정})`);
     }
     for (const [uid, v] of Object.entries(t.정성)) {
       if (!qual.has(uid)) throw new DataError(`${where}: 정답표에 없는 단위 ${uid}`);
       // 문자열 "false"가 참으로 세어져 1점이 되는 것을 막는다
       if (typeof v?.응답 !== 'boolean') throw new DataError(`${where}: ${uid}의 응답 값이 true/false가 아님 (${JSON.stringify(v?.응답)})`);
+      if (typeof v?.답 !== 'string') throw new DataError(`${where}: ${uid}의 답은 글자여야 함`);
     }
   }
 }

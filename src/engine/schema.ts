@@ -1,14 +1,10 @@
 import { DataError, type AnswerKey } from '../core/types.js';
 
 const intOrNull = { type: ['integer', 'null'] };
-/** 구조화 출력(도구 input_schema)의 속성 이름 제한. 한글 키를 못 쓰므로 스키마는 영문 키, 전사 파일은 한글 키. */
-const PROPERTY_NAME = /^[a-zA-Z0-9_.-]{1,64}$/;
+// 스키마는 영문 키, 전사 파일은 한글 키. 단위 id 형식은 정답표를 읽을 때(key.ts UNIT_ID) 이미 검사한다.
 
 /** 정답표에서 만든 전사 JSON 스키마(영문 키). 모든 단위가 필수라 '단위 누락'이 엔진 쪽에서 생길 수 없다. */
 export function transcriptSchema(key: AnswerKey): Record<string, unknown> {
-  for (const u of [...key.정량, ...key.정성]) {
-    if (!PROPERTY_NAME.test(u.id)) throw new DataError(`정답표 단위 id '${u.id}'는 영문·숫자·_ . -만 쓸 수 있습니다(모델 출력 스키마 제한)`);
-  }
   const qty = Object.fromEntries(key.정량.map(u => [u.id, {
     type: 'object',
     properties: { answer: { type: 'string' }, verdict: { type: 'string', enum: ['O', 'X', '빈칸'] } },

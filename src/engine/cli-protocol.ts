@@ -1,7 +1,8 @@
 import { EngineError } from './provider.js';
 
 export const STRUCTURED_OUTPUT_TOOL = 'StructuredOutput';
-export const MODEL = 'claude-opus-5-5';
+import { MODEL } from './provider.js';
+export { MODEL };
 const INIT_ID = 'initialize';
 
 /** 고정 플래그 + 모델 + effort + 스키마. `--bare`는 구독 로그인을 읽지 않으므로 쓰지 않는다. */

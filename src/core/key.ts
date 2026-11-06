@@ -4,6 +4,9 @@ export const DEFAULT_RULES: GradingRules = { 맞춤법: '인정', 넓은말: '�
 const RULE_VALUES: Record<string, string[]> = { 맞춤법: ['인정', '불인정'], 넓은말: ['인정', '불인정'], 핵심어: ['모두', '하나라도'] };
 export const gradingRules = (k: AnswerKey): GradingRules => ({ ...DEFAULT_RULES, ...(k.채점규칙 ?? {}) });
 
+/** 구조화 출력(모델 도구 스키마)의 속성 이름 제한. 한글 키를 못 쓰므로 단위 id는 영문·숫자·_ . - */
+export const UNIT_ID = /^[a-zA-Z0-9_.-]{1,64}$/;
+
 export function keyProblems(k: unknown): string[] {
   const p: string[] = [];
   const o = (k ?? {}) as Record<string, any>;
@@ -18,8 +21,15 @@ export function keyProblems(k: unknown): string[] {
     if (typeof u?.id !== 'string' || !u.id) { p.push('id 없는 단위가 있습니다'); continue; }
     if (ids.has(u.id)) p.push(`id 중복: ${u.id}`);
     ids.add(u.id);
+    if (!UNIT_ID.test(u.id)) p.push(`id '${u.id}'는 영문·숫자·_ . -만 쓸 수 있습니다(예: 1-1, E1)`);
+    if (u.문항 !== undefined && !Number.isInteger(u.문항)) p.push(`${u.id}: 문항 번호가 숫자가 아닙니다`);
   }
-  for (const u of Array.isArray(o.정량) ? o.정량 : []) if (typeof u?.정답 !== 'string') p.push(`${u?.id}: 정답이 없습니다`);
+  const strList = (v: unknown) => Array.isArray(v) && v.every(x => typeof x === 'string');
+  for (const u of Array.isArray(o.정량) ? o.정량 : []) {
+    if (typeof u?.정답 !== 'string') p.push(`${u?.id}: 정답이 없습니다`);
+    if (u?.허용 !== undefined && !strList(u.허용)) p.push(`${u?.id}: 허용은 글자 목록이어야 합니다`);
+    if (u?.핵심 !== undefined && !strList(u.핵심)) p.push(`${u?.id}: 핵심은 글자 목록이어야 합니다`);
+  }
   if (o.채점규칙 !== undefined) {
     if (typeof o.채점규칙 !== 'object' || o.채점규칙 === null || Array.isArray(o.채점규칙)) p.push('채점규칙은 객체여야 합니다');
     else for (const [k, v] of Object.entries(o.채점규칙)) if (!RULE_VALUES[k]?.includes(v as string)) p.push(`채점규칙.${k} 값이 잘못됨 (${String(v)})`);

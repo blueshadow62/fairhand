@@ -75,13 +75,16 @@ function readCfb(buf: Buffer): { entries: Entry[]; stream(e: Entry): Buffer } {
 
 /** 이름으로 항목 찾기: 루트 아래 storage(BodyText)와 그 안 stream(Section0) */
 function find(entries: Entry[], parent: Entry, name: string): Entry | undefined {
-  const seen = new Set<number>();
-  const walk = (i: number): Entry | undefined => {
-    if (i < 0 || i >= entries.length || seen.has(i)) return undefined; seen.add(i);
+  // 재귀 대신 반복: 왼쪽 포인터로만 길게 이어진(조작된) 디렉터리에서 스택이 넘치지 않게. 방문 순서는 왼쪽 먼저
+  const seen = new Set<number>(); const stack = [parent.child];
+  while (stack.length) {
+    const i = stack.pop()!;
+    if (i < 0 || i >= entries.length || seen.has(i)) continue; seen.add(i);
     const e = entries[i]!;
-    return e.name === name ? e : (walk(e.left) ?? walk(e.right));
-  };
-  return walk(parent.child);
+    if (e.name === name) return e;
+    stack.push(e.right, e.left);
+  }
+  return undefined;
 }
 
 // ── HWP 레코드 ──
@@ -124,6 +127,7 @@ export function extractHwpText(buf: Buffer): string {
   const header = find(entries, root, 'FileHeader');
   if (!header) throw new DataError('hwp 파일에 FileHeader가 없습니다');
   const hb = stream(header);
+  if (hb.length < 40) throw new DataError('hwp FileHeader가 너무 짧습니다(깨진 파일)');
   if (!hb.subarray(0, 17).toString('latin1').startsWith('HWP Document File')) throw new DataError('hwp 5.0 형식이 아닙니다(아주 옛 버전은 한글에서 다시 저장해 주세요)');
   const flags = hb.readUInt32LE(36);
   const compressed = (flags & 1) !== 0;

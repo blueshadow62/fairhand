@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseKey } from '../core/key.js';
-import { listPages } from '../core/setio.js';
+import { listPages, pageImageName } from '../core/setio.js';
 import { DataError } from '../core/types.js';
 import type { SetInfo } from '../shared/ipc.js';
 
@@ -34,7 +34,7 @@ export async function nextPageNumber(setDir: string): Promise<number> {
   return pages.length ? Math.max(...pages) + 1 : 1;
 }
 
-export const pageFile = (setDir: string, page: number): string => path.join(setDir, 'pages', `p${String(page).padStart(2, '0')}.jpg`);
+export const pageFile = (setDir: string, page: number): string => path.join(setDir, 'pages', pageImageName(page));
 
 export function uniqueFolderName(semesterDir: string, base: string, exists: (p: string) => boolean): string {
   let name = base;

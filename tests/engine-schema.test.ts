@@ -39,8 +39,8 @@ test('systemPrompt·userText: 규칙·정답표·쪽 번호가 들어간다', as
 test('transcriptSchema: 속성 이름은 영문·숫자만(구조화 출력 제한), 한글 id는 거절', () => {
   const text = JSON.stringify(transcriptSchema(key));
   for (const k of text.matchAll(/"properties":\{([^}]*?)\}/g)) for (const name of k[1]!.matchAll(/"([^"]+)":\{/g)) assert.match(name[1]!, /^[a-zA-Z0-9_.-]{1,64}$/);
-  const bad = { ...key, 정량: [{ ...key.정량[0]!, id: '문항1' }] };
-  assert.throws(() => transcriptSchema(bad), /문항1/);
+  // 한글 id는 정답표를 읽을 때(keyProblems) 거절돼 스키마까지 오지 않는다
+  assert.throws(() => parseKey(JSON.stringify({ ...key, 정량: [{ ...key.정량[0]!, id: '문항1' }] })), /문항1/);
 });
 
 test('fromModelOutput: 영문 키 출력을 한글 전사 양식으로', () => {

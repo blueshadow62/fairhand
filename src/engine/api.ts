@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { EngineError, requestImages, transcribeRequest, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 
-export const MODEL = 'claude-opus-5-5';
+import { MODEL } from './provider.js';
+export { MODEL };
 type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export interface ApiClientLike { beta: { messages: { create(params: CreateParams, options?: { signal?: AbortSignal }): Promise<any> } } }
 

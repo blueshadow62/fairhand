@@ -101,4 +101,14 @@ test('uploads: 기록이 없으면 빈 배열, 더하면 이어진다', async ()
   assert.equal(all.length, 2); assert.equal(all[1].이름, 'b.pdf');
   writeFileSync(path.join(d, '올린파일.json'), '{깨짐', 'utf-8');
   assert.deepEqual(await loadUploads(d), []); // 깨진 기록은 빈 것으로(올리기를 막지 않는다)
+  await appendUpload(d, r);
+  assert.equal(readFileSync(path.join(d, '올린파일.json.깨짐'), 'utf-8'), '{깨짐'); // 덮어쓰지 않고 옆으로
+  assert.equal((await loadUploads(d)).length, 1);
+});
+
+test('listPages: 프로그램이 쓰는 이름(p01, p100)만 인식하고 p1.jpg·P01.JPG는 무시', async () => {
+  const d = sample();
+  mkdirSync(path.join(d, 'pages'), { recursive: true });
+  for (const n of ['p01.jpg', 'p100.jpg', 'p1.jpg', 'P02.JPG', 'p03.jpeg']) writeFileSync(path.join(d, 'pages', n), 'x');
+  assert.deepEqual(await listPages(d), [1, 100]);
 });

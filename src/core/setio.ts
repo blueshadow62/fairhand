@@ -2,12 +2,14 @@ import { readdir, readFile, writeFile, rename, mkdir, rm } from 'node:fs/promise
 import path from 'node:path';
 import { parseKey } from './key.js';
 import { parseTranscript } from './transcript.js';
-import { DataError, type AnswerKey, type Transcript, type UploadRecord } from './types.js';
+import { DataError, pageTag, type AnswerKey, type Transcript, type UploadRecord } from './types.js';
 
-export const transcriptFileName = (page: number): string => `p${String(page).padStart(2, '0')}.json`;
+export const transcriptFileName = (page: number): string => `${pageTag(page)}.json`;
+export const pageImageName = (page: number): string => `${pageTag(page)}.jpg`;
 
+/** 프로그램이 쓰는 꼴(p01, p100…)만 인식한다. p1.jpg처럼 손으로 넣은 파일은 목록에 보이는데 전사 때 못 찾는 일이 없게 */
 const pageNo = (name: string): number | null => {
-  const m = /^p(\d+)\.(json|jpg)$/i.exec(name);
+  const m = /^p(\d{2,})\.(json|jpg)$/.exec(name);
   return m ? Number(m[1]) : null;
 };
 
@@ -42,24 +44,26 @@ export async function checkAllTranscribed(dir: string): Promise<void> {
   const done = new Set((await numbered(path.join(dir, 'transcripts'), 'json')).map(x => x.page));
   if (done.size === 0) throw new DataError('전사 파일이 하나도 없음');
   const missing = (await listPages(dir)).filter(p => !done.has(p));
-  if (missing.length) throw new DataError(`전사 없는 장: ${missing.map(p => `p${String(p).padStart(2, '0')}`).join(', ')}`);
+  if (missing.length) throw new DataError(`전사 없는 장: ${missing.map(pageTag).join(', ')}`);
 }
 
-/** 쓰다가 끊겨도 전사가 깨지지 않도록 임시 파일에 쓴 뒤 바꿔치기한다 */
-export async function saveTranscript(dir: string, t: Transcript): Promise<void> {
-  const tdir = path.join(dir, 'transcripts');
-  await mkdir(tdir, { recursive: true });
-  const { 이름확신: _legacy, ...clean } = t as Transcript & { 이름확신?: unknown };
-  const target = path.join(tdir, transcriptFileName(t.page));
-  const tmp = `${target}.tmp`;
-  await writeFile(tmp, JSON.stringify(clean, null, 1), 'utf-8');
+/** 쓰다가 끊겨도 깨지지 않도록 임시 파일에 쓴 뒤 바꿔치기한다. 다른 프로그램이 잡고 있으면 사람 말로 */
+export async function writeJsonAtomic(dir: string, name: string, data: unknown): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  const target = path.join(dir, name), tmp = `${target}.tmp`;
+  await writeFile(tmp, JSON.stringify(data, null, 1), 'utf-8');
   try { await rename(tmp, target); }
   catch (e) {
     await rm(tmp, { force: true }).catch(() => undefined);
     const code = (e as NodeJS.ErrnoException).code;
-    if (code === 'EPERM' || code === 'EBUSY') throw new DataError(`${transcriptFileName(t.page)}이 다른 프로그램에서 열려 있어 저장할 수 없습니다`);
+    if (code === 'EPERM' || code === 'EBUSY') throw new DataError(`${name}이 다른 프로그램에서 열려 있어 저장할 수 없습니다`);
     throw e;
   }
+}
+
+export async function saveTranscript(dir: string, t: Transcript): Promise<void> {
+  const { 이름확신: _legacy, ...clean } = t as Transcript & { 이름확신?: unknown };
+  await writeJsonAtomic(path.join(dir, 'transcripts'), transcriptFileName(t.page), clean);
 }
 
 const uploadsFile = (dir: string): string => path.join(dir, '올린파일.json');
@@ -67,15 +71,21 @@ export async function loadUploads(dir: string): Promise<UploadRecord[]> {
   try { const v: unknown = JSON.parse(await readFile(uploadsFile(dir), 'utf-8')); return Array.isArray(v) ? (v as UploadRecord[]) : []; } catch { return []; }
 }
 export async function appendUpload(dir: string, r: UploadRecord): Promise<void> {
-  const all = await loadUploads(dir); all.push(r);
-  await writeFile(uploadsFile(dir), JSON.stringify(all, null, 1), 'utf-8');
+  let all: UploadRecord[] = [];
+  try {
+    const text = await readFile(uploadsFile(dir), 'utf-8');
+    try { const v: unknown = JSON.parse(text); all = Array.isArray(v) ? (v as UploadRecord[]) : []; }
+    catch { await rename(uploadsFile(dir), `${uploadsFile(dir)}.깨짐`); } // 깨진 기록은 덮어쓰지 않고 옆으로 치운다
+  } catch { /* 파일 없음 */ }
+  all.push(r);
+  await writeJsonAtomic(dir, '올린파일.json', all);
 }
 
 /** 장 그림과 그 장의 전사를 지운다. 번호는 다시 매기지 않는다(뒤 장을 당기면 다른 장의 전사가 어긋난다) */
 export async function removePage(dir: string, page: number): Promise<{ 전사있었음: boolean }> {
   if (!Number.isInteger(page) || page < 1) throw new DataError(`잘못된 장 번호: ${page}`);
-  const tag = `p${String(page).padStart(2, '0')}`;
-  try { await rm(path.join(dir, 'pages', `${tag}.jpg`)); }
+  const tag = pageTag(page);
+  try { await rm(path.join(dir, 'pages', pageImageName(page))); }
   catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new DataError(`${tag} 그림이 없습니다`); throw e; }
   try { await rm(path.join(dir, 'transcripts', transcriptFileName(page))); return { 전사있었음: true }; }
   catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { 전사있었음: false }; throw e; }

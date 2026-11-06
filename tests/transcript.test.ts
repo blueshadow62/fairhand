@@ -47,3 +47,12 @@ test('findDuplicates: 같은 학생 두 장은 멈추지 않고 쪽 목록으로
   validateTranscripts(key, [a, b]);
   assert.deepEqual([...findDuplicates(key, [a, b, load('p02.json')])], [['3-1-1', [1, 7]]]);
 });
+
+test('parseTranscript·validateTranscripts: page는 1 이상 정수, 답은 글자여야 한다', () => {
+  const key = parseKey(readFileSync(new URL('정답표.json', FX), 'utf-8'));
+  const base = { 학년: 3, 반: 1, 번호: 1, 이름: null, 식별확신: '확실', 정량: {}, 정성: {}, 비고: [] };
+  for (const page of [1.5, 0, -1, 'NaN']) assert.throws(() => parseTranscript(JSON.stringify({ ...base, page }), 'x'), (e: unknown) => e instanceof DataError && /page/.test(e.message));
+  const t = parseTranscript(JSON.stringify({ ...base, page: 7 }), 'x');
+  assert.throws(() => validateTranscripts(key, [{ ...t, 정량: { '1-1': { 답: null as unknown as string, 판정: 'X' } } }]), (e: unknown) => e instanceof DataError && /답은 글자/.test(e.message));
+  assert.throws(() => validateTranscripts(key, [{ ...t, 정성: { E1: { 응답: true, 답: 3 as unknown as string } } }]), (e: unknown) => e instanceof DataError && /답은 글자/.test(e.message));
+});

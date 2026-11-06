@@ -41,7 +41,13 @@ export function zipRead(buf: Buffer, e: ZipEntry, budget = MAX_ENTRY): Buffer {
   if (end > buf.length) throw new DataError('zip 항목이 파일 밖까지 이어집니다');
   const data = buf.subarray(start, end);
   if (e.method === 0) return Buffer.from(data);
-  if (e.method === 8) return inflateRawSync(data, { maxOutputLength: budget }); // 목록의 크기를 속여도 여기서 막힌다
+  if (e.method === 8) {
+    try { return inflateRawSync(data, { maxOutputLength: budget }); } // 목록의 크기를 속여도 여기서 막힌다
+    catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      throw new DataError(code === 'ERR_BUFFER_TOO_LARGE' ? `zip 항목 ${e.name}을 푼 크기가 너무 큽니다` : `zip 항목 ${e.name}이 깨져 풀지 못했습니다`);
+    }
+  }
   throw new DataError(`zip 압축 방식 ${e.method}은 지원하지 않습니다`);
 }
 
@@ -127,9 +133,10 @@ export function decodeText(buf: Buffer): string {
 export function extractText(name: string, buf: Buffer): string {
   const ext = (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? '').toLowerCase();
   if (ext === 'txt' || ext === 'md') return decodeText(buf);
-  if (ext === 'hwpx') return extractHwpxText(buf);
-  if (ext === 'hwp') { try { return extractHwpText(buf); } catch (e) { throw new DataError(`${name}: ${(e as Error).message}`); } }
-  if (ext === 'docx') return extractDocxText(buf);
+  const named = (fn: () => string): string => { try { return fn(); } catch (e) { throw new DataError(`${name}: ${(e as Error).message}`); } }; // 어떤 오류든 파일 이름과 함께 사람 말로
+  if (ext === 'hwpx') return named(() => extractHwpxText(buf));
+  if (ext === 'hwp') return named(() => extractHwpText(buf));
+  if (ext === 'docx') return named(() => extractDocxText(buf));
   if (ext === 'doc') throw new DataError(`${name}: doc(옛 Word 형식)는 읽지 못합니다. Word에서 docx나 pdf로 저장해 주세요`);
   throw new DataError(`${name}: 글을 뽑을 수 없는 형식입니다(txt, hwp, hwpx, docx 가능. pdf와 그림은 그림으로 보냅니다)`);
 }
