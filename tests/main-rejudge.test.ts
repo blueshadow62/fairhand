@@ -63,7 +63,7 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
     const gate = new Promise<void>(r => { release = r; });
     const fake: TranscribeProvider = {
       id: 'api',
-      async complete(req: StructuredRequest): Promise<RawResult> { await gate; void req; return { output: { quant: { '1-1': { verdict: 'X' }, '3-1': { verdict: 'X' } } }, model: 'f' }; },
+      async complete(req: StructuredRequest): Promise<RawResult> { await gate; void req; return { output: { quant: { '1-1': { verdict: 'X' }, '3-1': { verdict: 'O' } } }, model: 'f' }; },
       async transcribe(): Promise<RawResult> { throw new Error('쓰지 않음'); },
     };
     (bridge as any).provider = async () => fake;
@@ -72,10 +72,11 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
     await assert.rejects(bridge.startRun(set, {}, () => undefined), /이미 실행 중/);
     release();
     const r = await running;
-    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 2]);
+    assert.deepEqual(r.바뀐장.map(c => c.page), [1]); // p02는 1-1뿐이고 '가나'는 정답과 글자가 같아 모델 X를 무시한다
     assert.deepEqual(seen, [1, 2]);
-    assert.equal(await verdict(set, 2, '1-1'), 'X');
-    assert.ok((await loadSet(set)).transcripts.find(t => t.page === 2)!.비고.includes('모델 재판정: 1-1 O→X'));
+    assert.equal(await verdict(set, 1, '3-1'), 'O'); // '열심히'는 글자로 못 정하니 모델 판정대로
+    assert.equal(await verdict(set, 2, '1-1'), 'O');
+    assert.ok((await loadSet(set)).transcripts.find(t => t.page === 1)!.비고.includes('모델 재판정: 3-1 X→O'));
     assert.equal(bridge.running(), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

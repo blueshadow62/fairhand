@@ -16,7 +16,10 @@ function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boo
 
 /** 설정 경로 → 사용자 .local\bin\claude.exe(공식 설치 프로그램 위치) → PATH의 claude.exe → PATH의 claude.cmd(npm, node로 cli.js를 직접 실행) */
 export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string): ClaudeProgram | null {
-  if (configuredPath) return exists(configuredPath) ? { command: configuredPath, prefixArgs: [] } : null; // 적어 둔 경로가 틀리면 조용히 다른 것을 쓰지 않는다
+  if (configuredPath) { // 적어 둔 경로가 틀리면 조용히 다른 것을 쓰지 않는다
+    if (!exists(configuredPath)) return null;
+    return /\.cmd$/i.test(configuredPath) ? fromCmd(configuredPath, env, exists) : { command: configuredPath, prefixArgs: [] };
+  }
   const configured = env.GEULNUN_CLAUDE_PATH;
   if (configured && exists(configured)) return { command: configured, prefixArgs: [] };
   const home = env.USERPROFILE ?? env.HOME ?? '';
@@ -25,13 +28,14 @@ export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: s
   const exe = onPath('claude.exe', env, exists);
   if (exe) return { command: exe, prefixArgs: [] };
   const cmd = onPath('claude.cmd', env, exists);
-  if (cmd) {
-    // .cmd는 셸이 있어야 돌아가므로(인수에 JSON 스키마가 들어가 셸 인용이 위험) node로 cli.js를 직접 실행한다
-    const cli = path.join(path.dirname(cmd), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-    const node = onPath('node.exe', env, exists);
-    if (exists(cli) && node) return { command: node, prefixArgs: [cli] };
-  }
-  return null;
+  return cmd ? fromCmd(cmd, env, exists) : null;
+}
+
+/** .cmd는 셸이 있어야 돌아가므로(인수에 JSON 스키마가 들어가 셸 인용이 위험하고, 셸 없이 spawn하면 EINVAL) node로 cli.js를 직접 실행한다 */
+function fromCmd(cmd: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): ClaudeProgram | null {
+  const cli = path.join(path.dirname(cmd), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  const node = onPath('node.exe', env, exists);
+  return exists(cli) && node ? { command: node, prefixArgs: [cli] } : null;
 }
 
 export function compareVersion(a: string, b: string): number {

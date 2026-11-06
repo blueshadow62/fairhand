@@ -37,3 +37,17 @@ test('judgePage: 판정만 바꾸고 답은 그대로, 빈 답은 빈칸 유지,
   const again = await judgePage(p, key, await loadRules(), r.transcript, new AbortController().signal);
   assert.deepEqual(again.transcript.비고, ['기존', '모델 재판정: 1-1 X→O']); // 바뀜 없으면 비고 그대로
 });
+
+test('judgePage: 선생님 사례와 정답 글자 일치는 모델 판정보다 우선한다', async () => {
+  const p: StructuredProvider = { id: 'api', async complete(): Promise<RawResult> { return { output: { quant: { '1-1': { verdict: 'O' }, '3-1': { verdict: 'X' } } }, model: 'm' }; } };
+  const withCase = { ...key, 사례: [{ 단위: '1-1', 답: '은영이', 판정: 'X' as const, 일시: '2026-11-06', 출처: '검토' }] };
+  const r = await judgePage(p, withCase, await loadRules(), t, new AbortController().signal);
+  assert.equal(r.transcript.정량['1-1']!.판정, 'X'); // 모델은 O라 했지만 사례 X가 남는다
+  assert.deepEqual(r.changes, []);
+  const exact: Transcript = { ...t, 정량: { ...t.정량, '1-1': { 답: '가나', 판정: 'X' } } }; // 픽스처 정답표의 1-1 정답은 '가나'
+  const p2: StructuredProvider = { id: 'api', async complete(): Promise<RawResult> { return { output: { quant: { '1-1': { verdict: 'X' }, '3-1': { verdict: 'X' } } }, model: 'm' }; } };
+  const r2 = await judgePage(p2, key, await loadRules(), exact, new AbortController().signal);
+  assert.equal(r2.transcript.정량['1-1']!.판정, 'O'); // 정답과 글자가 같으면 모델이 X라 해도 O
+  assert.deepEqual(r2.changes.map(c => [c.단위, c.이후, c.근거]), [['1-1', 'O', '정답']]);
+  assert.ok(r2.transcript.비고.includes('모델 재판정: 1-1 X→O (정답)'));
+});

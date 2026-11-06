@@ -10,7 +10,8 @@ export function findCase(key: AnswerKey, 단위: string, 답: string): Case | un
 
 export interface Change { 단위: string; 이전: Panjeong; 이후: Panjeong; 근거: '사례' | '정답' | '허용' | '빈칸' | '모델' }
 
-function decide(key: AnswerKey, 단위: string, 답: string): { 판정: Panjeong; 근거: Change['근거'] } | null {
+/** 글자로 결정되는 판정(빈칸·사례·정답·허용). 뜻으로 볼 일이면 null */
+export function decide(key: AnswerKey, 단위: string, 답: string): { 판정: Panjeong; 근거: Change['근거'] } | null {
   const n = normalizeAnswer(답);
   if (!n) return { 판정: '빈칸', 근거: '빈칸' };
   const c = findCase(key, 단위, 답);

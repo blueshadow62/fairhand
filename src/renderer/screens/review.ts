@@ -61,7 +61,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(top); clear(notice);
     if (!폴더) { data = null; T = null; notice.append(el('div', { class: 'muted' }, t('common.chooseSet'))); grid.classList.add('hidden'); return; }
     grid.classList.remove('hidden');
-    try { data = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
+    let d: SetData;
+    try { d = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
+    if (shownFor !== 폴더) return; // 기다리는 사이 다른 세트로 바뀌었으면 늦게 온 응답은 버린다
+    data = d;
     put(top, el('h2', {}, t('review.title', { name: 폴더 })),
       el('button', { onclick: () => guard(async () => { const r = await api.buildResult(폴더); showInfo(t('review.excelRebuilt', { path: r.엑셀 })); }) }, t('review.rebuildExcel')),
       el('button', { onclick: () => guard(async () => {
@@ -158,8 +161,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       dirty ? el('span', { class: 'band warn' }, t('review.unsaved')) : null));
   }
 
+  let saving = false; // Ctrl+S 연타·버튼 연타로 저장과 엑셀 생성이 두 벌 도는 것을 막는다
   async function save(): Promise<void> {
-    if (!T || !data) return;
+    if (!T || !data || saving) return;
+    saving = true;
     const tr = T, 폴더 = data.폴더;
     // 판정이 O·X로 바뀐 단위(답이 있을 때만)는 사례 후보. 빈칸으로 바꾼 것은 사례로 남기지 않는다
     const before = data.transcripts.find(x => x.page === tr.page);
@@ -168,12 +173,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       let r = await api.saveTranscript(폴더, tr);
       dirty = false;
       const others = new Map<number, string[]>();
+      let caseError: string | null = null; // 전사는 이미 저장됐으니 사례 기록이 실패해도 화면은 저장된 상태로 다시 읽는다
       if (recordCases) for (const c of cases) {
-        const res = await api.applyCase(폴더, { 단위: c.단위, 답: c.v!.답, 판정: c.v!.판정 as 'O' | 'X', page: tr.page });
-        for (const b of res.바뀐장) if (b.page !== tr.page) others.set(b.page, [...(others.get(b.page) ?? []), ...b.변경]);
-        r = res;
+        try {
+          const res = await api.applyCase(폴더, { 단위: c.단위, 답: c.v!.답, 판정: c.v!.판정 as 'O' | 'X', page: tr.page });
+          for (const b of res.바뀐장) if (b.page !== tr.page) others.set(b.page, [...(others.get(b.page) ?? []), ...b.변경]);
+          r = res;
+        } catch (e) { caseError = (e as Error).message; break; }
       }
       await reload(tr.page); // reload가 notice를 비우므로 안내는 그 뒤에
+      if (caseError) showError(caseError);
       if (recordCases && cases.length) {
         const others텍스트 = others.size ? t('review.othersChanged', { list: [...others].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ') }) : t('review.noOthers');
         notice.append(el('div', { class: 'band info' }, t('review.casesRecorded', { n: cases.length, others: others텍스트 })));
@@ -181,6 +190,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       if (r.엑셀오류) notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
       else showInfo(t('review.saved'));
     } catch (e) { showError((e as Error).message); }
+    finally { saving = false; }
   }
 
   /** 명단에서 학생을 고르면 학년·반·번호·이름을 채운다(불명이면 추정으로) */

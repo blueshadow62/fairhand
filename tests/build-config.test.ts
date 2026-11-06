@@ -21,7 +21,7 @@ test('build 절: 이름·아이디·Windows NSIS 사용자별 설치·GitHub 배
 
 test('build 절: 앱이 읽는 파일은 들어가고, 네이티브 부품·개발 파일은 빠진다', () => {
   const f: string[] = b.files;
-  for (const need of ['dist/src/**', 'dist-preload/**', 'src/renderer/**', 'resources/**', 'package.json'])
+  for (const need of ['dist/src/**', 'dist-preload/**', 'src/renderer/**', 'resources/**', 'package.json', 'LICENSE', 'NOTICE'])
     assert.ok(f.includes(need), `files에 ${need}가 없음`);
   for (const no of ['!node_modules/@napi-rs/**', '!**/*.map', '!dist/tests/**', '!dist/scripts/**', '!local/**', '!tests/**', '!docs/**'])
     assert.ok(f.includes(no), `files에 ${no}가 없음`);

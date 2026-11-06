@@ -35,6 +35,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const totalPages = () => included().reduce((n, p) => n + p.src.pageCount, 0);
   let rotation: Rotation = store.state.settings.기본회전;
   let running = false;
+  let saving = false; // 장 저장 중에는 회전·포함 체크·저장 버튼을 잠근다(같은 파일 이중 저장, 각도 섞임 방지)
 
   const body = el('div');
   root.append(el('h2', {}, t('run.title')), el('div', { class: 'band info' }, t('run.notice')), body);
@@ -51,8 +52,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const 폴더 = store.state.current;
     shownFor = 폴더;
     clear(body);
-    if (!폴더) { body.append(el('div', { class: 'muted' }, t('common.chooseSet'))); return; }
-    try { data = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
+    for (const p of picked) p.src.close(); picked = []; fileInput.value = ''; // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다
+    if (!폴더) { data = null; body.append(el('div', { class: 'muted' }, t('common.chooseSet'))); return; }
+    let d: SetData;
+    try { d = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
+    if (shownFor !== 폴더) return; // 기다리는 사이 다른 세트로 바뀌었으면 늦게 온 응답은 버린다
+    data = d;
     renderCounts();
     body.append(el('h3', {}, t('common.set', { name: 폴더 })), countBox,
       el('div', { class: 'card' }, el('h3', {}, t('run.upload')), uploadBox),
@@ -110,7 +115,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!included().length) { showError(t('run.noneSelected')); return; }
     const 폴더 = data.폴더, total = totalPages();
     const made: number[] = [];
-    saveBtn.disabled = true;
+    saving = true; saveBtn.disabled = true;
     try {
       // 파일 순서대로, 파일 안에서는 쪽 순서대로 하나의 번호 흐름으로 이어 붙인다
       let jpegs: ArrayBuffer[] = [], n = 0;
@@ -130,7 +135,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       for (const p of picked) p.src.close(); picked = []; fileInput.value = '';
       await refresh();
     } catch (e) { showError((e as Error).message); }
-    finally { saveBtn.disabled = false; }
+    finally { saving = false; saveBtn.disabled = !included().length; }
   }
   const saveBtn = el('button', { class: 'primary', onclick: () => void savePages() }, t('run.splitSave'));
 
@@ -142,16 +147,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     put(uploadBox,
       el('div', {}, ...picked.map(p => el('div', { class: 'row' },
         p.이전
-          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, onchange: (e: Event) => { p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); void drawPreview(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
+          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); void drawPreview(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
           : el('span', { class: 'muted' }, t('run.fileLine', { name: p.src.name, n: p.src.pageCount })),
         p.이전 ? el('span', { class: 'band warn' }, t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null))),
       el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
-        el('button', { class: r === rotation ? 'primary' : '', onclick: () => { rotation = r; renderUpload(); void drawPreview(); } }, `${r}°`)),
+        el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; rotation = r; renderUpload(); void drawPreview(); } }, `${r}°`)),
         el('span', { class: 'muted' }, t('run.rotationHelp'))),
       preview,
       data.pages.length ? el('div', { class: 'band warn' }, t('run.alreadyPages', { n: data.pages.length, next: tag(next) })) : null,
       el('div', { class: 'row' }, saveBtn));
-    saveBtn.disabled = !included().length;
+    saveBtn.disabled = saving || !included().length;
   }
 
   // ── 저장된 장 미리보기·삭제 ──

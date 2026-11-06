@@ -91,6 +91,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   function openNew(): void {
+    resetDraft();
     폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true;
     store.update({ current: null });
     renderEditor();
@@ -100,6 +101,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     await guard(async () => {
       const d = await api.readSet(name);
       const r = keyToRows(d.key);
+      resetDraft();
       폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; dirty = false; editing = true;
       store.update({ current: name });
       renderEditor();
@@ -140,6 +142,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const chatBtn = el('button', { onclick: () => void sendChat() }, t('key.chatSend'));
   chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); void sendChat(); } });
   const chatHistory: string[] = [];
+  /** 초안 입력(문항지 글·지문·올린 그림·채팅)은 세트마다 따로다. 남겨 두면 다른 세트 자료로 초안을 만든다 */
+  function resetDraft(): void {
+    problemArea.value = ''; sourceArea.value = ''; uploaded.문제.length = 0; uploaded.지문.length = 0;
+    chatHistory.length = 0; clear(chatLog); uploadNotes.textContent = ''; chatInput.value = '';
+  }
   function chatLine(who: 'me' | 'ai', text: string): void { chatLog.append(el('div', { class: `chat-msg ${who}` }, el('b', {}, who === 'me' ? t('key.chatMe') : t('key.chatAi')), ' ', text)); chatLog.scrollTop = chatLog.scrollHeight; }
   async function sendChat(): Promise<void> {
     const 지시 = chatInput.value.trim();

@@ -99,7 +99,13 @@ export function registerIpc(d: IpcDeps): void {
   });
   h(CHANNELS.extractText, async (name: string, data: ArrayBuffer) => (await import('../core/hwpx.js')).extractText(name, Buffer.from(data)));
   h(CHANNELS.tryPage, async (폴더: string, jpeg: ArrayBuffer) => d.bridge.tryPage(await setDir(폴더), Buffer.from(jpeg)));
-  h(CHANNELS.startRun, async (폴더: string, opts: { pages?: number[]; force?: boolean }) => d.bridge.startRun(await setDir(폴더), opts ?? {}, e => d.window()?.webContents.send(CHANNELS.progress, e)));
+  // 렌더러가 보낸 값은 형이 아니라 검사로 믿는다: 쪽 번호는 1 이상 정수만 파일 이름이 된다
+  const pageList = (p: unknown): number[] | undefined => {
+    if (p === undefined || p === null) return undefined;
+    if (!Array.isArray(p) || !p.every(n => Number.isInteger(n) && n >= 1)) throw new DataError('쪽 번호 목록이 잘못되었습니다');
+    return p as number[];
+  };
+  h(CHANNELS.startRun, async (폴더: string, opts: { pages?: unknown; force?: unknown }) => d.bridge.startRun(await setDir(폴더), { pages: pageList(opts?.pages), force: opts?.force === true }, e => d.window()?.webContents.send(CHANNELS.progress, e)));
   h(CHANNELS.cancelRun, async () => d.bridge.cancel());
   h(CHANNELS.addPages, async (폴더: string, jpegs: ArrayBuffer[]) => {
     const dir = await setDir(폴더);
@@ -123,7 +129,7 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.applyCase, async (폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }) => d.bridge.applyCase(await setDir(폴더), c));
   h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
   h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));
-  h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: number[] }) => d.bridge.judgeWithModel(await setDir(폴더), opts?.pages, e => d.window()?.webContents.send(CHANNELS.progress, e)));
+  h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: unknown }) => d.bridge.judgeWithModel(await setDir(폴더), pageList(opts?.pages), e => d.window()?.webContents.send(CHANNELS.progress, e)));
   h(CHANNELS.createSampleSet, async () => ({ 폴더: await copySampleSet(d.sampleDir, await semester()) }));
   h(CHANNELS.makeDefaultSemester, async () => { const p = await makeDefaultSemester(app.getPath('documents')); await d.settings.save({ 학기폴더: p }); return p; });
   h(CHANNELS.updateStatus, async () => d.updater.status());

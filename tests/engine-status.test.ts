@@ -13,6 +13,10 @@ test('locateClaude: 설정 경로 → 사용자 .local\\bin → PATH 순서', ()
   const cmdExists = (p: string) => p === path.join(npm, 'claude.cmd') || p === path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js') || p === 'C:\\nodejs\\node.exe';
   assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: `${npm};C:\\nodejs` }, cmdExists),
     { command: 'C:\\nodejs\\node.exe', prefixArgs: [path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
+  // 설정에서 claude.cmd를 골라도 같은 치환(셸 없는 spawn은 .cmd에 EINVAL)
+  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: 'C:\\nodejs' }, cmdExists, path.join(npm, 'claude.cmd')),
+    { command: 'C:\\nodejs\\node.exe', prefixArgs: [path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
+  assert.equal(locateClaude({ USERPROFILE: home, PATH: '' }, cmdExists, path.join(npm, 'claude.cmd')), null); // node를 못 찾으면 조용히 다른 것을 쓰지 않는다
 });
 
 test('compareVersion', () => {

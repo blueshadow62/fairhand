@@ -1,4 +1,4 @@
-import { normalizeAnswer, type Change } from '../core/rejudge.js';
+import { decide, type Change } from '../core/rejudge.js';
 import type { AnswerKey, Panjeong, Transcript } from '../core/types.js';
 import { EngineError, withRetry, type Effort, type StructuredProvider, type StructuredRequest } from './provider.js';
 import { systemPrompt, type Rules } from './rules.js';
@@ -44,11 +44,12 @@ export async function judgePage(provider: StructuredProvider, key: AnswerKey, ru
   for (const u of key.정량) {
     const v = 정량[u.id];
     if (!v) continue;
-    const next = normalizeAnswer(v.답) ? verdicts[u.id]! : '빈칸'; // 빈 답은 모델과 상관없이 빈칸
-    if (next !== v.판정) { changes.push({ 단위: u.id, 이전: v.판정, 이후: next, 근거: '모델' }); 정량[u.id] = { ...v, 판정: next }; }
+    const d = decide(key, u.id, v.답); // 빈칸·선생님 사례·정답 글자 일치는 모델보다 우선한다(전사 저장 때와 같은 규칙)
+    const next = d ? d.판정 : verdicts[u.id]!;
+    if (next !== v.판정) { changes.push({ 단위: u.id, 이전: v.판정, 이후: next, 근거: d ? d.근거 : '모델' }); 정량[u.id] = { ...v, 판정: next }; }
   }
   const tokens = { inputTokens: raw.inputTokens, outputTokens: raw.outputTokens };
   if (!changes.length) return { transcript: t, changes, ...tokens };
-  const line = `${TAG}: ${changes.map(c => `${c.단위} ${c.이전}→${c.이후}`).join(', ')}`;
+  const line = `${TAG}: ${changes.map(c => `${c.단위} ${c.이전}→${c.이후}${c.근거 === '모델' ? '' : ` (${c.근거})`}`).join(', ')}`;
   return { transcript: { ...t, 정량, 비고: [...t.비고.filter(b => !b.startsWith(`${TAG}:`)), line] }, changes, ...tokens };
 }

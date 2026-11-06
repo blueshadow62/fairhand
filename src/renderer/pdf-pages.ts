@@ -22,7 +22,8 @@ export interface OpenedPdf {
 
 export async function openPdf(file: File): Promise<OpenedPdf> {
   const m = await pdfjs();
-  const doc = await m.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const task = m.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const doc = await task.promise;
   return {
     pageCount: doc.numPages,
     async renderPage(n, { rotation, scale }) {
@@ -38,7 +39,7 @@ export async function openPdf(file: File): Promise<OpenedPdf> {
       page.cleanup();
       return canvas;
     },
-    close() { void doc.destroy(); },
+    close() { void task.destroy(); }, // pdf.js 6: 문서가 아니라 불러오기 작업을 닫는다(워커·메모리 해제)
   };
 }
 

@@ -30,7 +30,7 @@
     "@anthropic-ai/sdk": "^1.5.0",
     "electron-updater": "^6.8.11",
     "exceljs": "^4.4.0",
-    "pdfjs-dist": "^5.7.284"
+    "pdfjs-dist": "^6.5.438"
   },
   "build": {
     "appId": "kr.geulnun.app",
@@ -48,6 +48,8 @@
       "src/renderer/**",
       "resources/**",
       "package.json",
+      "LICENSE",
+      "NOTICE",
       "!**/*.map",
       "!dist/tests/**",
       "!dist/scripts/**",
