@@ -1,13 +1,13 @@
 import type { AnswerKey, Student, Transcript } from '../core/types.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
-/** 전사에 쓸 모델과 노력 단계. 둘 다 low~max를 지원한다(Opus 5.5 기본 medium, Sonnet 5.5 기본 high). 글눈 기본은 Opus 5.5·high */
+/** 전사에 쓸 모델과 노력 단계. 둘 다 low~max를 지원한다(Opus 5.5 기본 medium, Sonnet 5.5 기본 high). 글눈 기본은 Opus 5.5·medium(23장 비교에서 높음과 같은 정확도, 더 빠름) */
 export const MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5'] as const;
 export type ModelId = typeof MODELS[number];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type EffortLevel = typeof EFFORTS[number];
 export const DEFAULT_MODEL: ModelId = 'claude-opus-5-5';
-export const DEFAULT_EFFORT: EffortLevel = 'high';
+export const DEFAULT_EFFORT: EffortLevel = 'medium';
 export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api'; cliPath?: string; configDir?: string; 모델?: ModelId; 노력?: EffortLevel }
 export type Language = 'ko' | 'en';
 export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean }
