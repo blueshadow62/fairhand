@@ -6,9 +6,9 @@ type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export interface ApiClientLike { beta: { messages: { create(params: CreateParams, options?: { signal?: AbortSignal }): Promise<any> } } }
 
 /** SDK 타입으로 만들어 요청 모양(output_config.format, fallbacks)을 컴파일 때 확인한다 */
-export function buildRequest(req: StructuredRequest): CreateParams {
+export function buildRequest(req: StructuredRequest, model: string = MODEL): CreateParams {
   return {
-    model: MODEL,
+    model,
     max_tokens: 16000,
     system: req.system,
     messages: [{ role: 'user', content: [
@@ -35,8 +35,10 @@ export function classifyApiError(e: unknown): EngineError {
 export class ApiProvider implements TranscribeProvider {
   readonly id = 'api' as const;
   private readonly client: ApiClientLike | null;
-  constructor(opts: { apiKey?: string; client?: ApiClientLike }) {
+  readonly model: string;
+  constructor(opts: { apiKey?: string; client?: ApiClientLike; model?: string }) {
     this.client = opts.client ?? (opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : null);
+    this.model = opts.model ?? MODEL;
   }
 
   transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> { return this.complete(transcribeRequest(input), signal); }
@@ -45,13 +47,13 @@ export class ApiProvider implements TranscribeProvider {
     if (!this.client) throw new EngineError('signed-out', 'API 키가 설정되어 있지 않음');
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     let res: any;
-    try { res = await this.client.beta.messages.create(buildRequest(req), { signal }); }
+    try { res = await this.client.beta.messages.create(buildRequest(req, this.model), { signal }); }
     catch (e) { if (signal.aborted) throw new EngineError('cancelled', '중단됨'); throw classifyApiError(e); }
     if (res?.stop_reason === 'refusal') throw new EngineError('refusal', '모델이 거절함');
     const text = (Array.isArray(res?.content) ? res.content : []).find((b: any) => b?.type === 'text')?.text;
     if (typeof text !== 'string') throw new EngineError('invalid-output', '응답에 글 블록이 없음');
     let output: unknown;
     try { output = JSON.parse(text); } catch { throw new EngineError('invalid-output', '응답이 JSON이 아님'); }
-    return { output, inputTokens: res?.usage?.input_tokens, outputTokens: res?.usage?.output_tokens, model: typeof res?.model === 'string' ? res.model : MODEL };
+    return { output, inputTokens: res?.usage?.input_tokens, outputTokens: res?.usage?.output_tokens, model: typeof res?.model === 'string' ? res.model : this.model };
   }
 }

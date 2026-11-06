@@ -44,3 +44,10 @@ test('SettingsStore: 없으면 기본값, 저장은 원자적이고 다시 읽�
     assert.ok((await readFile(path.join(dir, 'settings.json'), 'utf-8')).includes('"학기폴더"'));
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('parseSettings: 프로필의 모델·노력은 허용 값만 남는다', () => {
+  const s = parseSettings({ 프로필: [{ id: 'a', 이름: 'A', 종류: 'cli', 모델: 'claude-sonnet-5-5', 노력: 'low' }, { id: 'b', 이름: 'B', 종류: 'api', 모델: 'gpt', 노력: '최대' }] });
+  const a = s.프로필.find(p => p.id === 'a')!, b = s.프로필.find(p => p.id === 'b')!;
+  assert.equal(a.모델, 'claude-sonnet-5-5'); assert.equal(a.노력, 'low');
+  assert.equal(b.모델, undefined); assert.equal(b.노력, undefined);
+});

@@ -108,3 +108,9 @@ test('userLine: 그림 여러 장은 순서대로 image 블록', () => {
   assert.deepEqual(u.message.content.map((c: any) => c.type), ['image', 'image', 'text']);
   assert.equal(u.message.content[1].source.data, 'B');
 });
+
+test('launchArgs: 모델을 바꿀 수 있고 기본은 Opus 5.5', () => {
+  const a = launchArgs({ type: 'object' }, 'low', 'claude-sonnet-5-5');
+  assert.equal(a[a.indexOf('--model') + 1], 'claude-sonnet-5-5'); assert.equal(a[a.indexOf('--effort') + 1], 'low');
+  assert.equal(launchArgs({ type: 'object' }, 'high')[launchArgs({ type: 'object' }, 'high').indexOf('--model') + 1], 'claude-opus-5-5');
+});

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DataError } from '../core/types.js';
-import type { Profile, Rotation, Settings } from '../shared/ipc.js';
+import { EFFORTS, MODELS, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings } from '../shared/ipc.js';
 
 export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
@@ -20,6 +20,8 @@ function parseProfile(v: unknown): Profile | null {
   const cliPath = optStr(v.cliPath), configDir = optStr(v.configDir);
   if (p.종류 === 'cli' && cliPath) p.cliPath = cliPath;
   if (p.종류 === 'cli' && configDir) p.configDir = configDir;
+  if ((MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as ModelId;
+  if ((EFFORTS as readonly string[]).includes(v.노력 as string)) p.노력 = v.노력 as EffortLevel;
   return p;
 }
 

@@ -8,7 +8,7 @@ import { EngineError, requestImages, transcribeRequest, type RawResult, type Str
 import { childEnv } from './env.js';
 import { locateClaude, type ClaudeProgram } from './status.js';
 
-export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void; env?: NodeJS.ProcessEnv }
+export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void; model?: string; env?: NodeJS.ProcessEnv }
 
 export function killProcessTree(pid: number): void {
   if (process.platform === 'win32') execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => undefined);
@@ -24,7 +24,9 @@ export class CliProvider implements TranscribeProvider {
   private readonly timeoutMs: number;
   private readonly killTree: (pid: number) => void;
   private readonly env: NodeJS.ProcessEnv;
+  readonly model: string;
   constructor(deps: CliDeps = {}) {
+    this.model = deps.model ?? MODEL;
     this.program = deps.program === undefined ? locateClaude() : deps.program;
     this.spawn = deps.spawn ?? nodeSpawn;
     this.timeoutMs = deps.timeoutMs ?? 300_000;
@@ -38,7 +40,7 @@ export class CliProvider implements TranscribeProvider {
     if (!this.program) throw new EngineError('not-installed', 'Claude Code를 찾을 수 없음');
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     const program = this.program;
-    const args = [...program.prefixArgs, ...launchArgs(req.schema, req.effort)];
+    const args = [...program.prefixArgs, ...launchArgs(req.schema, req.effort, this.model)];
     const cwd = await mkdtemp(path.join(tmpdir(), 'geulnun-cli-')); // 다른 폴더의 CLAUDE.md·설정이 끼어들지 않게 빈 폴더에서
     const turn = new CliTurn(userLine(requestImages(req), req.user));
     try {
@@ -64,7 +66,7 @@ export class CliProvider implements TranscribeProvider {
         const timer = setTimeout(() => finish(new EngineError('timeout', `${this.timeoutMs / 1000}초 안에 답하지 않음`)), this.timeoutMs);
         const act = (o: ReturnType<CliTurn['onLine']>) => {
           if (o.type === 'write') { if (child.stdin?.writable) child.stdin.write(o.line); }
-          else if (o.type === 'done') finish(undefined, { output: o.output, inputTokens: o.usage?.input, outputTokens: o.usage?.output, model: MODEL });
+          else if (o.type === 'done') finish(undefined, { output: o.output, inputTokens: o.usage?.input, outputTokens: o.usage?.output, model: this.model });
           else if (o.type === 'fail') finish(o.error);
         };
         child.on('error', (e: NodeJS.ErrnoException) => finish(new EngineError(e.code === 'ENOENT' ? 'not-installed' : 'other', `Claude Code 실행 실패: ${e.message}`)));

@@ -1,4 +1,4 @@
-import type { CliStatusView, Language, Profile, Rotation, SecretView, UpdateStatus } from '../../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, MODELS, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type UpdateStatus } from '../../shared/ipc.js';
 import { reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
@@ -101,16 +101,27 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         if (!confirm(t('settings.deleteProfileConfirm', { name: p.이름 }))) return;
         profiles = profiles.filter(x => x.id !== p.id); if (사용중 === p.id) 사용중 = DEFAULT_ID; dirty = true; renderProfiles();
       } }, t('common.delete'))), status);
+    // 모델·노력: 프로필마다 고른다(전사·초안·재판정에 같이 쓰임)
+    const modelSel = el('select', { onchange: () => { p.모델 = modelSel.value as ModelId; dirty = true; } },
+      ...MODELS.map(m => el('option', { value: m, selected: (p.모델 ?? DEFAULT_MODEL) === m }, m === 'claude-opus-5-5' ? t('settings.model.opus') : t('settings.model.sonnet'))));
+    const effortSel = el('select', { onchange: () => { p.노력 = effortSel.value as EffortLevel; dirty = true; } },
+      ...EFFORTS.map(e => el('option', { value: e, selected: (p.노력 ?? DEFAULT_EFFORT) === e }, t(`settings.effort.${e}` as Parameters<typeof t>[0]))));
+    card.append(el('div', { class: 'row' }, t('settings.model'), modelSel, t('settings.effort'), effortSel), el('div', { class: 'muted' }, t('settings.modelHelp')));
 
     if (p.종류 === 'cli') {
+      const autoFound = el('span', { class: 'muted' }, t('settings.autoFind'));
       const check = () => guard(async () => {
         if (dirty) await persist(); // 메인은 저장된 프로필로 점검한다
         status.textContent = t('settings.checking');
-        try { status.textContent = cliStatusText(await api.cliStatus(p.id)); } catch (e) { status.textContent = (e as Error).message; }
+        try {
+          const s = await api.cliStatus(p.id);
+          status.textContent = cliStatusText(s);
+          if (!p.cliPath) autoFound.textContent = s.command ? t('settings.autoFound', { path: s.command }) : t('settings.autoFind');
+        } catch (e) { status.textContent = (e as Error).message; }
       });
       card.append(
         el('div', { class: 'band info' }, t('settings.cli.howto')),
-        el('div', { class: 'row' }, t('settings.cliFile'), p.cliPath ? el('span', { class: 'path' }, p.cliPath) : el('span', { class: 'muted' }, t('settings.autoFind')),
+        el('div', { class: 'row' }, t('settings.cliFile'), p.cliPath ? el('span', { class: 'path' }, p.cliPath) : autoFound,
           el('button', { onclick: () => guard(async () => { const f = await api.pickFile('exe'); if (!f) return; p.cliPath = f; dirty = true; renderProfiles(); }) }, t('settings.pickCliFile')),
           el('button', { disabled: !p.cliPath, onclick: () => { delete p.cliPath; dirty = true; renderProfiles(); } }, t('settings.toAutoFind'))),
         el('div', { class: 'row' }, t('settings.configDir'), p.configDir ? el('span', { class: 'path' }, p.configDir) : el('span', { class: 'muted' }, t('settings.defaultDir')),

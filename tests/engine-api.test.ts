@@ -68,3 +68,8 @@ test('buildRequest: images[]가 모두 image 블록으로', () => {
   const r = buildRequest({ system: 'S', user: 'U', images: ['A', 'B'], schema: { type: 'object' }, effort: 'high' });
   assert.deepEqual((r.messages[0]!.content as any[]).map(c => c.type), ['image', 'image', 'text']);
 });
+
+test('buildRequest: 모델 인수가 요청의 model이 된다', () => {
+  assert.equal(buildRequest({ system: 'S', user: 'U', schema: { type: 'object' }, effort: 'medium' }, 'claude-sonnet-5-5').model, 'claude-sonnet-5-5');
+  assert.equal(buildRequest({ system: 'S', user: 'U', schema: { type: 'object' }, effort: 'medium' }).model, 'claude-opus-5-5');
+});

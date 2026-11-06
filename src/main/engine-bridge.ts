@@ -10,11 +10,11 @@ import { CliProvider } from '../engine/cli.js';
 import { childEnv } from '../engine/env.js';
 import { judgePage } from '../engine/judge.js';
 import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
-import { EngineError, userFacingMessage, type TranscribeProvider } from '../engine/provider.js';
+import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } from '../engine/provider.js';
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
-import type { CliStatusView, JudgeResult, KeyDraftResult, Profile, ProgressEvent, RejudgeResult, RunResult } from '../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult } from '../shared/ipc.js';
 import { openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -37,6 +37,9 @@ export class EngineBridge {
   constructor(private readonly deps: BridgeDeps) {}
   private get env() { return this.deps.env ?? process.env; }
 
+  /** 사용 중 프로필의 노력 단계(없으면 high) */
+  async effort(): Promise<Effort> { return (await this.profile()).노력 ?? DEFAULT_EFFORT; }
+
   async profile(id?: string): Promise<Profile> {
     const s = await this.deps.settings.load();
     const p = s.프로필.find(x => x.id === (id ?? s.사용중));
@@ -48,10 +51,10 @@ export class EngineBridge {
 
   async provider(id?: string): Promise<TranscribeProvider> {
     const p = await this.profile(id);
-    if (p.종류 === 'cli') return new CliProvider({ program: locateClaude(this.env, existsSync, p.cliPath), env: this.cliEnv(p) });
+    if (p.종류 === 'cli') return new CliProvider({ program: locateClaude(this.env, existsSync, p.cliPath), env: this.cliEnv(p), model: p.모델 ?? DEFAULT_MODEL });
     const apiKey = await this.deps.secrets.open(p.id);
     if (!apiKey) throw new EngineError('signed-out', `프로필 '${p.이름}'에 API 키가 없습니다. 설정에서 입력해 주세요`);
-    return new ApiProvider({ apiKey });
+    return new ApiProvider({ apiKey, model: p.모델 ?? DEFAULT_MODEL });
   }
 
   async cliStatus(id: string): Promise<CliStatusView> {
@@ -85,13 +88,13 @@ export class EngineBridge {
 
   async draftKey(input: KeyDraftInput): Promise<KeyDraftResult> {
     const ac = new AbortController();
-    return draftKey(await this.provider(), input, ac.signal);
+    return draftKey(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, ac.signal);
   }
 
   async reviseKey(input: KeyReviseInput): Promise<KeyDraftResult> {
     if (!input.지시.trim()) throw new DataError('수정 지시가 비었습니다');
     const ac = new AbortController();
-    return reviseKeyDraft(await this.provider(), input, ac.signal);
+    return reviseKeyDraft(await this.provider(), { ...input, effort: input.effort ?? await this.effort() }, ac.signal);
   }
 
   private async roster(): Promise<Student[] | null> {
@@ -108,7 +111,7 @@ export class EngineBridge {
   async tryPage(setDir: string, jpeg: Buffer): Promise<Transcript> {
     const { key } = await this.confirmedSet(setDir);
     const ac = new AbortController();
-    const r = await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0 }, ac.signal);
+    const r = await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0, effort: await this.effort() }, ac.signal);
     return r.transcript;
   }
 
@@ -165,13 +168,14 @@ export class EngineBridge {
       const todo = transcripts.filter(t => !pages || pages.includes(t.page));
       if (!todo.length) throw new DataError('다시 판정할 전사가 없습니다');
       const provider = await this.provider();
+      const effort = await this.effort();
       const rules = await loadRules();
       const 바뀐장: RejudgeResult['바뀐장'] = [], failed: JudgeResult['failed'] = [];
       let done = 0;
       for (const t of todo) {
         if (ac.signal.aborted) break;
         try {
-          const r = await judgePage(provider, key, rules, t, ac.signal);
+          const r = await judgePage(provider, key, rules, t, ac.signal, effort);
           if (r.changes.length) { await saveTranscript(setDir, r.transcript); 바뀐장.push({ page: t.page, 변경: changeText(r.changes) }); }
           onProgress({ page: t.page, done: ++done, total: todo.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
         } catch (e) {
@@ -196,7 +200,7 @@ export class EngineBridge {
       const { key } = await this.confirmedSet(setDir);
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
-      const r = await transcribeSet(await this.provider(), setDir, key, await loadRules(), pages, ac.signal, { force: opts.force, onProgress });
+      const r = await transcribeSet(await this.provider(), setDir, key, await loadRules(), pages, ac.signal, { force: opts.force, onProgress, effort: await this.effort() });
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }
       catch (e) { result.엑셀오류 = e instanceof Error ? e.message : String(e); }

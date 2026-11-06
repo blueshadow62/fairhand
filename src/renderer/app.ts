@@ -97,7 +97,8 @@ async function start(): Promise<void> {
     const s = store.state.settings;
     const p = s.프로필.find(x => x.id === s.사용중);
     if (!p) { badgeName.textContent = t('app.badge.none'); badgeStatus.textContent = t('app.badge.hint'); return; }
-    badgeName.textContent = `${p.이름} · ${t(p.종류 === 'cli' ? 'app.badge.cli' : 'app.badge.api')}`;
+    const short = (p.모델 ?? 'claude-opus-5-5') === 'claude-sonnet-5-5' ? 'Sonnet 5.5' : 'Opus 5.5';
+    badgeName.textContent = `${p.이름} · ${t(p.종류 === 'cli' ? 'app.badge.cli' : 'app.badge.api')} · ${short}`;
     badgeStatus.textContent = t('home.checking');
     try {
       const text = p.종류 === 'cli' ? settingsScreen.cliStatusText(await api.cliStatus(p.id)) : (await api.secretView(p.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');
