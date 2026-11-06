@@ -1,6 +1,7 @@
 import type { SetInfo, Settings } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { el } from './lib/el.js';
+import { setLanguage, t } from './lib/i18n.js';
 import * as keyScreen from './screens/key.js';
 import * as reviewScreen from './screens/review.js';
 import * as runScreen from './screens/run.js';
@@ -21,6 +22,16 @@ export const store = {
 
 export interface Ctx { store: typeof store; showError(message: string): void; showInfo(message: string): void; goTo(tab: Tab): void; setLeaveGuard(fn: () => Promise<boolean>): void }
 
+/** 언어를 바꾸면 화면을 통째로 다시 그린다. 돌아올 탭을 세션 저장소에 적어 두고 reload */
+const TAB_AFTER_RELOAD = 'geulnun.tabAfterReload';
+export function reloadTo(tab: Tab): void {
+  try { sessionStorage.setItem(TAB_AFTER_RELOAD, tab); } catch { /* 저장 못 하면 기본 탭으로 */ }
+  location.reload();
+}
+function takeTabAfterReload(): Tab | null {
+  try { const v = sessionStorage.getItem(TAB_AFTER_RELOAD); sessionStorage.removeItem(TAB_AFTER_RELOAD); return v as Tab | null; } catch { return null; }
+}
+
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function toast(kind: 'error' | 'info', message: string): void {
   const t = document.getElementById('toast')!;
@@ -31,11 +42,11 @@ function toast(kind: 'error' | 'info', message: string): void {
 const showError = (m: string) => toast('error', m);
 const showInfo = (m: string) => toast('info', m);
 
-const TABS: { id: Tab; 이름: string; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
-  { id: 'key', 이름: '문항 설정', mod: keyScreen },
-  { id: 'run', 이름: '채점 실행', mod: runScreen },
-  { id: 'review', 이름: '검토', mod: reviewScreen },
-  { id: 'settings', 이름: '설정', mod: settingsScreen },
+const TABS: { id: Tab; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
+  { id: 'key', mod: keyScreen },
+  { id: 'run', mod: runScreen },
+  { id: 'review', mod: reviewScreen },
+  { id: 'settings', mod: settingsScreen },
 ];
 
 const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -50,7 +61,8 @@ async function start(): Promise<void> {
   root.append(el('header', { id: 'top' }, el('span', { class: 'brand' }, '글눈'), current), tabs, main, el('div', { id: 'toast', class: 'hidden' }));
 
   store.update({ settings: await api.getSettings() });
-  store.subscribe(s => { current.textContent = s.current ? `세트: ${s.current}` : '세트를 고르지 않음'; });
+  setLanguage(store.state.settings.언어); // 이 뒤의 t()가 모두 이 언어로 나온다
+  store.subscribe(s => { current.textContent = s.current ? t('common.set', { name: s.current }) : t('app.noSet'); });
   store.update({});
 
   const mounted = new Map<Tab, HTMLElement>();
@@ -72,14 +84,15 @@ async function start(): Promise<void> {
       TABS.find(t => t.id === tab)!.mod.mount(node, { ...ctx, setLeaveGuard: fn => guards.set(tab, fn) });
     }
   }
-  for (const t of TABS) { const b = el('button', { onclick: () => goTo(t.id) }, t.이름); buttons.set(t.id, b); tabs.append(b); }
+  for (const tab of TABS) { const b = el('button', { onclick: () => goTo(tab.id) }, t(`app.tab.${tab.id}`)); buttons.set(tab.id, b); tabs.append(b); }
 
+  const back = takeTabAfterReload();
   if (store.state.settings.학기폴더) {
     try { await store.refreshSets(); } catch (e) { showError(errText(e)); }
-    goTo('key');
+    goTo(back ?? 'key');
   } else {
     goTo('settings');
-    showInfo('처음 실행입니다. 학기 폴더를 고르세요.');
+    showInfo(t('app.firstRun'));
   }
 }
 
