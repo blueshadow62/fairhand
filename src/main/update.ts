@@ -8,6 +8,8 @@ export function reduce(prev: UpdateStatus, ev: UpdateEvent): UpdateStatus {
   if (ev.type === 'off') return { kind: 'disabled', reason: 'off' };
   if (ev.type === 'on') return prev.kind === 'disabled' ? { kind: 'idle' } : prev;
   if (prev.kind === 'disabled') return prev;
+  // 받아 둔 새 버전은 사용자가 '다시 시작해 적용'을 누르기 전까지 그대로 둔다(다음 확인이 상태를 덮지 않게)
+  if (prev.kind === 'downloaded' && ev.type !== 'downloaded' && ev.type !== 'error') return prev;
   switch (ev.type) {
     case 'check': return { kind: 'checking' };
     case 'none': return { kind: 'none', version: ev.version };
@@ -68,7 +70,8 @@ export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; 
     if (au) return au;
     const m = await import('electron-updater');
     const u = (m as unknown as { default: { autoUpdater: AU } }).default.autoUpdater; // CommonJS의 getter라 default로 꺼낸다
-    u.autoDownload = true; u.autoInstallOnAppQuit = true; u.logger = null;
+    // 서명이 없어 발행자를 확인할 수 없으므로 받아 두기만 하고, 설치는 사용자가 '다시 시작해 적용'을 누를 때만
+    u.autoDownload = true; u.autoInstallOnAppQuit = false; u.logger = null;
     u.on('checking-for-update', () => set({ type: 'check' }));
     u.on('update-available', i => set({ type: 'available', version: i.version }));
     u.on('update-not-available', i => set({ type: 'none', version: i.version }));

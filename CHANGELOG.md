@@ -53,6 +53,7 @@
 - (5단계) `scripts/make-icon.py`: 계획의 위치 계산은 textbbox의 위쪽 여백을 빼지 않아 글자가 아래로 치우쳐서, 여백까지 빼 가운데에 오게 했다.
 - (5단계) `tests/main-log.test.ts`: 계획의 검사는 `installLog` 뒤에 `console.error`를 검사용 함수로 바꿔 '콘솔로도'가 가로채기를 거치지 않았다. 검사용 함수를 먼저 두고 `installLog`가 그것을 감싸게 순서를 바꿨고, `close()` 뒤 원래 함수로 돌아오는지와 원래 출력이 유지되는지도 본다.
 - (5단계) `startUpdater`가 돌려주는 객체에 `setEnabled(on)`을 더했다(설정에서 자동 확인을 켜고 끌 때 메인이 상태를 바꾸는 데 쓴다). 꺼져 있으면 '지금 확인'도 GitHub에 접속하지 않는다(버튼 비활성).
+- (5단계, 보안 검토) 설치 파일에 서명이 없어 `autoInstallOnAppQuit = false`로 바꿨다. 받아 둔 새 버전은 설정의 '다시 시작해 적용'을 누를 때만 설치되고 종료할 때 조용히 설치되지 않는다. `reduce`는 downloaded 뒤의 확인·none·available에 상태를 바꾸지 않는다. 설정 안내 문구도 바꿨다.
 
 ## 0.1.0 (개발 중)
 - 저장소 뼈대, 핵심 채점 로직 이식(파이썬 → TypeScript).

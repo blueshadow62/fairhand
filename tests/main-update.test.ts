@@ -7,6 +7,8 @@ test('reduce: 확인 → 있음 → 내려받기 → 받음, 오류는 조용한
   s = reduce(s, { type: 'available', version: '0.3.0' }); assert.deepEqual(s, { kind: 'available', version: '0.3.0' });
   s = reduce(s, { type: 'progress', percent: 42.4 }); assert.deepEqual(s, { kind: 'downloading', percent: 42 });
   s = reduce(s, { type: 'downloaded', version: '0.3.0' }); assert.deepEqual(s, { kind: 'downloaded', version: '0.3.0' });
+  for (const ev of [{ type: 'check' }, { type: 'none', version: '0.3.0' }, { type: 'available', version: '0.4.0' }, { type: 'on' }] as const)
+    assert.deepEqual(reduce(s, ev), s, `받은 뒤 ${ev.type}에도 install 전까지 downloaded`);
   assert.deepEqual(reduce({ kind: 'checking' }, { type: 'error', message: 'x' }), { kind: 'error', message: 'x' });
   assert.deepEqual(reduce({ kind: 'idle' }, { type: 'off' }), { kind: 'disabled', reason: 'off' });
   assert.deepEqual(reduce({ kind: 'disabled', reason: 'off' }, { type: 'on' }), { kind: 'idle' });
