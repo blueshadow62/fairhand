@@ -3,6 +3,7 @@ import type { RejudgeResult } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
+import { locale, t } from '../lib/i18n.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 
@@ -15,13 +16,13 @@ function defaultSemester(d = new Date()): string {
 const newMeta = (): KeyMeta => ({ 글: '', 학기: defaultSemester(), 학년: 1, 반: [], 인원: {} });
 
 /** 한 장 시험 결과 표(저장하지 않음) */
-export function transcriptTable(key: AnswerKey, t: Transcript): HTMLElement {
-  const box = el('div', { class: 'card' }, el('h3', {}, '시험 전사 결과(저장하지 않았습니다)'),
-    el('div', {}, `학년 ${t.학년 ?? '?'} · 반 ${t.반 ?? '?'} · 번호 ${t.번호 ?? '?'} · 이름 ${t.이름 ?? '-'} · 식별 ${t.식별확신}`));
-  box.append(el('table', {}, el('tr', {}, el('th', {}, '단위'), el('th', {}, '정답'), el('th', {}, '학생 답'), el('th', {}, '판정')),
-    ...key.정량.map(u => { const v = t.정량[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.정답), el('td', {}, v?.답 ?? ''), el('td', { class: `v-${v?.판정 ?? '빈칸'}` }, v?.판정 ?? '빈칸')); }),
-    ...key.정성.map(u => { const v = t.정성[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, v?.답 ?? ''), el('td', {}, v?.응답 ? '응답' : '무응답')); })));
-  if (t.비고.length) box.append(el('div', { class: 'band warn' }, `비고: ${t.비고.join(' / ')}`));
+export function transcriptTable(key: AnswerKey, tr: Transcript): HTMLElement {
+  const box = el('div', { class: 'card' }, el('h3', {}, t('key.trialTitle')),
+    el('div', {}, t('key.trialStudent', { grade: tr.학년 ?? '?', cls: tr.반 ?? '?', no: tr.번호 ?? '?', name: tr.이름 ?? '-', conf: t(`hwaksin.${tr.식별확신}`) })));
+  box.append(el('table', {}, el('tr', {}, el('th', {}, t('key.col.unit')), el('th', {}, t('key.col.answer')), el('th', {}, t('key.col.student')), el('th', {}, t('key.col.verdict'))),
+    ...key.정량.map(u => { const v = tr.정량[u.id]; const p = v?.판정 ?? '빈칸'; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.정답), el('td', {}, v?.답 ?? ''), el('td', { class: `v-${p}` }, t(`verdict.${p}`))); }),
+    ...key.정성.map(u => { const v = tr.정성[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, v?.답 ?? ''), el('td', {}, v?.응답 ? t('key.responded') : t('key.noResponse'))); })));
+  if (tr.비고.length) box.append(el('div', { class: 'band warn' }, t('key.remarks', { notes: tr.비고.join(' / ') })));
   return box;
 }
 
@@ -45,7 +46,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const tableBox = el('div');
   const cautionBox = el('div');
   const tryBox = el('div');
-  root.append(el('h2', {}, '문항 설정'), el('div', { class: 'split' }, el('div', {}, listBox), editor));
+  root.append(el('h2', {}, t('key.title')), el('div', { class: 'split' }, el('div', {}, listBox), editor));
 
   /** 저장하지 않은 변경이 있으면 운영체제 대화상자로 묻는다. 저장을 골랐는데 저장이 안 되면(검증 오류) 머문다. */
   async function leaveOk(): Promise<boolean> {
@@ -59,12 +60,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function renderList(): void {
     clear(listBox);
-    listBox.append(el('button', { class: 'primary', onclick: () => void leaveOk().then(ok => { if (ok) openNew(); }) }, '새 세트'));
-    if (!store.state.settings.학기폴더) { listBox.append(el('div', { class: 'muted' }, '설정에서 학기 폴더를 먼저 고르세요.')); return; }
-    if (!store.state.sets.length) listBox.append(el('div', { class: 'muted' }, '아직 세트가 없습니다.'));
+    listBox.append(el('button', { class: 'primary', onclick: () => void leaveOk().then(ok => { if (ok) openNew(); }) }, t('key.newSet')));
+    if (!store.state.settings.학기폴더) { listBox.append(el('div', { class: 'muted' }, t('key.needSemester'))); return; }
+    if (!store.state.sets.length) listBox.append(el('div', { class: 'muted' }, t('key.noSets')));
     for (const s of store.state.sets) {
       listBox.append(el('button', { class: s.폴더 === 폴더 ? 'active' : '', onclick: () => { if (s.폴더 !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(s.폴더); }); } },
-        el('div', {}, s.key.글), el('div', { class: 'muted' }, `${s.key.대상.학년}학년 ${s.key.대상.반.join('·')}반 · ${s.쪽수}장/전사 ${s.전사수} · ${s.key.확인?.완료 ? '확인 ✓' : '미확인'}`)));
+        el('div', {}, s.key.글), el('div', { class: 'muted' }, t('key.setLine', { grade: s.key.대상.학년, classes: s.key.대상.반.join('·'), pages: s.쪽수, transcripts: s.전사수, status: s.key.확인?.완료 ? t('key.confirmedMark') : t('key.unconfirmedMark') }))));
     }
   }
 
@@ -88,40 +89,40 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   // 메타 입력
   const 글Input = el('input', { size: 30, oninput: () => { meta.글 = 글Input.value; touch(); } });
   const 학기Input = el('input', { size: 12, oninput: () => { meta.학기 = 학기Input.value; touch(); } });
-  const 학년Select = el('select', { onchange: () => { meta.학년 = Number(학년Select.value); touch(); } }, ...[1, 2, 3, 4, 5, 6].map(n => el('option', { value: String(n) }, `${n}학년`)));
-  const 반Input = el('input', { size: 10, placeholder: '예: 1, 3', oninput: () => { meta.반 = parseClasses(반Input.value); touch(); } });
-  const 인원Input = el('input', { size: 16, placeholder: '예: 1:28, 3:27', oninput: () => { meta.인원 = parseHeadcount(인원Input.value); touch(); } });
+  const 학년Select = el('select', { onchange: () => { meta.학년 = Number(학년Select.value); touch(); } }, ...[1, 2, 3, 4, 5, 6].map(n => el('option', { value: String(n) }, t('key.gradeN', { n }))));
+  const 반Input = el('input', { size: 10, placeholder: t('key.classesPlaceholder'), oninput: () => { meta.반 = parseClasses(반Input.value); touch(); } });
+  const 인원Input = el('input', { size: 16, placeholder: t('key.headcountPlaceholder'), oninput: () => { meta.인원 = parseHeadcount(인원Input.value); touch(); } });
 
   // AI 초안
-  const problemArea = el('textarea', { rows: 8, placeholder: '문항지의 문제 전체를 붙여넣으세요' });
-  const sourceArea = el('textarea', { rows: 6, placeholder: '지문(원문)을 붙여넣으세요(선택). 붙여넣은 지문은 초안을 만들 때만 쓰고 저장하지 않습니다.' });
+  const problemArea = el('textarea', { rows: 8, placeholder: t('key.problemPlaceholder') });
+  const sourceArea = el('textarea', { rows: 6, placeholder: t('key.sourcePlaceholder') });
   const attachName = el('span', { class: 'muted' });
-  const draftBtn = el('button', { onclick: () => void makeDraft() }, 'AI로 정답 초안 만들기');
+  const draftBtn = el('button', { onclick: () => void makeDraft() }, t('key.makeDraft'));
 
   async function makeDraft(): Promise<void> {
-    if (!meta.글.trim()) { showError('글 제목을 먼저 적으세요'); return; }
-    if (!problemArea.value.trim()) { showError('문항지의 문제를 붙여넣으세요'); return; }
-    if (!sourceArea.value.trim() && !confirm('지문 없이 만든 초안은 부정확할 수 있습니다. 계속할까요?')) return;
-    if (rows.some(r => r.정답 || r.요소 || r.설명) && !confirm('문항 표를 초안으로 바꿉니다. 계속할까요?')) return;
-    draftBtn.disabled = true; draftBtn.textContent = '초안을 만드는 중…';
+    if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
+    if (!problemArea.value.trim()) { showError(t('key.problemMissing')); return; }
+    if (!sourceArea.value.trim() && !confirm(t('key.noSourceConfirm'))) return;
+    if (rows.some(r => r.정답 || r.요소 || r.설명) && !confirm(t('key.replaceTableConfirm'))) return;
+    draftBtn.disabled = true; draftBtn.textContent = t('key.drafting');
     try {
       const d = await api.draftKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined });
       rows = draftToRows(d); touch(); renderTable();
       clear(cautionBox);
-      if (d.주의.length) cautionBox.append(el('div', { class: 'band warn' }, `초안 주의: ${d.주의.join(' / ')}`));
-      showInfo('초안을 표에 넣었습니다. 확인하고 고친 뒤 저장하세요');
+      if (d.주의.length) cautionBox.append(el('div', { class: 'band warn' }, t('key.draftCaution', { notes: d.주의.join(' / ') })));
+      showInfo(t('key.draftDone'));
     } catch (e) { showError((e as Error).message); }
-    finally { draftBtn.disabled = false; draftBtn.textContent = 'AI로 정답 초안 만들기'; }
+    finally { draftBtn.disabled = false; draftBtn.textContent = t('key.makeDraft'); }
   }
 
   function renderTable(): void {
     clear(tableBox);
-    const head = el('tr', {}, ...['문항', '유형', '설명', '정답', '허용(쉼표)', '핵심(쉼표)', '요소(줄마다)', ''].map(h => el('th', {}, h)));
+    const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), ''].map(h => el('th', {}, h)));
     const body = rows.map((r, i) => {
       const off = { ans: r.유형 === '요소형' || r.유형 === '확장', allow: r.유형 === '요소형' || r.유형 === '확장', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
       const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
       const num = el('input', { type: 'number', min: '1', value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
-      const type = el('select', { onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(t => el('option', { value: t, selected: t === r.유형 }, t)));
+      const type = el('select', { onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
       return el('tr', {},
         el('td', {}, num), el('td', {}, type),
@@ -131,86 +132,86 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('td', {}, bind(el('input', { disabled: off.kw }), '핵심')),
         el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el }), '요소')),
         el('td', {}, el('div', { class: 'row' },
-          el('button', { title: '위로', onclick: () => move(-1) }, '↑'), el('button', { title: '아래로', onclick: () => move(1) }, '↓'),
-          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, '삭제'))));
+          el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
+          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('common.delete')))));
     });
     const addRow = () => {
       const last = rows[rows.length - 1];
       rows.push(last?.유형 === '빈칸형' ? emptyRow(last.문항, '빈칸형') : emptyRow(last ? last.문항 + 1 : 1)); touch(); renderTable();
     };
     tableBox.append(el('table', { class: 'keytable' }, head, ...body),
-      el('div', { class: 'row' }, el('button', { onclick: addRow }, '행 추가'),
-        el('span', { class: 'muted' }, '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 1점, 순서 무관. 확장: 응답 여부만 봄.')));
+      el('div', { class: 'row' }, el('button', { onclick: addRow }, t('key.addRow')),
+        el('span', { class: 'muted' }, t('key.typesHelp'))));
   }
 
   // ── 채점 규칙(세트별) ──
   const rulesBox = el('div');
   const RULES: { k: keyof GradingRules; label: string; opts: [string, string][]; help: string }[] = [
-    { k: '맞춤법', label: '맞춤법이 다른 같은 뜻의 답', opts: [['인정', '인정(O)'], ['불인정', '불인정(X)']], help: "예: '세약서'를 계약서로 볼지" },
-    { k: '넓은말', label: '정답보다 넓은 말', opts: [['인정', '인정(O)'], ['불인정', '불인정(X)']], help: "예: 정답 '선후배 관계'에 '인간관계'" },
-    { k: '핵심어', label: '문장형 핵심어', opts: [['모두', '모두 있어야 O'], ['하나라도', '하나라도 있으면 O']], help: '핵심 낱말이 여럿인 문장형 단위' },
+    { k: '맞춤법', label: t('key.rule.spelling'), opts: [['인정', t('key.rule.accept')], ['불인정', t('key.rule.reject')]], help: t('key.rule.spellingHelp') },
+    { k: '넓은말', label: t('key.rule.broader'), opts: [['인정', t('key.rule.accept')], ['불인정', t('key.rule.reject')]], help: t('key.rule.broaderHelp') },
+    { k: '핵심어', label: t('key.rule.keywords'), opts: [['모두', t('key.rule.all')], ['하나라도', t('key.rule.any')]], help: t('key.rule.keywordsHelp') },
   ];
   function renderRules(): void {
     clear(rulesBox);
     const cur = meta.채점규칙 ?? { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' };
     for (const r of RULES) {
       const sel = el('select', { onchange: () => { meta.채점규칙 = { ...cur, [r.k]: sel.value } as GradingRules; touch(); renderRules(); } },
-        ...r.opts.map(([v, t]) => el('option', { value: v, selected: cur[r.k] === v }, t)));
+        ...r.opts.map(([v, label]) => el('option', { value: v, selected: cur[r.k] === v }, label)));
       rulesBox.append(el('div', { class: 'row' }, el('span', {}, `${r.label}:`), sel, el('span', { class: 'muted' }, r.help)));
     }
-    rulesBox.append(el('div', { class: 'muted' }, '규칙은 저장해야 적용됩니다. 규칙·사례만 바꾸면 확인 표시는 그대로입니다.'));
+    rulesBox.append(el('div', { class: 'muted' }, t('key.rulesHelp')));
   }
 
   // ── 판정 사례와 재판정 ──
   const casesBox = el('div');
   const judgeBox = el('div');
-  const judgePages = el('input', { size: 8, placeholder: '예: 1-3,7' });
+  const judgePages = el('input', { size: 8, placeholder: t('common.pagesPlaceholder') });
   function renderCases(): void {
     clear(casesBox);
-    if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, '판정 사례가 없습니다. 검토에서 판정을 바꿔 저장하면 여기에 쌓입니다.')); return; }
-    casesBox.append(el('table', {}, el('tr', {}, ...['단위', '답', '판정', '출처', '일시', ''].map(h => el('th', {}, h))),
-      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답), el('td', { class: `v-${c.판정}` }, c.판정), el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString('ko-KR')),
+    if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, t('key.noCases'))); return; }
+    casesBox.append(el('table', {}, el('tr', {}, ...[t('key.col.unit'), t('key.col.caseAnswer'), t('key.col.verdict'), t('key.col.caseSource'), t('key.col.caseWhen'), ''].map(h => el('th', {}, h))),
+      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답), el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`)), el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
         el('td', {}, el('button', { class: 'danger', onclick: () => guard(async () => {
-          if (!폴더 || !confirm(`사례 '${c.단위}: ${c.답} → ${c.판정}'을 지울까요?`)) return;
+          if (!폴더 || !confirm(t('key.deleteCaseConfirm', { unit: c.단위, answer: c.답, verdict: c.판정 }))) return;
           사례 = (await api.removeCase(폴더, c.단위, c.답)).사례 ?? [];
           renderCases();
-          clear(judgeBox); judgeBox.append(el('div', { class: 'band info' }, "사례를 지웠습니다. 그 사례로 바뀐 판정은 그대로입니다. 필요하면 '다시 판정'을 누르세요."));
-        }) }, '삭제'))))));
+          clear(judgeBox); judgeBox.append(el('div', { class: 'band info' }, t('key.caseDeleted')));
+        }) }, t('common.delete')))))));
   }
   function showJudge(r: RejudgeResult & { failed?: { page: number; error: string }[] }, extra = ''): void {
     clear(judgeBox);
     const tagP = (p: number) => `p${String(p).padStart(2, '0')}`;
-    const text = r.바뀐장.length ? `${r.바뀐장.length}장 바뀜: ${r.바뀐장.map(c => `${tagP(c.page)}(${c.변경.join(', ')})`).join(', ')}` : '바뀐 장 없음';
+    const text = r.바뀐장.length ? t('key.changedPages', { n: r.바뀐장.length, list: r.바뀐장.map(c => `${tagP(c.page)}(${c.변경.join(', ')})`).join(', ') }) : t('key.noChangedPages');
     put(judgeBox, el('div', { class: 'band info' }, [text, extra].filter(Boolean).join('\n')),
-      r.failed?.length ? el('div', { class: 'band error' }, `실패: ${r.failed.map(f => `${tagP(f.page)} ${f.error}`).join(' / ')}`) : null,
-      r.엑셀오류 ? el('div', { class: 'band warn' }, `엑셀을 만들지 못했습니다: ${r.엑셀오류}`) : null);
+      r.failed?.length ? el('div', { class: 'band error' }, t('key.failedPages', { list: r.failed.map(f => `${tagP(f.page)} ${f.error}`).join(' / ') })) : null,
+      r.엑셀오류 ? el('div', { class: 'band warn' }, t('common.excelFailed', { error: r.엑셀오류 })) : null);
   }
   const ruleBtn = el('button', { onclick: () => guard(async () => {
     if (!폴더) return;
-    if (dirty) { showError('먼저 정답표를 저장하세요'); return; }
-    showJudge(await api.rejudge(폴더), "뜻으로 판단해야 하는 답은 바뀌지 않았습니다. 필요하면 '모델로 다시 판정'을 누르세요.");
-  }) }, '다시 판정(글자 일치만, 모델 호출 없음)');
+    if (dirty) { showError(t('common.saveKeyFirst')); return; }
+    showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
+  }) }, t('key.rejudge'));
   const modelBtn = el('button', { onclick: () => guard(async () => {
     if (!폴더) return;
-    if (dirty) { showError('먼저 정답표를 저장하세요'); return; }
+    if (dirty) { showError(t('common.saveKeyFirst')); return; }
     const spec = judgePages.value.trim();
     const pages = spec ? parsePages(spec) ?? null : undefined;
-    if (pages === null) { showError('장 번호를 1-3,7처럼 적으세요'); return; }
-    if (!confirm(`${pages ? `${pages.length}장` : '전사한 모든 장'}의 답 글만 보내 판정을 다시 받습니다(그림은 보내지 않음, 사용량 소량). 계속할까요?`)) return;
+    if (pages === null) { showError(t('common.badPageSpec')); return; }
+    if (!confirm(t('key.modelConfirm', { scope: pages ? t('key.nPages', { n: pages.length }) : t('key.allTranscribed') }))) return;
     modelBtn.disabled = true;
-    const off = api.onProgress(e => { modelBtn.textContent = `모델 재판정 중… ${e.done}/${e.total}`; });
+    const off = api.onProgress(e => { modelBtn.textContent = t('key.modelJudging', { done: e.done, total: e.total }); });
     try { showJudge(await api.judgeWithModel(폴더, { pages })); }
-    finally { off(); modelBtn.disabled = false; modelBtn.textContent = '모델로 다시 판정(글만 보냄, 사용량 소량)'; }
-  }) }, '모델로 다시 판정(글만 보냄, 사용량 소량)');
-  const judgeBar = el('div', { class: 'row' }, ruleBtn, modelBtn, '장(비우면 전체):', judgePages);
+    finally { off(); modelBtn.disabled = false; modelBtn.textContent = t('key.modelRejudge'); }
+  }) }, t('key.modelRejudge'));
+  const judgeBar = el('div', { class: 'row' }, ruleBtn, modelBtn, t('key.pagesLabel'), judgePages);
 
   const confirmBox = el('input', { type: 'checkbox', onchange: () => void setConfirmed(confirmBox.checked) });
   async function setConfirmed(on: boolean): Promise<void> {
-    if (!폴더 || dirty) { confirmBox.checked = !on; showError('먼저 정답표를 저장하세요'); return; }
+    if (!폴더 || dirty) { confirmBox.checked = !on; showError(t('common.saveKeyFirst')); return; }
     await guard(async () => {
       const next = on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false };
       확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).확인; await store.refreshSets();
-      showInfo(on ? '정답표를 확인 완료로 표시했습니다' : '확인 표시를 지웠습니다');
+      showInfo(on ? t('key.confirmedOn') : t('key.confirmedOff'));
     });
     renderStatus();
   }
@@ -223,16 +224,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         const info = await api.createSet(rowsToKey(meta, rows, undefined, 사례));
         await store.refreshSets();
         dirty = false; await openSet(info.폴더);
-        showInfo(`새 세트를 만들었습니다: ${info.폴더}`);
+        showInfo(t('key.setCreated', { name: info.폴더 }));
         return;
       }
       // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
       const saved = await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례));
       확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
-      showInfo(확인?.완료 ? '저장했습니다' : '저장했습니다. 정답표가 바뀌어 확인 표시를 지웠습니다');
-      if (전사수 > 0 && confirm(`정답표가 바뀌었습니다. 기존 ${전사수}장을 글자 일치 기준으로 다시 판정할까요?`)) {
-        showJudge(await api.rejudge(폴더), "뜻으로 판단해야 하는 답은 바뀌지 않았습니다. 필요하면 '모델로 다시 판정'을 누르세요.");
+      showInfo(확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'));
+      if (전사수 > 0 && confirm(t('key.rejudgeConfirm', { n: 전사수 }))) {
+        showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
     });
   }
@@ -242,12 +243,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function tryOne(): Promise<void> {
     const f = tryInput.files?.[0]; tryInput.value = '';
     if (!f || !폴더) return;
-    clear(tryBox); tryBox.append(el('div', { class: 'muted' }, '한 장을 전사하는 중… (1분 안팎)'));
+    clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('key.trying')));
     try {
       const jpeg = await fileToJpeg(f, store.state.settings.기본회전);
-      const t = await api.tryPage(폴더, jpeg);
+      const tr = await api.tryPage(폴더, jpeg);
       const d = await api.readSet(폴더);
-      clear(tryBox); tryBox.append(transcriptTable(d.key, t));
+      clear(tryBox); tryBox.append(transcriptTable(d.key, tr));
     } catch (e) { clear(tryBox); showError((e as Error).message); }
   }
 
@@ -256,42 +257,42 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const done = 확인?.완료 === true;
     confirmBox.checked = done;
     statusBox.append(el('div', { class: 'row' },
-      el('button', { class: 'primary', onclick: () => void save() }, 폴더 ? '저장' : '새 세트 만들기'),
-      el('label', {}, confirmBox, '확인 완료(이 정답표로 채점합니다)'),
-      dirty ? el('span', { class: 'band warn' }, '저장하지 않은 변경이 있습니다') : null,
-      폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(`내보냈습니다: ${p}`); }) }, '정답표 내보내기') : null,
+      el('button', { class: 'primary', onclick: () => void save() }, 폴더 ? t('common.save') : t('key.createSet')),
+      el('label', {}, confirmBox, t('key.confirmLabel')),
+      dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null,
+      폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
       el('button', { onclick: () => guard(async () => {
         const k = await api.importKey(); if (!k) return;
-        if (dirty && !confirm('지금 편집 중인 내용을 가져온 정답표로 바꿉니다. 계속할까요?')) return;
+        if (dirty && !confirm(t('key.importConfirm'))) return;
         const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
-        showInfo('가져왔습니다. 확인하고 저장하세요');
-      }) }, '정답표 가져오기')));
-    if (!done && 폴더) statusBox.append(el('div', { class: 'band warn' }, '정답표가 아직 확인되지 않았습니다. 확인 완료를 표시해야 채점을 시작할 수 있습니다.'));
+        showInfo(t('key.imported'));
+      }) }, t('key.import'))));
+    if (!done && 폴더) statusBox.append(el('div', { class: 'band warn' }, t('key.notConfirmedWarn')));
     tryInput.disabled = !폴더 || !done || dirty;
   }
 
   function renderEditor(): void {
     clear(editor); clear(cautionBox); clear(tryBox); attachName.textContent = '';
-    if (!editing) { editor.append(el('div', { class: 'muted' }, "왼쪽에서 세트를 고르거나 '새 세트'를 누르세요.")); renderList(); return; }
+    if (!editing) { editor.append(el('div', { class: 'muted' }, t('key.pickSet'))); renderList(); return; }
     글Input.value = meta.글; 학기Input.value = meta.학기; 학년Select.value = String(meta.학년); 반Input.value = meta.반.join(', '); 인원Input.value = formatHeadcount(meta.인원);
     editor.append(
-      el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? `세트: ${폴더}` : '새 세트'),
+      el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? t('common.set', { name: 폴더 }) : t('key.newSet')),
           폴더 ? el('button', { class: 'danger', onclick: () => guard(async () => {
             const info = store.state.sets.find(s => s.폴더 === 폴더);
-            if (!confirm(`'${meta.글}' 세트를 휴지통으로 보냅니다.\n답안지 그림 ${info?.쪽수 ?? 0}장, 전사 ${info?.전사수 ?? 0}장, 채점결과 엑셀이 함께 옮겨집니다.\nWindows 휴지통에서 되살릴 수 있습니다. 계속할까요?`)) return;
-            await api.deleteSet(폴더!); dirty = false; await store.refreshSets(); openNew(); showInfo('세트를 휴지통으로 보냈습니다');
-          }) }, '세트 삭제(휴지통)') : null),
-        el('div', { class: 'row' }, '글 제목', 글Input, '학기', 학기Input, 학년Select, '반', 반Input, '반별 인원(선택)', 인원Input)),
-      el('div', { class: 'card' }, el('h3', {}, '문항'), tableBox, statusBox),
-      el('div', { class: 'card' }, el('h3', {}, 'AI로 정답 초안 만들기'),
-        el('div', { class: 'muted' }, '문제와 지문을 보내 초안을 받습니다. 초안은 반드시 확인하고 고친 뒤 저장하세요.'),
+            if (!confirm(t('key.deleteSetConfirm', { title: meta.글, pages: info?.쪽수 ?? 0, transcripts: info?.전사수 ?? 0 }))) return;
+            await api.deleteSet(폴더!); dirty = false; await store.refreshSets(); openNew(); showInfo(t('key.setDeleted'));
+          }) }, t('key.deleteSet')) : null),
+        el('div', { class: 'row' }, t('key.fieldTitle'), 글Input, t('key.fieldSemester'), 학기Input, 학년Select, t('key.fieldClasses'), 반Input, t('key.fieldHeadcount'), 인원Input)),
+      el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox, statusBox),
+      el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
+        el('div', { class: 'muted' }, t('key.draftHelp')),
         problemArea, sourceArea,
         el('div', { class: 'row' }, draftBtn,
-          폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = `원본 폴더에 보관함: ${n}`; }) }, '지문 PDF/TXT 첨부(보관용)') : null, attachName),
+          폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
         cautionBox),
-      el('div', { class: 'card' }, el('h3', {}, '채점 규칙과 판정 사례'), rulesBox, casesBox, judgeBar, judgeBox),
-      el('div', { class: 'card' }, el('h3', {}, '한 장만 채점해 보기'),
-        el('div', { class: 'muted' }, '답안지 한 장(jpg 또는 PDF의 첫 장)으로 전사를 시험합니다. 결과는 저장하지 않습니다. 확인 완료된 정답표에서만 됩니다.'),
+      el('div', { class: 'card' }, el('h3', {}, t('key.rulesTitle')), rulesBox, casesBox, judgeBar, judgeBox),
+      el('div', { class: 'card' }, el('h3', {}, t('key.tryTitle')),
+        el('div', { class: 'muted' }, t('key.tryHelp')),
         tryInput, tryBox));
     renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); clear(judgeBox);
   }

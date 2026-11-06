@@ -1,6 +1,7 @@
 import { DEFAULT_RULES, gradingRules } from '../../core/key.js';
 import type { AnswerKey, Case, GradingRules, QtyUnit, QualUnit } from '../../core/types.js';
 import type { KeyDraftResult } from '../../shared/ipc.js';
+import { t } from './i18n.js';
 
 export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '확장';
 export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */ }
@@ -70,17 +71,17 @@ export const draftToRows = (d: KeyDraftResult): UnitRow[] => unitsToRows(d.정�
 
 export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
   const e: string[] = [];
-  if (!meta.글.trim()) e.push('글 제목이 비었습니다');
-  if (!meta.학기.trim()) e.push('학기가 비었습니다');
-  if (!Number.isInteger(meta.학년) || meta.학년 < 1 || meta.학년 > 6) e.push('학년은 1~6이어야 합니다');
-  if (!meta.반.length || !meta.반.every(n => Number.isInteger(n) && n > 0)) e.push('반이 비었거나 숫자가 아닙니다');
-  if (!rows.length) e.push('문항이 하나도 없습니다');
+  if (!meta.글.trim()) e.push(t('form.titleEmpty'));
+  if (!meta.학기.trim()) e.push(t('form.semesterEmpty'));
+  if (!Number.isInteger(meta.학년) || meta.학년 < 1 || meta.학년 > 6) e.push(t('form.gradeRange'));
+  if (!meta.반.length || !meta.반.every(n => Number.isInteger(n) && n > 0)) e.push(t('form.classesBad'));
+  if (!rows.length) e.push(t('form.noRows'));
   rows.forEach((r, i) => {
-    const at = `${i + 1}번째 줄`;
-    if (!Number.isInteger(r.문항) || r.문항 <= 0) e.push(`${at}: 문항 번호가 비었거나 0 이하입니다`);
-    if (r.유형 === '요소형') { if (!list(r.요소, /\r?\n/).length) e.push(`${at}: 요소형인데 요소가 없습니다(줄마다 하나)`); }
-    else if (r.유형 !== '확장' && !r.정답.trim()) e.push(`${at}: 정답이 비었습니다`);
-    if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(`${at}: 문장형인데 핵심 낱말이 없습니다`);
+    const at = t('form.rowAt', { n: i + 1 });
+    if (!Number.isInteger(r.문항) || r.문항 <= 0) e.push(t('form.questionBad', { at }));
+    if (r.유형 === '요소형') { if (!list(r.요소, /\r?\n/).length) e.push(t('form.elementsMissing', { at })); }
+    else if (r.유형 !== '확장' && !r.정답.trim()) e.push(t('form.answerEmpty', { at }));
+    if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(t('form.keywordsMissing', { at }));
   });
   return e;
 }
