@@ -6,7 +6,7 @@ import { t } from '../lib/i18n.js';
 
 const DEFAULT_ID = 'cli-default';
 
-function cliStatusText(s: CliStatusView): string {
+export function cliStatusText(s: CliStatusView): string {
   if (!s.installed) return t('settings.cli.notInstalled');
   const v = t('settings.cli.installed', { version: s.version ?? t('settings.cli.unknownVersion') });
   if (s.tooOld) return t('settings.cli.tooOld', { v });

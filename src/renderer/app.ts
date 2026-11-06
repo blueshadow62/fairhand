@@ -2,13 +2,14 @@ import type { SetInfo, Settings } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
+import * as homeScreen from './screens/home.js';
 import * as keyScreen from './screens/key.js';
 import * as reviewScreen from './screens/review.js';
 import * as runScreen from './screens/run.js';
 import * as settingsScreen from './screens/settings.js';
 
 export interface AppState { settings: Settings; sets: SetInfo[]; current: string | null /* 세트 폴더 */ }
-export type Tab = 'key' | 'run' | 'review' | 'settings';
+export type Tab = 'home' | 'key' | 'run' | 'review' | 'settings';
 
 type Listener = (s: AppState) => void;
 const listeners = new Set<Listener>();
@@ -43,6 +44,7 @@ const showError = (m: string) => toast('error', m);
 const showInfo = (m: string) => toast('info', m);
 
 const TABS: { id: Tab; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
+  { id: 'home', mod: homeScreen },
   { id: 'key', mod: keyScreen },
   { id: 'run', mod: runScreen },
   { id: 'review', mod: reviewScreen },
@@ -89,7 +91,7 @@ async function start(): Promise<void> {
   const back = takeTabAfterReload();
   if (store.state.settings.학기폴더) {
     try { await store.refreshSets(); } catch (e) { showError(errText(e)); }
-    goTo(back ?? 'key');
+    goTo(back ?? 'home');
   } else {
     goTo('settings');
     showInfo(t('app.firstRun'));

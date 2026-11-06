@@ -83,3 +83,12 @@ progress { width: 320px; height: 18px; }
 .review .editor table { width: 100%; }
 .review .editor td:first-child { white-space: nowrap; }
 .review .editor td select { min-width: 76px; }
+
+/* 시작 화면 */
+.home-head h1 { font-size: 28px; margin: 4px 0 2px; }
+.home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.home-steps { display: flex; flex-direction: column; gap: 8px; }
+.home-steps button { text-align: left; min-height: 44px; font-size: 15px; }
+.home-sets { max-width: 560px; }
+label.upload { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid #ccd; border-radius: 4px; background: #fff; cursor: pointer; }
+label.upload input { max-width: 220px; }

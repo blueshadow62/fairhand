@@ -4,6 +4,7 @@ import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { locale, t } from '../lib/i18n.js';
+import { filesToDraft } from '../lib/draft-files.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 
@@ -98,15 +99,31 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const sourceArea = el('textarea', { rows: 6, placeholder: t('key.sourcePlaceholder') });
   const attachName = el('span', { class: 'muted' });
   const draftBtn = el('button', { onclick: () => void makeDraft() }, t('key.makeDraft'));
+  // 올린 파일: 그림은 모아 두었다가 초안 요청에 붙이고, 글은 해당 칸에 넣는다. 형식은 제한하지 않는다(accept 없음)
+  const uploaded = { 문제: [] as ArrayBuffer[], 지문: [] as ArrayBuffer[] };
+  const uploadNotes = el('div', { class: 'muted' });
+  function uploadInput(kind: '문제' | '지문', area: HTMLTextAreaElement): HTMLElement {
+    const input = el('input', { type: 'file', multiple: true });
+    input.addEventListener('change', () => void (async () => {
+      const files = [...(input.files ?? [])]; input.value = '';
+      if (!files.length) return;
+      const r = await filesToDraft(files, name => { uploadNotes.textContent = t('key.uploading', { name }); });
+      uploaded[kind].push(...r.images);
+      if (r.text) area.value = (area.value.trim() ? area.value.trimEnd() + '\n\n' : '') + r.text;
+      uploadNotes.textContent = r.notes.join(' · ');
+    })());
+    return el('label', { class: 'upload' }, kind === '문제' ? t('key.uploadProblem') : t('key.uploadSource'), input);
+  }
+  const clearUploads = el('button', { onclick: () => { uploaded.문제 = []; uploaded.지문 = []; uploadNotes.textContent = ''; } }, t('key.uploadClear'));
 
   async function makeDraft(): Promise<void> {
     if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
-    if (!problemArea.value.trim()) { showError(t('key.problemMissing')); return; }
-    if (!sourceArea.value.trim() && !confirm(t('key.noSourceConfirm'))) return;
+    if (!problemArea.value.trim() && !uploaded.문제.length) { showError(t('key.problemOrFileMissing')); return; }
+    if (!sourceArea.value.trim() && !uploaded.지문.length && !confirm(t('key.noSourceConfirm'))) return;
     if (rows.some(r => r.정답 || r.요소 || r.설명) && !confirm(t('key.replaceTableConfirm'))) return;
     draftBtn.disabled = true; draftBtn.textContent = t('key.drafting');
     try {
-      const d = await api.draftKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined });
+      const d = await api.draftKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined, 문제그림: uploaded.문제, 지문그림: uploaded.지문 });
       rows = draftToRows(d); touch(); renderTable();
       clear(cautionBox);
       if (d.주의.length) cautionBox.append(el('div', { class: 'band warn' }, t('key.draftCaution', { notes: d.주의.join(' / ') })));
@@ -286,6 +303,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox, statusBox),
       el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
         el('div', { class: 'muted' }, t('key.draftHelp')),
+        el('div', { class: 'row' }, uploadInput('문제', problemArea), uploadInput('지문', sourceArea), clearUploads),
+        el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
         problemArea, sourceArea,
         el('div', { class: 'row' }, draftBtn,
           폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
@@ -298,6 +317,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   store.subscribe(() => renderList());
+  window.addEventListener('geulnun:open-set', e => { const name = (e as CustomEvent<string>).detail; if (name !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(name); }); });
   renderEditor();
 }
 
