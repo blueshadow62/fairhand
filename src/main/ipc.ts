@@ -16,10 +16,11 @@ import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
 import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
+import type { Updater } from './update.js';
 
 const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/geulnun#readme' };
 
-export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null }
+export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater }
 
 async function wrap<T>(fn: () => Promise<T>): Promise<IpcResult<T>> {
   try { return { ok: true, value: await fn() }; }
@@ -113,5 +114,8 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
   h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));
   h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: number[] }) => d.bridge.judgeWithModel(await setDir(폴더), opts?.pages, e => d.window()?.webContents.send(CHANNELS.progress, e)));
+  h(CHANNELS.updateStatus, async () => d.updater.status());
+  h(CHANNELS.checkUpdate, () => d.updater.check());
+  h(CHANNELS.installUpdate, async () => d.updater.install());
   h(CHANNELS.buildCumulative, async () => buildAllCumulative(await semester(), await roster(), { version: d.version }));
 }

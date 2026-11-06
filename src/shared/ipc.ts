@@ -3,7 +3,7 @@ import type { AnswerKey, Student, Transcript } from '../core/types.js';
 export type Rotation = 0 | 90 | 180 | 270;
 export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api'; cliPath?: string; configDir?: string }
 export type Language = 'ko' | 'en';
-export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language }
+export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
@@ -14,6 +14,10 @@ export interface RunResult { ok: number[]; failed: { page: number; error: string
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
 export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]; 엑셀?: string; 엑셀오류?: string }
 export interface JudgeResult extends RejudgeResult { failed: { page: number; error: string }[] }
+/** 자동 업데이트 상태. error는 설정 화면의 한 줄과 로그에만 보인다(창을 띄우지 않음) */
+export type UpdateStatus =
+  | { kind: 'disabled'; reason: 'dev' | 'off' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
+  | { kind: 'available'; version: string } | { kind: 'downloading'; percent: number } | { kind: 'downloaded'; version: string } | { kind: 'error'; message: string };
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
 export type ExternalLink = 'install' | 'privacy' | 'guide';
 export type LeaveChoice = 'save' | 'discard' | 'stay';
@@ -26,6 +30,7 @@ export const CHANNELS = {
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
+  updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
 } as const;
 
 /** preload가 렌더러에 노출하는 전부. 렌더러는 이것만 안다. */
@@ -74,4 +79,10 @@ export interface GeulnunApi {
   rejudge(폴더: string): Promise<RejudgeResult>;
   /** 글만 보내는 모델 재판정. 진행은 onProgress */
   judgeWithModel(폴더: string, opts: { pages?: number[] }): Promise<JudgeResult>;
+  updateStatus(): Promise<UpdateStatus>;
+  /** 자동업데이트가 꺼져 있거나 개발 실행이면 아무것도 하지 않는다 */
+  checkUpdate(): Promise<void>;
+  /** 받아 둔 새 버전으로 다시 시작 */
+  installUpdate(): Promise<void>;
+  onUpdate(cb: (s: UpdateStatus) => void): () => void;
 }

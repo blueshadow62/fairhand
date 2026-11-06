@@ -20,6 +20,11 @@ test('parseSettings: 기본 프로필이 없으면 앞에 넣고, 사용중이 �
   assert.equal(s.사용중, DEFAULT_PROFILE.id);
 });
 
+test('parseSettings: 자동업데이트는 기본 켜짐, false일 때만 꺼짐', () => {
+  assert.equal(parseSettings({}).자동업데이트, true);
+  assert.equal(parseSettings({ 자동업데이트: false }).자동업데이트, false);
+});
+
 test('applyPatch: id 중복·빈 이름은 DataError, 사용중은 목록 안에서만', () => {
   const cur = defaultSettings();
   assert.throws(() => applyPatch(cur, { 프로필: [DEFAULT_PROFILE, { id: 'cli-default', 이름: 'x', 종류: 'cli' }] }), DataError);

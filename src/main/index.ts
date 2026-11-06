@@ -7,6 +7,8 @@ import { installLog } from './log.js';
 import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
+import { startUpdater } from './update.js';
+import { CHANNELS } from '../shared/ipc.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url)); // dist/src/main → 저장소 루트
 if (process.env.GEULNUN_USER_DATA) app.setPath('userData', path.resolve(process.env.GEULNUN_USER_DATA)); // 개발용: 설정을 local/에
@@ -29,12 +31,18 @@ app.whenReady().then(async () => {
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion() });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
-  settings.save = async (patch) => { settingsCache = await origSave(patch); return settingsCache; }; // 그림 프로토콜이 학기 폴더를 동기로 알아야 해서
+  const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, log: log.write,
+    onStatus: s => win?.webContents.send(CHANNELS.updateStatus, s) });
+  settings.save = async (patch) => { // 그림 프로토콜이 학기 폴더를, 업데이트가 켜짐 여부를 동기로 알아야 해서
+    settingsCache = await origSave(patch);
+    if ('자동업데이트' in patch) updater.setEnabled(settingsCache.자동업데이트);
+    return settingsCache;
+  };
   // 창 위 기본 메뉴(File·Edit…)는 쓰지 않는다. 설정·언어·정보는 프로그램 안 '설정' 화면에 있다. 복사·붙여넣기는 Windows가 메뉴 없이도 처리한다.
   Menu.setApplicationMenu(null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
     () => settingsCache.학기폴더);
-  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win });
+  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater });
 
   session.defaultSession.webRequest.onHeadersReceived((details, cb) => cb({ responseHeaders: { ...details.responseHeaders,
     'Content-Security-Policy': [CSP] } }));

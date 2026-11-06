@@ -1,8 +1,13 @@
-import type { CliStatusView, Language, Profile, Rotation, SecretView } from '../../shared/ipc.js';
+import type { CliStatusView, Language, Profile, Rotation, SecretView, UpdateStatus } from '../../shared/ipc.js';
 import { reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
-import { t } from '../lib/i18n.js';
+import { t, type Key } from '../lib/i18n.js';
+
+function updateText(s: UpdateStatus): string {
+  if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : t('settings.update.status.off');
+  return t(`settings.update.status.${s.kind}` as Key, { version: 'version' in s ? s.version : '', percent: 'percent' in s ? s.percent : '' });
+}
 
 const DEFAULT_ID = 'cli-default';
 
@@ -40,6 +45,20 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const profileBox = el('div');
   const saveProfilesBtn = el('button', { class: 'primary', onclick: () => guard(async () => { await persist(); showInfo(t('settings.profilesSaved')); renderProfiles(); }) }, t('settings.saveProfiles'));
   const versionText = el('span');
+  const updateBox = el('div');
+
+  function renderUpdate(s: UpdateStatus): void {
+    clear(updateBox);
+    const busy = s.kind === 'checking' || s.kind === 'available' || s.kind === 'downloading';
+    const auto = el('input', { type: 'checkbox', checked: store.state.settings.자동업데이트, disabled: s.kind === 'disabled' && s.reason === 'dev',
+      onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 자동업데이트: auto.checked }) }); renderUpdate(await api.updateStatus()); }) });
+    updateBox.append(el('h3', {}, t('settings.update.title')),
+      el('div', { class: 'row' }, el('span', {}, updateText(s)),
+        el('button', { disabled: busy || s.kind === 'disabled', onclick: () => guard(() => api.checkUpdate()) }, t('settings.update.check')),
+        s.kind === 'downloaded' ? el('button', { class: 'primary', onclick: () => guard(() => api.installUpdate()) }, t('settings.update.install')) : null),
+      el('div', { class: 'row' }, el('label', {}, auto, t('settings.update.auto'))),
+      el('div', { class: 'muted' }, t('settings.update.note')));
+  }
 
   function renderBasics(): void {
     const s = store.state.settings;
@@ -141,8 +160,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'row' }, t('settings.version'), versionText,
         el('button', { onclick: () => guard(() => api.openExternal('guide')) }, t('settings.guide')),
         el('button', { onclick: () => guard(() => api.openExternal('privacy')) }, t('settings.privacy'))),
-      el('div', { class: 'muted' }, t('settings.autoUpdate'))));
+      updateBox));
   renderBasics();
   renderProfiles();
   api.version().then(v => { versionText.textContent = v; }, () => undefined);
+  api.updateStatus().then(renderUpdate, () => undefined);
+  api.onUpdate(renderUpdate);
 }

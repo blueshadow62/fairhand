@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { GeulnunApi, IpcResult, ProgressEvent } from '../shared/ipc.js';
+import type { GeulnunApi, IpcResult, ProgressEvent, UpdateStatus } from '../shared/ipc.js';
 
 // sandbox preload는 CommonJS 한 파일이어야 해서 런타임 값을 가져오지 않고 복제한다. main-protocols 검사가 shared/ipc.ts와 같은지 본다.
 const CHANNELS = {
@@ -10,6 +10,7 @@ const CHANNELS = {
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
+  updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
 } as const;
 
 async function call<T>(ch: string, ...args: unknown[]): Promise<T> {
@@ -60,5 +61,9 @@ const api: GeulnunApi = {
   removeCase: (폴더, 단위, 답) => call(CHANNELS.removeCase, 폴더, 단위, 답),
   rejudge: (폴더) => call(CHANNELS.rejudge, 폴더),
   judgeWithModel: (폴더, opts) => call(CHANNELS.judgeWithModel, 폴더, opts),
+  updateStatus: () => call(CHANNELS.updateStatus),
+  checkUpdate: () => call(CHANNELS.checkUpdate),
+  installUpdate: () => call(CHANNELS.installUpdate),
+  onUpdate: (cb) => { const h = (_e: unknown, s: UpdateStatus) => cb(s); ipcRenderer.on(CHANNELS.updateStatus, h); return () => ipcRenderer.removeListener(CHANNELS.updateStatus, h); },
 };
 contextBridge.exposeInMainWorld('geulnun', api);
