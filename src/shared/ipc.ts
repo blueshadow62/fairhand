@@ -1,4 +1,4 @@
-import type { AnswerKey, Student, Transcript } from '../core/types.js';
+import type { AnswerKey, Student, Transcript, UploadRecord } from '../core/types.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
 /** 전사에 쓸 모델과 노력 단계. 둘 다 low~max를 지원한다(Opus 5.5 기본 medium, Sonnet 5.5 기본 high). 글눈 기본은 Opus 5.5·medium(23장 비교에서 높음과 같은 정확도, 더 빠름) */
@@ -15,7 +15,7 @@ export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boo
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
-export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
+export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 올린파일: UploadRecord[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
@@ -34,7 +34,7 @@ export const CHANNELS = {
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
-  draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add',
+  draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
@@ -77,6 +77,8 @@ export interface GeulnunApi {
   cancelRun(): Promise<void>;
   onProgress(cb: (e: ProgressEvent) => void): () => void;
   addPages(폴더: string, jpegs: ArrayBuffer[]): Promise<number[]>;
+  deletePage(폴더: string, page: number): Promise<{ 엑셀?: string; 엑셀오류?: string }>;   // 그림+전사 삭제, 남은 전사로 엑셀 다시
+  recordUpload(폴더: string, r: Omit<UploadRecord, '일시'>): Promise<void>;
   saveTranscript(폴더: string, t: Transcript): Promise<{ 엑셀?: string; 엑셀오류?: string }>;
   buildResult(폴더: string): Promise<{ 엑셀: string }>;
   buildCumulative(): Promise<{ 파일: string[] }>;

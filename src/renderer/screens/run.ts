@@ -1,8 +1,10 @@
 import type { ProgressEvent, RunResult, SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
-import { api } from '../lib/api.js';
+import { api, imageUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
+import { toItems } from '../lib/review-filter.js';
+import type { UploadRecord } from '../../core/types.js';
 import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
 
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
@@ -27,8 +29,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
   let shownFor: string | null | undefined;
   let data: SetData | null = null;
-  let sources: SheetSource[] = []; // 올린 파일들(이름순). 한 번에 이어서 쪽으로 나눈다
-  const totalPages = () => sources.reduce((n, s) => n + s.pageCount, 0);
+  interface Picked { src: SheetSource; 지문: string; 크기: number; 이전: UploadRecord | null; 포함: boolean }
+  let picked: Picked[] = []; // 올린 파일들(이름순). 한 번에 이어서 쪽으로 나눈다. 이미 올린 파일은 기본으로 빼 둔다
+  const included = () => picked.filter(p => p.포함);
+  const totalPages = () => included().reduce((n, p) => n + p.src.pageCount, 0);
   let rotation: Rotation = store.state.settings.기본회전;
   let running = false;
 
@@ -38,6 +42,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const countBox = el('div', { class: 'row' });
   const preview = el('canvas', { class: 'preview' });
   const uploadBox = el('div');
+  const thumbsTitle = el('h3');
+  const thumbsBox = el('div');
   const runBox = el('div');
   const resultBox = el('div');
 
@@ -50,15 +56,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderCounts();
     body.append(el('h3', {}, t('common.set', { name: 폴더 })), countBox,
       el('div', { class: 'card' }, el('h3', {}, t('run.upload')), uploadBox),
+      el('div', { class: 'card' }, thumbsTitle, thumbsBox),
       el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox), resultBox);
-    renderUpload(); renderRun();
+    renderUpload(); renderThumbs(); renderRun();
   }
 
   function renderCounts(): void {
     clear(countBox);
     if (!data) return;
+    const dups = toItems(data.transcripts).filter(i => i.중복).map(i => i.page);
     put(countBox, t('run.counts', { pages: data.pages.length, transcripts: data.transcripts.length }),
-      data.key.확인?.완료 ? null : el('span', { class: 'band error' }, t('common.notConfirmed')));
+      data.key.확인?.완료 ? null : el('span', { class: 'band error' }, t('common.notConfirmed')),
+      dups.length ? el('span', { class: 'band warn' }, t('run.dupStudents', { list: dups.map(tag).join(', ') })) : null,
+      dups.length ? el('button', { onclick: () => ctx.goTo('review') }, t('run.goReview')) : null);
   }
 
   // ── PDF 올리기 ──
@@ -69,18 +79,26 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function pickFiles(): Promise<void> {
     const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
     if (!files.length) return;
-    for (const s of sources) s.close();
-    sources = [];
+    for (const p of picked) p.src.close();
+    picked = [];
     for (const f of files) {
-      try { sources.push(await openSheetSource(f)); }
-      catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
+      try {
+        const 지문 = await sha256(f);
+        const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
+        picked.push({ src: await openSheetSource(f), 지문, 크기: f.size, 이전, 포함: !이전 });
+      } catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
     }
     rotation = store.state.settings.기본회전;
     renderUpload(); await drawPreview();
   }
 
+  async function sha256(f: File): Promise<string> {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', await f.arrayBuffer()));
+    return [...h].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   async function drawPreview(): Promise<void> {
-    const first = sources[0];
+    const first = (included()[0] ?? picked[0])?.src;
     if (!first) return;
     const c = await first.render(1, rotation, 0.4);
     preview.width = c.width; preview.height = c.height;
@@ -88,7 +106,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   async function savePages(): Promise<void> {
-    if (!sources.length || !data) return;
+    if (!data) return;
+    if (!included().length) { showError(t('run.noneSelected')); return; }
     const 폴더 = data.폴더, total = totalPages();
     const made: number[] = [];
     saveBtn.disabled = true;
@@ -96,18 +115,20 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       // 파일 순서대로, 파일 안에서는 쪽 순서대로 하나의 번호 흐름으로 이어 붙인다
       let jpegs: ArrayBuffer[] = [], n = 0;
       const flush = async () => { if (jpegs.length) { made.push(...await api.addPages(폴더, jpegs)); jpegs = []; uploadStatus.textContent = t('run.savedCount', { n: made.length, total }); } };
-      for (const src of sources) {
+      for (const { src, 지문, 크기 } of included()) {
+        const before = made.length;
         for (let p = 1; p <= src.pageCount; p++) {
           n++;
           jpegs.push(await canvasToJpeg(await src.render(p, rotation, DPI_SCALE)));
           uploadStatus.textContent = t('run.rendering', { n, total });
           if (jpegs.length >= BATCH) await flush();
         }
+        await flush(); // 파일 끝마다 비워 이 파일이 받은 장 범위를 기록한다
+        await api.recordUpload(폴더, { 이름: src.name, 크기, 지문, 장수: src.pageCount, 시작: made[before]!, 끝: made[made.length - 1]! });
       }
-      await flush();
       showInfo(t('run.pagesSaved', { from: tag(made[0]!), to: tag(made[made.length - 1]!) }));
-      for (const s of sources) s.close(); sources = []; fileInput.value = '';
-      data = await api.readSet(폴더); renderCounts(); renderUpload(); await store.refreshSets();
+      for (const p of picked) p.src.close(); picked = []; fileInput.value = '';
+      await refresh();
     } catch (e) { showError((e as Error).message); }
     finally { saveBtn.disabled = false; }
   }
@@ -116,16 +137,52 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderUpload(): void {
     clear(uploadBox);
     uploadBox.append(el('div', { class: 'row' }, fileInput), uploadStatus);
-    if (!sources.length || !data) return;
+    if (!picked.length || !data) return;
     const next = data.pages.length ? Math.max(...data.pages) + 1 : 1;
     put(uploadBox,
-      el('div', { class: 'muted' }, sources.map(s => t('run.fileLine', { name: s.name, n: s.pageCount })).join(' · ')),
-      el('div', { class: 'row' }, t('run.filesRotation', { files: sources.length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
+      el('div', {}, ...picked.map(p => el('div', { class: 'row' },
+        p.이전
+          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, onchange: (e: Event) => { p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); void drawPreview(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
+          : el('span', { class: 'muted' }, t('run.fileLine', { name: p.src.name, n: p.src.pageCount })),
+        p.이전 ? el('span', { class: 'band warn' }, t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null))),
+      el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
         el('button', { class: r === rotation ? 'primary' : '', onclick: () => { rotation = r; renderUpload(); void drawPreview(); } }, `${r}°`)),
         el('span', { class: 'muted' }, t('run.rotationHelp'))),
       preview,
       data.pages.length ? el('div', { class: 'band warn' }, t('run.alreadyPages', { n: data.pages.length, next: tag(next) })) : null,
       el('div', { class: 'row' }, saveBtn));
+    saveBtn.disabled = !included().length;
+  }
+
+  // ── 저장된 장 미리보기·삭제 ──
+  async function refresh(): Promise<void> {
+    if (!data) return;
+    data = await api.readSet(data.폴더);
+    renderCounts(); renderUpload(); renderThumbs(); renderRun(); await store.refreshSets();
+  }
+
+  function renderThumbs(): void {
+    clear(thumbsBox);
+    if (!data) return;
+    thumbsTitle.textContent = t('run.savedPages', { n: data.pages.length });
+    if (!data.pages.length) { thumbsBox.append(el('div', { class: 'muted' }, t('run.noPages'))); return; }
+    thumbsBox.append(el('div', { class: 'thumbs' }, ...data.pages.map(p => {
+      const tr = data!.transcripts.find(x => x.page === p);
+      const who = !tr ? t('run.untranscribed') : tr.이름 ?? (tr.반 !== null && tr.번호 !== null ? `${tr.반}-${tr.번호}` : t('run.unidentified'));
+      return el('figure', { class: 'thumb' },
+        el('img', { src: imageUrl(data!.폴더, p), loading: 'lazy', alt: tag(p) }),
+        el('figcaption', {}, el('span', { title: who }, `${tag(p)} · ${who}`),
+          el('button', { class: 'danger', disabled: running, title: t('common.delete'), onclick: () => void deletePage(p) }, '×')));
+    })));
+  }
+
+  async function deletePage(p: number): Promise<void> {
+    if (!data || !confirm(t('run.deleteConfirm', { page: tag(p) }))) return;
+    try {
+      const r = await api.deletePage(data.폴더, p);
+      if (r.엑셀오류) showError(t('common.excelFailed', { error: r.엑셀오류 })); else showInfo(t('run.deleted', { page: tag(p) }));
+      await refresh();
+    } catch (e) { showError((e as Error).message); }
   }
 
   // ── 전사 ──
@@ -138,7 +195,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const 폴더 = data.폴더;
     const profile = store.state.settings.프로필.find(p => p.id === store.state.settings.사용중);
     const isApi = profile?.종류 === 'api';
-    running = true; renderRun(); clear(resultBox);
+    running = true; renderRun(); renderThumbs(); clear(resultBox);
     const started = Date.now();
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
@@ -154,7 +211,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       showResult(await api.startRun(폴더, opts));
     } catch (e) { showError((e as Error).message); }
     finally {
-      clearInterval(timer); off(); tick(); running = false; renderRun();
+      clearInterval(timer); off(); tick(); running = false; renderRun(); renderThumbs();
       if (store.state.current === 폴더) { data = await api.readSet(폴더).catch(() => data); renderCounts(); }
       await store.refreshSets().catch(() => undefined);
     }

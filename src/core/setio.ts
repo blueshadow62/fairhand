@@ -2,7 +2,7 @@ import { readdir, readFile, writeFile, rename, mkdir, rm } from 'node:fs/promise
 import path from 'node:path';
 import { parseKey } from './key.js';
 import { parseTranscript } from './transcript.js';
-import { DataError, type AnswerKey, type Transcript } from './types.js';
+import { DataError, type AnswerKey, type Transcript, type UploadRecord } from './types.js';
 
 export const transcriptFileName = (page: number): string => `p${String(page).padStart(2, '0')}.json`;
 
@@ -60,4 +60,23 @@ export async function saveTranscript(dir: string, t: Transcript): Promise<void> 
     if (code === 'EPERM' || code === 'EBUSY') throw new DataError(`${transcriptFileName(t.page)}이 다른 프로그램에서 열려 있어 저장할 수 없습니다`);
     throw e;
   }
+}
+
+const uploadsFile = (dir: string): string => path.join(dir, '올린파일.json');
+export async function loadUploads(dir: string): Promise<UploadRecord[]> {
+  try { const v: unknown = JSON.parse(await readFile(uploadsFile(dir), 'utf-8')); return Array.isArray(v) ? (v as UploadRecord[]) : []; } catch { return []; }
+}
+export async function appendUpload(dir: string, r: UploadRecord): Promise<void> {
+  const all = await loadUploads(dir); all.push(r);
+  await writeFile(uploadsFile(dir), JSON.stringify(all, null, 1), 'utf-8');
+}
+
+/** 장 그림과 그 장의 전사를 지운다. 번호는 다시 매기지 않는다(뒤 장을 당기면 다른 장의 전사가 어긋난다) */
+export async function removePage(dir: string, page: number): Promise<{ 전사있었음: boolean }> {
+  if (!Number.isInteger(page) || page < 1) throw new DataError(`잘못된 장 번호: ${page}`);
+  const tag = `p${String(page).padStart(2, '0')}`;
+  try { await rm(path.join(dir, 'pages', `${tag}.jpg`)); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new DataError(`${tag} 그림이 없습니다`); throw e; }
+  try { await rm(path.join(dir, 'transcripts', transcriptFileName(page))); return { 전사있었음: true }; }
+  catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { 전사있었음: false }; throw e; }
 }

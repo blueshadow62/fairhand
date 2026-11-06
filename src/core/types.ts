@@ -62,3 +62,6 @@ export class DataError extends Error {}
 
 export const studentKey = (학년: number, 반: number, 번호: number): string => `${학년}-${반}-${번호}`;
 export const pageTag = (page: number): string => `p${String(page).padStart(2, '0')}`;
+
+/** 채점 실행에서 올린 파일의 기록. 같은 파일을 다시 올리면 지문(SHA-256)으로 알아본다 */
+export interface UploadRecord { 이름: string; 크기: number; 지문: string; 장수: number; 시작: number; 끝: number; 일시: string }

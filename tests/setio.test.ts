@@ -4,7 +4,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeF
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSet, checkAllTranscribed, saveTranscript, transcriptFileName, listPages } from '../src/core/setio.js';
+import { loadSet, checkAllTranscribed, saveTranscript, transcriptFileName, listPages, removePage, loadUploads, appendUpload } from '../src/core/setio.js';
 import { DataError } from '../src/core/types.js';
 
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
@@ -78,4 +78,27 @@ test('loadSet_page_mismatch_stops: 파일 이름과 안의 page가 다르면 멈
   writeFileSync(path.join(d, 'transcripts', 'p04.json'),
     JSON.stringify({ page: 5, 식별확신: '불명', 정량: {}, 정성: {}, 비고: [] }), 'utf-8');
   await assert.rejects(loadSet(d), (e: unknown) => e instanceof DataError && /p04\.json/.test(e.message) && /page/.test(e.message));
+});
+
+test('removePage: 그림과 전사를 지우고 번호는 비워 둔다', async () => {
+  const d = sample();
+  mkdirSync(path.join(d, 'pages'), { recursive: true });
+  for (const p of [1, 2, 3, 4]) writeFileSync(path.join(d, 'pages', `p0${p}.jpg`), 'x');
+  assert.deepEqual(await removePage(d, 2), { 전사있었음: true });
+  assert.deepEqual(await listPages(d), [1, 3, 4]);
+  assert.ok(!(await loadSet(d)).transcripts.some(t => t.page === 2));
+  assert.deepEqual(await removePage(d, 4), { 전사있었음: false }); // 전사 없는 장
+  await assert.rejects(removePage(d, 2), (e: unknown) => e instanceof DataError && /p02/.test(e.message)); // 이미 없는 장
+  await assert.rejects(removePage(d, 0), DataError);
+});
+
+test('uploads: 기록이 없으면 빈 배열, 더하면 이어진다', async () => {
+  const d = sample();
+  assert.deepEqual(await loadUploads(d), []);
+  const r = { 이름: 'a.pdf', 크기: 10, 지문: 'ab', 장수: 2, 시작: 1, 끝: 2, 일시: '2026-11-06T00:00:00.000Z' };
+  await appendUpload(d, r); await appendUpload(d, { ...r, 이름: 'b.pdf', 시작: 3, 끝: 4 });
+  const all = await loadUploads(d);
+  assert.equal(all.length, 2); assert.equal(all[1].이름, 'b.pdf');
+  writeFileSync(path.join(d, '올린파일.json'), '{깨짐', 'utf-8');
+  assert.deepEqual(await loadUploads(d), []); // 깨진 기록은 빈 것으로(올리기를 막지 않는다)
 });

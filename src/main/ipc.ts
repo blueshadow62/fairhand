@@ -4,9 +4,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseKey } from '../core/key.js';
 import { keyExportName, setFolderName } from '../core/names.js';
-import { loadSet, listPages } from '../core/setio.js';
+import { appendUpload, loadSet, loadUploads, listPages, removePage } from '../core/setio.js';
 import { parseTranscript } from '../core/transcript.js';
-import { DataError, type AnswerKey } from '../core/types.js';
+import { DataError, type AnswerKey, type UploadRecord } from '../core/types.js';
 import { EngineError, userFacingMessage } from '../engine/provider.js';
 import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
@@ -80,7 +80,7 @@ export function registerIpc(d: IpcDeps): void {
     const dir = await setDir(폴더); const { key, transcripts } = await loadSet(dir);
     const all = await roster().catch(() => null); // 명단 파일이 깨져도 세트는 열리게(엑셀 만들 때 오류가 보인다)
     const 명단 = all ? all.filter(x => x.학년 === key.대상.학년 && key.대상.반.includes(x.반)) : null; // 검토 화면의 미제출 목록용
-    return { 폴더, key, transcripts, pages: await listPages(dir), 명단있음: !!all, 명단 };
+    return { 폴더, key, transcripts, pages: await listPages(dir), 올린파일: await loadUploads(dir), 명단있음: !!all, 명단 };
   });
   h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => d.bridge.saveKey(await setDir(폴더), raw));
   h(CHANNELS.importKey, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePaths[0]) return null; return parseKey(await readFile(r.filePaths[0], 'utf-8'), path.basename(r.filePaths[0])); });
@@ -108,6 +108,15 @@ export function registerIpc(d: IpcDeps): void {
     for (const j of jpegs) { await writeFile(pageFile(dir, n), Buffer.from(j)); made.push(n++); }
     return made;
   });
+  h(CHANNELS.deletePage, async (폴더: string, page: number) => {
+    const dir = await setDir(폴더);
+    const { 전사있었음 } = await removePage(dir, page);
+    if (!전사있었음 || !(await loadSet(dir)).transcripts.length) return {};
+    try { return await rebuildResult(dir, await roster(), { version: d.version }); }
+    catch (e) { return { 엑셀오류: e instanceof Error ? e.message : String(e) }; }
+  });
+  h(CHANNELS.recordUpload, async (폴더: string, r: Omit<UploadRecord, '일시'>) => appendUpload(await setDir(폴더),
+    { 이름: String(r.이름), 크기: Number(r.크기), 지문: String(r.지문), 장수: Number(r.장수), 시작: Number(r.시작), 끝: Number(r.끝), 일시: new Date().toISOString() }));
 
   h(CHANNELS.saveTranscript, async (폴더: string, raw: unknown) => { const dir = await setDir(폴더); const t = parseTranscript(JSON.stringify(raw), '검토 화면'); return saveAndRebuild(dir, t, await roster(), { version: d.version }); });
   h(CHANNELS.buildResult, async (폴더: string) => rebuildResult(await setDir(폴더), await roster(), { version: d.version }));
