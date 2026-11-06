@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,9 +8,17 @@ import { loadSet, checkAllTranscribed, saveTranscript, transcriptFileName, listP
 import { DataError } from '../src/core/types.js';
 
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
+/** cpSync는 GitHub의 Node 22(Windows)에서 프로세스째 죽어(0xC0000409) 직접 복사한다 */
+function copyDirSync(src: string, dst: string): void {
+  mkdirSync(dst, { recursive: true });
+  for (const e of readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, e.name), t = path.join(dst, e.name);
+    if (e.isDirectory()) copyDirSync(s, t); else copyFileSync(s, t);
+  }
+}
 function sample(): string {
   const d = mkdtempSync(path.join(tmpdir(), 'geulnun-set-'));
-  cpSync(FX, d, { recursive: true });
+  copyDirSync(FX, d);
   return d;
 }
 

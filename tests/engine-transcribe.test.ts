@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,9 +19,17 @@ function provider(script: (page: number, call: number) => RawResult | Error): Tr
   let calls = 0;
   return { id: 'cli', get calls() { return calls; }, async complete() { throw new Error('검사에서 쓰지 않음'); }, async transcribe(input) { calls++; const r = script(input.page, calls); if (r instanceof Error) throw r; return r; } };
 }
+/** cpSync는 GitHub의 Node 22(Windows)에서 프로세스째 죽어(0xC0000409) 직접 복사한다 */
+function copyDirSync(src: string, dst: string): void {
+  mkdirSync(dst, { recursive: true });
+  for (const e of readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, e.name), t = path.join(dst, e.name);
+    if (e.isDirectory()) copyDirSync(s, t); else copyFileSync(s, t);
+  }
+}
 function sampleSet(pages: number[]): string {
   const d = mkdtempSync(path.join(tmpdir(), 'geulnun-tr-'));
-  cpSync(FX, d, { recursive: true });
+  copyDirSync(FX, d);
   mkdirSync(path.join(d, 'pages'), { recursive: true });
   for (const p of pages) writeFileSync(path.join(d, 'pages', `p${String(p).padStart(2, '0')}.jpg`), JPEG);
   return d;
