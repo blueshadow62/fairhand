@@ -6,7 +6,7 @@
 - 학생 답안지에는 **학년, 반, 번호만** 입력되어 있는 걸 추천합니다. 이름이 있으면 그림과 함께 Anthropic 서버로 전송됩니다. 명단(이름)은 PC 안에서만 씁니다. 자세한 내용은 [PRIVACY.md](PRIVACY.md).
 
 ## 설치
-1. [Releases](https://github.com/blueshadow62/geulnun/releases)에서 `geulnun-setup-x.y.z.exe`를 받습니다(저장소에 올라갈 때 영문 이름으로 바뀝니다).
+1. [Releases](https://github.com/blueshadow62/geulnun/releases)에서 `geulnun-setup-x.y.z.exe`를 받습니다.
 2. 받은 파일을 실행합니다. 코드 서명이 없어 Windows가 '알 수 없는 게시자'나 'Windows의 PC 보호' 창을 띄웁니다. **추가 정보 → 실행**을 누르면 설치가 이어집니다. 관리자 권한은 필요 없습니다(사용자별 설치).
 3. 첫 실행에서 **설정**의 '기본 폴더 만들기(문서\글눈)'를 누르거나 학기 폴더를 고르고, AI 프로필을 정합니다.
 4. Claude Code로 전사하려면 Claude Code를 설치하고 로그인합니다([설치 안내](https://code.claude.com/docs/ko/setup)). 설정 화면의 '로그인 열기'가 순서를 안내합니다.
@@ -43,7 +43,7 @@
 ## 개발
 - 요구: Node 22 이상
 - `npm install` → `npm test` → `npm start`(빌드 포함)
-- 설치 파일: `npm run dist` → `release/글눈-Setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Geulnun.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
+- 설치 파일: `npm run dist` → `release/geulnun-setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Geulnun.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
 - 개발 중에는 설정·API 키를 저장소의 `local/`(무시됨)에 두고 실행: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - 명령줄 스크립트는 경로에 공백이 있으면 `npm run`으로 인수를 넘기지 말고 빌드(`npm run build`) 뒤 직접 부릅니다.
   - 세트 채점: `node dist/scripts/score-set.js "<세트 폴더>" --roster "<명단.xlsx>"`

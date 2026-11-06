@@ -1,7 +1,7 @@
 {
   "name": "geulnun",
   "productName": "글눈",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "손글씨 서·논술형 답안지 전사·채점 도구",
   "private": true,
   "license": "Apache-2.0",
@@ -64,7 +64,7 @@
         "nsis"
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "geulnun-setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
