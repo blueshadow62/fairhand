@@ -21,7 +21,7 @@
     "eval": "tsc && node dist/scripts/eval.js"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
+    "@types/node": "^24.19.2",
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "typescript": "^7.0.2"
@@ -38,6 +38,13 @@
     "executableName": "Geulnun",
     "copyright": "Copyright © 2026 blueshadow62. Apache-2.0.",
     "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -59,7 +66,10 @@
       "!node_modules/@napi-rs/**",
       "!node_modules/pdfjs-dist/legacy/**",
       "!node_modules/pdfjs-dist/web/**",
-      "!node_modules/pdfjs-dist/types/**"
+      "!node_modules/pdfjs-dist/types/**",
+      "!**/*.d.ts",
+      "!**/*.d.mts",
+      "!src/renderer/**/*.ts"
     ],
     "win": {
       "target": [

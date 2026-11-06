@@ -8,12 +8,17 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      # package.json을 안 올리고 태그만 밀면 옛 설치 파일이 새 릴리스에 올라가고 사용자는 영원히 '최신'으로 본다
+      - run: node -e 'const v = "v" + require("./package.json").version; if (v !== process.env.TAG) { console.error(`package.json ${v} != tag ${process.env.TAG}`); process.exit(1); }'
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
       - run: npm test
       # 빌더가 직접 올리면 초안이 둘 생기는 일이 있어(0.2.1·0.2.2), 빌드만 하고 초안 하나를 gh로 만든다. 설명을 적고 직접 공개한다.
       - run: npx electron-builder --win --publish never

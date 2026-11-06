@@ -23,7 +23,9 @@ test('build 절: 앱이 읽는 파일은 들어가고, 네이티브 부품·개�
   const f: string[] = b.files;
   for (const need of ['dist/src/**', 'dist-preload/**', 'src/renderer/**', 'resources/**', 'package.json', 'LICENSE', 'NOTICE'])
     assert.ok(f.includes(need), `files에 ${need}가 없음`);
-  for (const no of ['!node_modules/@napi-rs/**', '!**/*.map', '!dist/tests/**', '!dist/scripts/**', '!local/**', '!tests/**', '!docs/**'])
+  for (const no of ['!node_modules/@napi-rs/**', '!**/*.map', '!dist/tests/**', '!dist/scripts/**', '!local/**', '!tests/**', '!docs/**', '!**/*.d.ts', '!src/renderer/**/*.ts'])
     assert.ok(f.includes(no), `files에 ${no}가 없음`);
   assert.equal(b.asar, true);
+  // 서명 없는 실행 파일이 임의 Node 실행기·디버그 발판으로 쓰이지 않게
+  assert.deepEqual(b.electronFuses, { runAsNode: false, enableCookieEncryption: true, enableNodeOptionsEnvironmentVariable: false, enableNodeCliInspectArguments: false, onlyLoadAppFromAsar: true });
 });

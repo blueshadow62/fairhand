@@ -1,0 +1,12 @@
+# 의존성·액션의 새 판과 취약점을 매주 알려 준다(PR로). 올릴지는 CHANGELOG를 읽고 하나씩 정한다
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

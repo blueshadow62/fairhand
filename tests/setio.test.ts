@@ -31,7 +31,7 @@ test('loadSet: 정답표와 전사를 읽는다', async () => {
   const { key, transcripts } = await loadSet(sample());
   assert.equal(key.세트, '세트샘플');
   assert.deepEqual(transcripts.map(t => t.page), [1, 2, 3]);
-  assert.equal(transcripts[1].식별확신, '추정');
+  assert.equal(transcripts[1]!.식별확신, '추정');
 });
 
 test('loadSet_sorts_by_page_number: p100이 p99 뒤에 온다', async () => {
@@ -63,14 +63,14 @@ test('untranscribed_page_stops: 전사 없는 장이 있으면 멈춘다', async
 test('saveTranscript: 새 양식으로만 저장하고 임시 파일을 남기지 않는다', async () => {
   const d = sample();
   const { transcripts } = await loadSet(d);
-  const t = { ...transcripts[1], 확인완료: true };
+  const t = { ...transcripts[1]!, 확인완료: true };
   await saveTranscript(d, t);
   const raw = readFileSync(path.join(d, 'transcripts', 'p02.json'), 'utf-8');
   assert.ok(raw.includes('"식별확신": "추정"'));
   assert.ok(!raw.includes('이름확신'));
   assert.ok(raw.includes('"확인완료": true'));
   const { transcripts: again } = await loadSet(d);
-  assert.equal(again[1].확인완료, true);
+  assert.equal(again[1]!.확인완료, true);
 });
 
 test('loadSet_page_mismatch_stops: 파일 이름과 안의 page가 다르면 멈춘다', async () => {
@@ -98,7 +98,7 @@ test('uploads: 기록이 없으면 빈 배열, 더하면 이어진다', async ()
   const r = { 이름: 'a.pdf', 크기: 10, 지문: 'ab', 장수: 2, 시작: 1, 끝: 2, 일시: '2026-11-06T00:00:00.000Z' };
   await appendUpload(d, r); await appendUpload(d, { ...r, 이름: 'b.pdf', 시작: 3, 끝: 4 });
   const all = await loadUploads(d);
-  assert.equal(all.length, 2); assert.equal(all[1].이름, 'b.pdf');
+  assert.equal(all.length, 2); assert.equal(all[1]!.이름, 'b.pdf');
   writeFileSync(path.join(d, '올린파일.json'), '{깨짐', 'utf-8');
   assert.deepEqual(await loadUploads(d), []); // 깨진 기록은 빈 것으로(올리기를 막지 않는다)
   await appendUpload(d, r);

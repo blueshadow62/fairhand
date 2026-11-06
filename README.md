@@ -41,7 +41,7 @@
 - 보안 문제는 공개 이슈 대신 [SECURITY.md](SECURITY.md)의 방법으로 알려 주세요.
 
 ## 개발
-- 요구: Node 22 이상
+- 요구: Node 24 이상(Electron 45가 품은 Node와 같은 판. CI도 24)
 - `npm install` → `npm test` → `npm start`(빌드 포함)
 - 설치 파일: `npm run dist` → `release/geulnun-setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Geulnun.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
 - 개발 중에는 설정·API 키를 저장소의 `local/`(무시됨)에 두고 실행: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`

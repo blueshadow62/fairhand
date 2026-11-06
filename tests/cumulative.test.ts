@@ -21,7 +21,7 @@ const roster: Student[] = [{ 학년: 3, 반: 1, 번호: 1, 이름: '박가상' }
 test('buildCumulative: 학생 합집합, 세트별 합계, 총점, 미확인 세트 제외', () => {
   const c = buildCumulative(sets, roster, 3);
   assert.equal(c.반별.length, 1);
-  const s = c.반별[0];
+  const s = c.반별[0]!;
   assert.deepEqual(s.header, ['학년', '반', '번호', '이름', '첫글', '둘째글', '총점']);
   assert.deepEqual(s.rows, [
     [3, 1, 1, '박가상', 2, 1, 3],

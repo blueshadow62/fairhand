@@ -6,3 +6,7 @@ local/
 *.log
 .DS_Store
 Thumbs.db
+# 학생 자료(답안지 PDF·채점 엑셀)는 어디에 두어도 저장소에 들어가지 않게
+*.pdf
+*.xlsx
+*.xls

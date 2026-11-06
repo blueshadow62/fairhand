@@ -43,7 +43,7 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 - Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## Development
-- Requires Node 22+
+- Requires Node 24+ (same major as the Node bundled in Electron 45; CI uses 24)
 - `npm install` → `npm test` → `npm start` (builds first)
 - Installer: `npm run dist` → `release/geulnun-setup-<version>.exe` (`npm run pack` for a quick `release/win-unpacked/Geulnun.exe`). Pushing a `v*` tag makes GitHub Actions build the installer and create a draft release.
 - During development keep settings and keys under the ignored `local/` folder: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`

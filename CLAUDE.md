@@ -12,6 +12,6 @@
 - 제품명·로고에 'Claude'를 쓰지 않는다. "Claude Code를 실행합니다"라고 평문으로만.
 
 ## 명령
-- 검사: `npm test` · 실행: `npm start`(빌드 포함: tsc + preload를 CommonJS로 `dist-preload/preload.cjs`) · 세트 채점(1단계): `npm run score -- "<세트 폴더>" [--roster <xlsx|csv>]`
+- 검사: `npm test` · 실행: `npm start`(빌드 포함: tsc + preload를 CommonJS로 `dist-preload/preload.cjs`) · 세트 채점(1단계): `npm run build` 뒤 `node dist/scripts/score-set.js "<세트 폴더>" [--roster <xlsx|csv>]`(공백 있는 경로는 `npm run -- `로 넘기면 깨진다)
 - 개발 실행은 설정·키를 `local/`에 두게: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - 경로에 공백이 있으면 npm 스크립트로 인수를 넘기지 말고 `node dist/scripts/<이름>.js "<경로>"`로 직접.

@@ -13,14 +13,15 @@ function toInt(v: unknown, where: string, line: number, col: string): number {
 /** rows[0]은 머리글. 열은 순서가 아니라 머리글(학년, 반, 번호, 이름)로 찾는다. 빈 줄은 건너뛴다. */
 export function parseRosterRows(rows: unknown[][], where: string): Student[] {
   const head = (rows[0] ?? []).map(c => String(c ?? '').trim());
-  const [학년열, 반열, 번호열, 이름열] = ['학년', '반', '번호', '이름'].map(h => head.indexOf(h));
-  if ([학년열, 반열, 번호열, 이름열].includes(-1)) throw new DataError(`${where}: 첫 줄에 학년·반·번호·이름 머리글이 있어야 합니다`);
+  const cols = ['학년', '반', '번호', '이름'].map(h => head.indexOf(h)) as [number, number, number, number];
+  const [학년열, 반열, 번호열, 이름열] = cols;
+  if (cols.includes(-1)) throw new DataError(`${where}: 첫 줄에 학년·반·번호·이름 머리글이 있어야 합니다`);
   const out: Student[] = [];
   const firstLine = new Map<string, number>();
   rows.slice(1).forEach((r, i) => {
     const line = i + 2;
     if (!r || r.every(c => String(c ?? '').trim() === '')) return;
-    const s: Student = { 학년: toInt(r[학년열], where, line, '학년'), 반: toInt(r[반열], where, line, '반'), 번호: toInt(r[번호열], where, line, '번호'),
+    const s: Student = { 학년: toInt(r[학년열] ?? '', where, line, '학년'), 반: toInt(r[반열] ?? '', where, line, '반'), 번호: toInt(r[번호열] ?? '', where, line, '번호'),
       이름: String(r[이름열] ?? '').trim() || null };
     // 그대로 두면 점수가 먼저 나온 줄의 이름에 조용히 붙는다
     const k = studentKey(s.학년, s.반, s.번호);

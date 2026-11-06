@@ -3,14 +3,24 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM"],
-    "types": ["node"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
     "rootDir": ".",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "tests", "scripts"]
+  "include": [
+    "src",
+    "tests",
+    "scripts"
+  ]
 }
