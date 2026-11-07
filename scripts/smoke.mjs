@@ -34,7 +34,8 @@ const semester = path.join(userData, 'semester');
 fs.mkdirSync(semester);
 fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ 학기폴더: semester, 언어: 'ko', 자동업데이트: false }));
 // Ubuntu 23.10+는 권한 없는 사용자 네임스페이스를 막아 Chromium 격리가 실패한다(CI 전용 우회)
-const args = [`--remote-debugging-port=${PORT}`, ...(process.platform === 'linux' ? ['--no-sandbox'] : [])];
+// --enable-logging=stderr: 시작하자마자 죽을 때 Chromium의 치명 오류 문구가 app.log에 남는다(기본은 어디에도 안 찍힘)
+const args = [`--remote-debugging-port=${PORT}`, '--enable-logging=stderr', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])];
 const app = spawn(exe, args, { env: { ...process.env, GEULNUN_USER_DATA: userData }, stdio: ['ignore', 'pipe', 'pipe'] });
 const appLog = fs.createWriteStream(path.join(out, 'app.log'));
 app.stdout.pipe(appLog); app.stderr.pipe(appLog);

@@ -38,6 +38,15 @@ jobs:
         run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/smoke.mjs smoke-out
       - if: runner.os != 'Linux'
         run: node scripts/smoke.mjs smoke-out
+      - if: failure() && runner.os == 'macOS'
+        # 맥에서 앱이 죽으면 원인을 볼 자료: 앱 꾸러미 안 이름들(보조 프로세스 앱), Info.plist, 충돌 보고서
+        run: |
+          mkdir -p smoke-out/diag
+          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          ls -la "$APP/Contents/MacOS" "$APP/Contents/Frameworks" > smoke-out/diag/bundle.txt 2>&1
+          plutil -p "$APP/Contents/Info.plist" > smoke-out/diag/info-plist.txt 2>&1
+          for h in "$APP"/Contents/Frameworks/*Helper*.app; do echo "== $h"; plutil -p "$h/Contents/Info.plist" | grep -E "CFBundle(Name|Executable|DisplayName)"; done > smoke-out/diag/helpers.txt 2>&1
+          cp ~/Library/Logs/DiagnosticReports/*.ips smoke-out/diag/ 2>/dev/null || true
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
