@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DataError } from '../core/types.js';
-import { EFFORTS, MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
+import { EFFORTS, GEMINI_MODELS, MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
 
 export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
@@ -17,7 +17,7 @@ export function defaultSettings(): Settings {
 function parseProfile(v: unknown): Profile | null {
   if (!isObj(v)) return null;
   const id = optStr(v.id), 이름 = optStr(v.이름);
-  if (!id || !이름 || (v.종류 !== 'cli' && v.종류 !== 'api' && v.종류 !== 'codex')) return null;
+  if (!id || !이름 || (v.종류 !== 'cli' && v.종류 !== 'api' && v.종류 !== 'codex' && v.종류 !== 'gemini')) return null;
   const p: Profile = { id, 이름, 종류: v.종류 };
   const local = p.종류 === 'cli' || p.종류 === 'codex'; // 이 PC의 프로그램을 띄우는 종류만 실행 파일·로그인 폴더를 둔다
   const cliPath = optAbs(v.cliPath), configDir = optAbs(v.configDir);
@@ -26,6 +26,7 @@ function parseProfile(v: unknown): Profile | null {
   // Codex 모델 이름은 목록이 정해져 있지 않아 명령줄에 안전한 글자만 받는다
   const codexModel = optStr(v.모델);
   if (p.종류 === 'codex') { if (codexModel && /^[\w.:-]{1,64}$/.test(codexModel)) p.모델 = codexModel; }
+  else if (p.종류 === 'gemini') { if ((GEMINI_MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as string; }
   else if ((MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as ModelId;
   if ((EFFORTS as readonly string[]).includes(v.노력 as string)) p.노력 = v.노력 as EffortLevel;
   return p;

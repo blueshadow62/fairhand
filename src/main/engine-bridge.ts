@@ -9,6 +9,7 @@ import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { CODEX, CodexProvider, codexEnv, codexStatus, locateCodex } from '../engine/codex.js';
 import { childEnv } from '../engine/env.js';
+import { GEMINI, GeminiProvider, testGeminiKey } from '../engine/gemini.js';
 import { judgePage } from '../engine/judge.js';
 import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
 import { imageToSend, type JpegMasker } from '../engine/privacy.js';
@@ -58,6 +59,10 @@ export class EngineBridge {
     if (p.종류 === 'cli') return new CliProvider({ program: locateClaude(this.env, existsSync, p.cliPath), env: this.cliEnv(p), model: p.모델 ?? DEFAULT_MODEL });
     if (p.종류 === 'codex') return new CodexProvider({ program: locateCodex(this.env, existsSync, p.cliPath), env: this.cliEnv(p), model: p.모델 });
     const apiKey = await this.deps.secrets.open(p.id);
+    if (p.종류 === 'gemini') {
+      if (!apiKey) throw new EngineError('signed-out', `프로필 '${p.이름}'에 API 키가 없습니다`, undefined, GEMINI);
+      return new GeminiProvider({ apiKey, model: p.모델 });
+    }
     if (!apiKey) throw new EngineError('signed-out', `프로필 '${p.이름}'에 API 키가 없습니다. 설정에서 입력해 주세요`);
     return new ApiProvider({ apiKey, model: p.모델 ?? DEFAULT_MODEL });
   }
@@ -101,6 +106,8 @@ export class EngineBridge {
   async testApiKey(id: string): Promise<{ ok: boolean; message: string }> {
     const apiKey = await this.deps.secrets.open(id);
     if (!apiKey) return { ok: false, message: '저장된 키가 없거나 이 PC에서 열 수 없습니다' };
+    const p = await this.profile(id).catch(() => null); // 키만 있고 프로필이 아직 저장 전이면 Anthropic 키로 본다(이전 동작)
+    if (p?.종류 === 'gemini') return testGeminiKey(apiKey, p.모델);
     try {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       await new Anthropic({ apiKey }).messages.create({ model: 'claude-haiku-5-5', max_tokens: 16, messages: [{ role: 'user', content: 'pong' }] });

@@ -44,6 +44,14 @@ test('parseSettings: Codex 프로필은 실행 파일·로그인 폴더와 명�
   assert.equal(e.모델, undefined); // API 키 프로필은 Claude 모델만
 });
 
+test('parseSettings: Gemini 프로필은 목록의 모델만, 실행 파일·로그인 폴더는 두지 않는다', () => {
+  const s = parseSettings({ 프로필: [
+    { id: 'g', 이름: 'Gemini', 종류: 'gemini', 모델: 'gemini-3.8-flash', 노력: 'low', cliPath: 'C:\\x\\a.exe', configDir: 'C:\\x' },
+    { id: 'h', 이름: 'Gemini2', 종류: 'gemini', 모델: 'gemini-2.5-pro' }] });
+  assert.deepEqual(s.프로필.find(p => p.id === 'g'), { id: 'g', 이름: 'Gemini', 종류: 'gemini', 모델: 'gemini-3.8-flash', 노력: 'low' });
+  assert.equal(s.프로필.find(p => p.id === 'h')!.모델, undefined);
+});
+
 test('applyPatch: id 중복·빈 이름은 DataError, 사용중은 목록 안에서만', () => {
   const cur = defaultSettings();
   assert.throws(() => applyPatch(cur, { 프로필: [DEFAULT_PROFILE, { id: 'cli-default', 이름: 'x', 종류: 'cli' }] }), DataError);
