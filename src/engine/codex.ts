@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import { killProcessTree } from './cli.js';
+import { SPAWN_DETACHED, killProcessTree } from './cli.js';
 import { EngineError, requestImages, transcribeRequest, type Effort, type EngineErrorKind, type RawResult, type StructuredRequest, type TranscribeInput, type TranscribeProvider } from './provider.js';
 import { compareVersion, onPath, parseVersion, runClaude, type ClaudeProgram, type ClaudeStatus, type Runner } from './status.js';
 
@@ -185,7 +185,7 @@ export class CodexProvider implements TranscribeProvider {
       const turn = new CodexTurn();
       await new Promise<void>((resolve, reject) => {
         let child: ReturnType<typeof nodeSpawn>;
-        try { child = this.spawn(program.command, args, { cwd: work, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); }
+        try { child = this.spawn(program.command, args, { cwd: work, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: SPAWN_DETACHED }); }
         catch (e) { reject(new EngineError('other', `Codex를 실행할 수 없음: ${(e as Error).message}`, undefined, CODEX)); return; }
         let settled = false, exited = false, stderr = '';
         const finish = (err?: EngineError) => {

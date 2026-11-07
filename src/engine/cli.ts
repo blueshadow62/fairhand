@@ -10,6 +10,12 @@ import { locateClaude, type ClaudeProgram } from './status.js';
 
 export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void; model?: string; env?: NodeJS.ProcessEnv }
 
+/**
+ * 맥·리눅스에서 kill(-pid)로 손자 프로세스까지 한 번에 끄려면 자식이 새 프로세스 묶음(그룹)의 대표여야 한다.
+ * 묶음 없이 띄우면 그 번호의 묶음이 없어 끄기가 조용히 실패하고 AI 도구가 계속 돈다. Windows는 taskkill /T가 트리를 끈다.
+ */
+export const SPAWN_DETACHED = process.platform !== 'win32';
+
 export function killProcessTree(pid: number): void {
   if (process.platform === 'win32') execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => undefined);
   else try { process.kill(-pid, 'SIGKILL'); } catch { /* 이미 끝남 */ }
@@ -48,7 +54,7 @@ export class CliProvider implements TranscribeProvider {
       return await new Promise<RawResult>((resolve, reject) => {
         let child: ReturnType<typeof nodeSpawn>;
         try {
-          child = this.spawn(program.command, args, { cwd, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+          child = this.spawn(program.command, args, { cwd, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: SPAWN_DETACHED });
         } catch (e) { reject(new EngineError('other', `Claude Code를 실행할 수 없음: ${(e as Error).message}`)); return; }
         let settled = false, exited = false, stderr = '';
         const finish = (err?: EngineError, result?: RawResult) => {
