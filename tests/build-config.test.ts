@@ -8,7 +8,8 @@ const b = pkg.build;
 test('build 절: 이름·아이디·Windows NSIS 사용자별 설치·GitHub 배포', () => {
   assert.equal(b.productName, '글눈');
   assert.equal(b.appId, 'kr.geulnun.app');
-  assert.equal(b.executableName, 'Geulnun');
+  assert.equal(b.executableName, 'Geulnun'); // 설치된 실행 파일·폴더 이름. 바꾸면 작업 표시줄 고정이 깨진다
+  assert.equal(b.win.artifactName, 'fairhand-setup-${version}.${ext}'); // 받는 설치 파일 이름(release.yml의 올릴 파일과 짝)
   assert.deepEqual(b.win.target, ['nsis']);
   assert.equal(b.nsis.oneClick, false);
   assert.equal(b.nsis.perMachine, false);

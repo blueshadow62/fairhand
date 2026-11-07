@@ -76,7 +76,7 @@
         "nsis"
       ],
       "icon": "build/icon.ico",
-      "artifactName": "geulnun-setup-${version}.${ext}"
+      "artifactName": "fairhand-setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

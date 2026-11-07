@@ -22,7 +22,7 @@ jobs:
       - run: npm test
       # 빌더가 직접 올리면 초안이 둘 생기는 일이 있어(0.2.1·0.2.2), 빌드만 하고 초안 하나를 gh로 만든다. 설명을 적고 직접 공개한다.
       - run: npx electron-builder --win --publish never
-      - run: gh release create "${{ github.ref_name }}" --draft --title "글눈 ${{ github.ref_name }}" --notes "설명을 적는 중입니다." release/geulnun-setup-*.exe release/latest.yml release/*.blockmap
+      - run: gh release create "${{ github.ref_name }}" --draft --title "글눈 ${{ github.ref_name }}" --notes "설명을 적는 중입니다." release/fairhand-setup-*.exe release/latest.yml release/*.blockmap
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,7 +8,7 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 - We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent to Anthropic's servers together with the image. The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
 
 ## Install
-1. Download `geulnun-setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/fairhand/releases).
+1. Download `fairhand-setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/fairhand/releases).
 2. Run it. Because it is not code-signed, Windows shows an 'Unknown publisher' / 'Windows protected your PC' warning. Press **More info → Run anyway**. No administrator rights are needed (per-user install).
 3. On first start, open **설정** (Settings) and press the button to create the default folder (Documents), or choose a semester folder, and set an AI profile.
 4. To transcribe with Claude Code, install it and log in ([setup guide](https://code.claude.com/docs/en/setup)). The Settings screen walks you through the login.
@@ -47,7 +47,7 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 ## Development
 - Requires Node 24+ (same major as the Node bundled in Electron 45; CI uses 24)
 - `npm install` → `npm test` → `npm start` (builds first)
-- Installer: `npm run dist` → `release/geulnun-setup-<version>.exe` (`npm run pack` for a quick `release/win-unpacked/Geulnun.exe`). Pushing a `v*` tag makes GitHub Actions build the installer and create a draft release.
+- Installer: `npm run dist` → `release/fairhand-setup-<version>.exe` (`npm run pack` for a quick `release/win-unpacked/Geulnun.exe`). Pushing a `v*` tag makes GitHub Actions build the installer and create a draft release.
 - During development keep settings and keys under the ignored `local/` folder: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - Paths with spaces break when passed through `npm run`; after `npm run build`, call scripts directly, e.g. `node dist/scripts/transcribe-set.js "<set folder>" --engine cli`. To use another Claude Code account set `$env:CLAUDE_CONFIG_DIR` first.
 
