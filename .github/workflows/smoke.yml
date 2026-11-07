@@ -3,7 +3,7 @@ name: smoke
 # 개발 PC에서 맥·리눅스를 직접 볼 수 없어서, 찍은 화면과 summary.json을 결과물(artifact)로 받아 확인한다.
 on:
   push:
-    branches: [mac-support]
+    branches: [main, mac-support]
   workflow_dispatch:
 permissions:
   contents: read

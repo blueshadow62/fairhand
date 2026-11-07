@@ -26,3 +26,21 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  mac:
+    # 맥 시험판 dmg(Apple 실리콘·인텔). 초안은 위 Windows 작업이 하나만 만들고, 여기서는 그 초안에 파일을 더한다.
+    # 서명이 없어 자동 업데이트가 안 되므로 latest-mac.yml은 올리지 않는다(맥 앱은 업데이트를 확인하지 않는다).
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # 맥만 제품 이름을 Fairhand로 덮어써 묶는다(한글 이름이면 시작하자마자 죽는다. package.json의 dist:mac)
+      - run: npm run dist:mac
+      - run: gh release upload "${{ github.ref_name }}" release/fairhand-*-mac-*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
