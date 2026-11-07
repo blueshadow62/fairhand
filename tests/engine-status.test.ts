@@ -3,20 +3,30 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { locateClaude, compareVersion, parseAuthStatus, parseVersion, claudeStatus, MIN_CLI_VERSION, type ClaudeProgram } from '../src/engine/status.js';
 
+const W = path.win32; // Windows 규칙은 어느 운영체제에서 검사해도 같은 결과가 나오게 명시한다
+
 test('locateClaude: 설정 경로 → 사용자 .local\\bin → PATH 순서', () => {
   const home = 'C:\\Users\\t';
-  const exists = (p: string) => p === path.join(home, '.local', 'bin', 'claude.exe');
-  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: '' }, exists), { command: path.join(home, '.local', 'bin', 'claude.exe'), prefixArgs: [] });
-  assert.deepEqual(locateClaude({ GEULNUN_CLAUDE_PATH: 'X:\\c.exe', USERPROFILE: home }, () => true), { command: 'X:\\c.exe', prefixArgs: [] });
-  assert.equal(locateClaude({ USERPROFILE: home, PATH: 'C:\\nowhere' }, () => false), null);
+  const exists = (p: string) => p === W.join(home, '.local', 'bin', 'claude.exe');
+  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: '' }, exists, undefined, 'win32'), { command: W.join(home, '.local', 'bin', 'claude.exe'), prefixArgs: [] });
+  assert.deepEqual(locateClaude({ GEULNUN_CLAUDE_PATH: 'X:\\c.exe', USERPROFILE: home }, () => true, undefined, 'win32'), { command: 'X:\\c.exe', prefixArgs: [] });
+  assert.equal(locateClaude({ USERPROFILE: home, PATH: 'C:\\nowhere' }, () => false, undefined, 'win32'), null);
   const npm = 'C:\\Users\\t\\AppData\\Roaming\\npm';
-  const cmdExists = (p: string) => p === path.join(npm, 'claude.cmd') || p === path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js') || p === 'C:\\nodejs\\node.exe';
-  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: `${npm};C:\\nodejs` }, cmdExists),
-    { command: 'C:\\nodejs\\node.exe', prefixArgs: [path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
+  const cmdExists = (p: string) => p === W.join(npm, 'claude.cmd') || p === W.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js') || p === 'C:\\nodejs\\node.exe';
+  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: `${npm};C:\\nodejs` }, cmdExists, undefined, 'win32'),
+    { command: 'C:\\nodejs\\node.exe', prefixArgs: [W.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
   // 설정에서 claude.cmd를 골라도 같은 치환(셸 없는 spawn은 .cmd에 EINVAL)
-  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: 'C:\\nodejs' }, cmdExists, path.join(npm, 'claude.cmd')),
-    { command: 'C:\\nodejs\\node.exe', prefixArgs: [path.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
-  assert.equal(locateClaude({ USERPROFILE: home, PATH: '' }, cmdExists, path.join(npm, 'claude.cmd')), null); // node를 못 찾으면 조용히 다른 것을 쓰지 않는다
+  assert.deepEqual(locateClaude({ USERPROFILE: home, PATH: 'C:\\nodejs' }, cmdExists, W.join(npm, 'claude.cmd'), 'win32'),
+    { command: 'C:\\nodejs\\node.exe', prefixArgs: [W.join(npm, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')] });
+  assert.equal(locateClaude({ USERPROFILE: home, PATH: '' }, cmdExists, W.join(npm, 'claude.cmd'), 'win32'), null); // node를 못 찾으면 조용히 다른 것을 쓰지 않는다
+});
+
+test('locateClaude(맥·리눅스): ~/.local/bin/claude → PATH(:로 나눔)의 claude', () => {
+  const home = '/Users/t';
+  assert.deepEqual(locateClaude({ HOME: home, PATH: '' }, p => p === '/Users/t/.local/bin/claude', undefined, 'darwin'), { command: '/Users/t/.local/bin/claude', prefixArgs: [] });
+  assert.deepEqual(locateClaude({ HOME: home, PATH: '/usr/bin:/opt/homebrew/bin' }, p => p === '/opt/homebrew/bin/claude', undefined, 'darwin'),
+    { command: '/opt/homebrew/bin/claude', prefixArgs: [] });
+  assert.equal(locateClaude({ HOME: '/home/t', PATH: '/usr/bin' }, p => p.endsWith('claude.exe'), undefined, 'linux'), null); // .exe는 찾지 않는다
 });
 
 test('compareVersion', () => {

@@ -54,10 +54,18 @@ test('locateCodex: 설정 경로가 먼저, npm의 codex.cmd는 node로 bin/code
   const files = new Set(['C:\\npm\\codex.cmd', 'C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js', 'C:\\node\\node.exe', 'D:\\tools\\codex.exe']);
   const exists = (p: string) => files.has(p);
   const env = { PATH: 'C:\\npm;C:\\node' };
-  assert.deepEqual(locateCodex(env, exists), { command: 'C:\\node\\node.exe', prefixArgs: ['C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js'] });
-  assert.deepEqual(locateCodex(env, exists, 'D:\\tools\\codex.exe'), { command: 'D:\\tools\\codex.exe', prefixArgs: [] });
-  assert.equal(locateCodex(env, exists, 'D:\\없음\\codex.exe'), null); // 적어 둔 경로가 틀리면 다른 것을 쓰지 않는다
-  assert.equal(locateCodex({ PATH: '' }, exists), null);
+  assert.deepEqual(locateCodex(env, exists, undefined, 'win32'), { command: 'C:\\node\\node.exe', prefixArgs: ['C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js'] });
+  assert.deepEqual(locateCodex(env, exists, 'D:\\tools\\codex.exe', 'win32'), { command: 'D:\\tools\\codex.exe', prefixArgs: [] });
+  assert.equal(locateCodex(env, exists, 'D:\\없음\\codex.exe', 'win32'), null); // 적어 둔 경로가 틀리면 다른 것을 쓰지 않는다
+  assert.equal(locateCodex({ PATH: '' }, exists, undefined, 'win32'), null);
+});
+
+test('locateCodex(맥·리눅스): PATH를 :로 나눠 확장자 없는 codex를 찾고, npm 설치본도 그대로 실행한다', () => {
+  const exists = (p: string) => p === '/opt/homebrew/bin/codex';
+  assert.deepEqual(locateCodex({ PATH: '/usr/bin:/opt/homebrew/bin' }, exists, undefined, 'darwin'), { command: '/opt/homebrew/bin/codex', prefixArgs: [] });
+  assert.equal(locateCodex({ PATH: '/usr/bin' }, exists, undefined, 'linux'), null);
+  // .cmd 치환은 Windows에서만: 맥에서 적어 둔 경로는 그대로 쓴다
+  assert.deepEqual(locateCodex({}, () => true, '/Users/t/bin/codex.cmd', 'darwin'), { command: '/Users/t/bin/codex.cmd', prefixArgs: [] });
 });
 
 test('CodexTurn: 답·토큰을 모으고, 명령 실행·파일 수정·MCP·웹 검색 항목이 보이면 바로 멈춘다', () => {

@@ -8,6 +8,7 @@ import { installLog } from './log.js';
 import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
+import { fixPath } from './shell-path.js';
 import { startUpdater } from './update.js';
 import { SAMPLE_DIR } from './sample.js';
 import { CHANNELS } from '../shared/ipc.js';
@@ -25,6 +26,7 @@ let win: BrowserWindow | null = null;
 const APP_URL = `${APP_SCHEME}://app/index.html`;
 
 app.whenReady().then(async () => {
+  const pathFixed = fixPath(); // 맥·리눅스: 터미널의 PATH를 받아 와야 AI 도구를 찾는다. 설정을 읽는 동안 함께 돈다
   const userData = app.getPath('userData');
   const log = installLog(path.join(userData, 'logs')); // console.error·warn이 userData/logs/YYYY-MM-DD.log에도 남는다
   log.write('info', `시작 ${app.getVersion()}${app.isPackaged ? '' : ' (개발 실행)'}`);
@@ -44,6 +46,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
     () => settingsCache.학기폴더);
+  await pathFixed; // 화면이 AI 도구 상태를 묻기 전에
   registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater, sampleDir: SAMPLE_DIR(ROOT) });
 
   session.defaultSession.webRequest.onHeadersReceived((details, cb) => cb({ responseHeaders: { ...details.responseHeaders,

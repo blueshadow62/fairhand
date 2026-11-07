@@ -6,35 +6,48 @@ import { childEnv } from './env.js';
 export interface ClaudeProgram { command: string; prefixArgs: string[] }
 export const MIN_CLI_VERSION = '2.1.248';
 
-export function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): string | null {
-  for (const dir of (env.PATH ?? env.Path ?? '').split(';').filter(Boolean)) {
-    const p = path.join(dir, name);
+/** 운영체제별 경로 규칙(구분자 \ 와 /, PATH 구분자 ; 와 :). 검사에서 다른 운영체제의 규칙도 시험할 수 있게 platform을 받는다 */
+export const pathFor = (platform: NodeJS.Platform): path.PlatformPath => (platform === 'win32' ? path.win32 : path.posix);
+
+export function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean, platform: NodeJS.Platform = process.platform): string | null {
+  const P = pathFor(platform);
+  for (const dir of (env.PATH ?? env.Path ?? '').split(P.delimiter).filter(Boolean)) {
+    const p = P.join(dir, name);
     if (exists(p)) return p;
   }
   return null;
 }
 
-/** 설정 경로 → 사용자 .local\bin\claude.exe(공식 설치 프로그램 위치) → PATH의 claude.exe → PATH의 claude.cmd(npm, node로 cli.js를 직접 실행) */
-export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string): ClaudeProgram | null {
+/**
+ * Windows: 설정 경로 → GEULNUN_CLAUDE_PATH → 사용자 .local\bin\claude.exe(공식 설치 프로그램 위치) → PATH의 claude.exe → PATH의 claude.cmd(npm, node로 cli.js를 직접 실행)
+ * 맥·리눅스: 설정 경로 → GEULNUN_CLAUDE_PATH → ~/.local/bin/claude(공식 설치 프로그램 위치) → PATH의 claude(npm·Homebrew 설치본도 그대로 실행된다)
+ */
+export function locateClaude(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string, platform: NodeJS.Platform = process.platform): ClaudeProgram | null {
+  const win = platform === 'win32';
   if (configuredPath) { // 적어 둔 경로가 틀리면 조용히 다른 것을 쓰지 않는다
     if (!exists(configuredPath)) return null;
-    return /\.cmd$/i.test(configuredPath) ? fromCmd(configuredPath, env, exists) : { command: configuredPath, prefixArgs: [] };
+    return win && /\.cmd$/i.test(configuredPath) ? fromCmd(configuredPath, env, exists) : { command: configuredPath, prefixArgs: [] };
   }
   const configured = env.GEULNUN_CLAUDE_PATH;
   if (configured && exists(configured)) return { command: configured, prefixArgs: [] };
-  const home = env.USERPROFILE ?? env.HOME ?? '';
-  const local = path.join(home, '.local', 'bin', 'claude.exe');
+  const home = (win ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? '';
+  const local = pathFor(platform).join(home, '.local', 'bin', win ? 'claude.exe' : 'claude');
   if (home && exists(local)) return { command: local, prefixArgs: [] };
-  const exe = onPath('claude.exe', env, exists);
+  if (!win) {
+    const bin = onPath('claude', env, exists, platform);
+    return bin ? { command: bin, prefixArgs: [] } : null;
+  }
+  const exe = onPath('claude.exe', env, exists, platform);
   if (exe) return { command: exe, prefixArgs: [] };
-  const cmd = onPath('claude.cmd', env, exists);
+  const cmd = onPath('claude.cmd', env, exists, platform);
   return cmd ? fromCmd(cmd, env, exists) : null;
 }
 
-/** .cmd는 셸이 있어야 돌아가므로(인수에 JSON 스키마가 들어가 셸 인용이 위험하고, 셸 없이 spawn하면 EINVAL) node로 cli.js를 직접 실행한다 */
+/** .cmd는 셸이 있어야 돌아가므로(인수에 JSON 스키마가 들어가 셸 인용이 위험하고, 셸 없이 spawn하면 EINVAL) node로 cli.js를 직접 실행한다. Windows 전용 */
 function fromCmd(cmd: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): ClaudeProgram | null {
-  const cli = path.join(path.dirname(cmd), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-  const node = onPath('node.exe', env, exists);
+  const P = path.win32;
+  const cli = P.join(P.dirname(cmd), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  const node = onPath('node.exe', env, exists, 'win32');
   return exists(cli) && node ? { command: node, prefixArgs: [cli] } : null;
 }
 

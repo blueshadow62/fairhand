@@ -26,24 +26,33 @@ export function codexEnv(base: NodeJS.ProcessEnv, opts: { configDir?: string } =
   return env;
 }
 
-/** 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex.exe → PATH의 codex.cmd(npm 설치) */
-export function locateCodex(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string): ClaudeProgram | null {
+/**
+ * Windows: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex.exe → PATH의 codex.cmd(npm 설치)
+ * 맥·리눅스: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex(npm·Homebrew 설치본도 그대로 실행된다)
+ */
+export function locateCodex(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string, platform: NodeJS.Platform = process.platform): ClaudeProgram | null {
+  const win = platform === 'win32';
   if (configuredPath) { // 적어 둔 경로가 틀리면 조용히 다른 것을 쓰지 않는다
     if (!exists(configuredPath)) return null;
-    return /\.cmd$/i.test(configuredPath) ? fromNpmShim(configuredPath, env, exists) : { command: configuredPath, prefixArgs: [] };
+    return win && /\.cmd$/i.test(configuredPath) ? fromNpmShim(configuredPath, env, exists) : { command: configuredPath, prefixArgs: [] };
   }
   const configured = env.GEULNUN_CODEX_PATH;
   if (configured && exists(configured)) return { command: configured, prefixArgs: [] };
-  const exe = onPath('codex.exe', env, exists);
+  if (!win) {
+    const bin = onPath('codex', env, exists, platform);
+    return bin ? { command: bin, prefixArgs: [] } : null;
+  }
+  const exe = onPath('codex.exe', env, exists, platform);
   if (exe) return { command: exe, prefixArgs: [] };
-  const cmd = onPath('codex.cmd', env, exists);
+  const cmd = onPath('codex.cmd', env, exists, platform);
   return cmd ? fromNpmShim(cmd, env, exists) : null;
 }
 
-/** npm의 codex.cmd는 셸이 있어야 돌아가므로(인수에 경로가 들어가 셸 인용이 위험) node로 bin/codex.js를 직접 실행한다 */
+/** npm의 codex.cmd는 셸이 있어야 돌아가므로(인수에 경로가 들어가 셸 인용이 위험) node로 bin/codex.js를 직접 실행한다. Windows 전용 */
 function fromNpmShim(cmd: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): ClaudeProgram | null {
-  const js = path.join(path.dirname(cmd), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-  const node = onPath('node.exe', env, exists);
+  const P = path.win32;
+  const js = P.join(P.dirname(cmd), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  const node = onPath('node.exe', env, exists, 'win32');
   return exists(js) && node ? { command: node, prefixArgs: [js] } : null;
 }
 
