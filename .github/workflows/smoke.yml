@@ -50,7 +50,8 @@ jobs:
       - if: failure() && runner.os == 'macOS'
         # 원본 Electron으로는 뜨고 묶은 앱만 죽는다(0.2.9 개발 중). 묶을 때만 달라지는 것을 하나씩 바꿔 원인을 가른다
         run: |
-          # 1) 디버깅 포트 등 추가 인수 없이 띄워 15초 뒤 살아 있는지, 화면 캡처
+          set +e   # 진단 단계: 앱이 죽어 실패를 돌려줘도 다음 조건을 계속 본다
+          # 1) 디버깅 포트 등 추가 인수 없이 띄워 15초 뒤 살아 있는지, 화면 캡처 → 0.2.9 개발 중 확인: 이것도 SIGTRAP
           APP=$(ls -d release/mac-arm64/*.app | head -1); D=$(mktemp -d)
           GEULNUN_USER_DATA=$D "$APP/Contents/MacOS/Fairhand" > smoke-out/var-noflags.log 2>&1 & PID=$!
           sleep 15
