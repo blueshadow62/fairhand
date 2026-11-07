@@ -11,6 +11,9 @@ export interface GradingRules { 맞춤법: '인정' | '불인정'; 넓은말: '�
 /** 선생님이 검토에서 확정한 판정. 같은 단위에 같은(정규화한) 답을 쓴 장에 그대로 적용된다 */
 export interface Case { 단위: string; 답: string; 판정: 'O' | 'X'; 일시: string; 출처: string }
 
+/** 그림에서 가릴 영역. 쪽 크기에 대한 비율(0~1) */
+export interface MaskRect { x: number; y: number; w: number; h: number }
+
 export interface AnswerKey {
   세트: string;
   글: string;
@@ -21,6 +24,8 @@ export interface AnswerKey {
   정성: QualUnit[];
   채점규칙?: Partial<GradingRules>;
   사례?: Case[];
+  /** 있으면 전사 때 이 영역을 가린 사본을 보낸다 */
+  이름가림?: MaskRect;
 }
 
 export interface TranscribeInfo { 엔진: 'cli' | 'api' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }

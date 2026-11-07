@@ -80,6 +80,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     rosterBox.append(el('div', { class: 'row' }, t('settings.roster'), s.명단 ? el('span', { class: 'path' }, s.명단) : el('span', { class: 'muted' }, t('settings.none')),
       el('button', { onclick: () => guard(async () => { const p = await api.pickFile('roster'); if (!p) return; store.update({ settings: await api.saveSettings({ 명단: p }) }); renderBasics(); }) }, t('settings.choose')),
       el('button', { disabled: !s.명단, onclick: () => guard(async () => { store.update({ settings: await api.saveSettings({ 명단: null }) }); renderBasics(); }) }, t('settings.clear'))),
+      el('div', { class: 'band warn' }, t('settings.rosterWarn')),
       el('div', { class: 'muted' }, t('settings.rosterHelp')));
     clear(rotationBox);
     const radios = ([0, 90, 180, 270] as Rotation[]).map(r => el('label', {}, el('input', { type: 'radio', name: 'rot', checked: s.기본회전 === r,

@@ -2,14 +2,15 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { isConfirmed, parseKey } from '../core/key.js';
 import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
-import { readRoster } from '../core/roster.js';
+import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
-import { DataError, type AnswerKey, type QtyUnit, type Student, type Transcript } from '../core/types.js';
+import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { childEnv } from '../engine/env.js';
 import { judgePage } from '../engine/judge.js';
 import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
+import { imageToSend, type JpegMasker } from '../engine/privacy.js';
 import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } from '../engine/provider.js';
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
@@ -30,7 +31,7 @@ function contentSig(k: AnswerKey): string {
   return JSON.stringify(sorted({ 정량: qty, 정성: k.정성 }));
 }
 
-export interface BridgeDeps { settings: SettingsStore; secrets: SecretStore; version: string; env?: NodeJS.ProcessEnv }
+export interface BridgeDeps { settings: SettingsStore; secrets: SecretStore; version: string; env?: NodeJS.ProcessEnv; maskJpeg?: JpegMasker }
 
 export class EngineBridge {
   private current: AbortController | null = null;
@@ -116,6 +117,8 @@ export class EngineBridge {
     const s = await this.deps.settings.load();
     return s.명단 ? readRoster(s.명단) : null;
   }
+  /** 전사 중 대조용. 명단 파일이 깨졌다고 전사를 막지는 않는다(엑셀 만들 때 오류가 보인다) */
+  private rosterOrNull(): Promise<Student[] | null> { return this.roster().catch(() => null); }
 
   private async confirmedSet(setDir: string) {
     const loaded = await loadSet(setDir);
@@ -125,7 +128,12 @@ export class EngineBridge {
 
   async tryPage(setDir: string, jpeg: Buffer): Promise<Transcript> {
     const { key } = await this.confirmedSet(setDir);
-    return this.exclusive(async signal => (await transcribePage(await this.provider(), { imageJpegBase64: jpeg.toString('base64'), key, rules: await loadRules(), page: 0, effort: await this.effort() }, signal)).transcript);
+    const image = (await imageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
+    return this.exclusive(async signal => {
+      const { transcript } = await transcribePage(await this.provider(), { imageJpegBase64: image, key, rules: await loadRules(), page: 0, effort: await this.effort() }, signal);
+      const roster = await this.rosterOrNull();
+      return roster ? matchRoster(transcript, key, roster).transcript : transcript;
+    });
   }
 
   /** 세트 폴더의 엑셀을 다시 만든다. 실패는 메시지로만 */
@@ -140,8 +148,36 @@ export class EngineBridge {
     let old: AnswerKey | null = null;
     try { old = (await loadSet(setDir)).key; } catch { /* 없거나 깨진 정답표는 새로 쓴다 */ }
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
+    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다
+    delete key.이름가림;
+    if (old?.이름가림) key.이름가림 = old.이름가림;
     await saveKeyFile(setDir, key);
     return key;
+  }
+
+  /** 이름 칸 가리기 설정. null이면 끈다 */
+  async setNameMask(setDir: string, rect: MaskRect | null): Promise<AnswerKey> {
+    if (this.current) throw new DataError('전사가 실행 중입니다. 끝나거나 중단된 뒤 바꾸세요');
+    const { key } = await loadSet(setDir);
+    delete key.이름가림;
+    const next = parseKey(JSON.stringify(rect ? { ...key, 이름가림: rect } : key), '이름 칸 가리기 설정');
+    await saveKeyFile(setDir, next);
+    return next;
+  }
+
+  /** 이미 전사한 장을 명단과 맞춘다. 선생님이 확인 완료한 장은 건드리지 않는다 */
+  async matchRosterAll(setDir: string): Promise<RejudgeResult> {
+    if (this.current) throw new DataError('전사가 실행 중입니다. 끝나거나 중단된 뒤 대조하세요');
+    const roster = await this.roster();
+    if (!roster) throw new DataError('설정에서 명단을 먼저 넣어 주세요');
+    const { key, transcripts } = await loadSet(setDir);
+    const 바뀐장: RejudgeResult['바뀐장'] = [];
+    for (const t of transcripts) {
+      if (t.확인완료) continue;
+      const r = matchRoster(t, key, roster);
+      if (r.변경) { await saveTranscript(setDir, r.transcript); 바뀐장.push({ page: t.page, 변경: [r.변경] }); }
+    }
+    return { 바뀐장, ...await this.rebuildSafe(setDir) };
   }
 
   /** 결정적 재판정을 돌려 바뀐 장만 저장하고 엑셀을 다시 만든다 */
@@ -213,7 +249,7 @@ export class EngineBridge {
       const { key } = await this.confirmedSet(setDir);
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
-      const r = await transcribeSet(await this.provider(), setDir, key, await loadRules(), pages, ac.signal, { force: opts.force, onProgress, effort: await this.effort() });
+      const r = await transcribeSet(await this.provider(), setDir, key, await loadRules(), pages, ac.signal, { force: opts.force, onProgress, effort: await this.effort(), maskJpeg: this.deps.maskJpeg, roster: await this.rosterOrNull() });
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }
       catch (e) { result.엑셀오류 = e instanceof Error ? e.message : String(e); }

@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, protocol, safeStorage, session } from 'electr
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EngineBridge } from './engine-bridge.js';
+import { maskJpegNative } from './mask.js';
 import { registerIpc } from './ipc.js';
 import { installLog } from './log.js';
 import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
@@ -29,7 +30,7 @@ app.whenReady().then(async () => {
   log.write('info', `시작 ${app.getVersion()}${app.isPackaged ? '' : ' (개발 실행)'}`);
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   const secrets = new SecretStore(path.join(userData, 'secrets.json'), safeStorage);
-  const bridge = new EngineBridge({ settings, secrets, version: app.getVersion() });
+  const bridge = new EngineBridge({ settings, secrets, version: app.getVersion(), maskJpeg: maskJpegNative });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
   const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, log: log.write,

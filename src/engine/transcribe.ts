@@ -1,9 +1,11 @@
 import { readFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import { rejudgeTranscript } from '../core/rejudge.js';
+import { matchRoster } from '../core/roster.js';
 import { pageImageName, transcriptFileName, writeJsonAtomic } from '../core/setio.js';
-import type { AnswerKey, Transcript } from '../core/types.js';
+import type { AnswerKey, Student, Transcript } from '../core/types.js';
 import { EngineError, toTranscript, userFacingMessage, withRetry, type Effort, type TranscribeInput, type TranscribeProvider } from './provider.js';
+import { imageToSend, type JpegMasker } from './privacy.js';
 import type { Rules } from './rules.js';
 
 const DEFAULT_EFFORT: Effort = 'high';
@@ -29,6 +31,9 @@ export interface TranscribeOptions {
   onProgress?: (e: { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number }) => void;
   outDir?: string;
   force?: boolean;
+  maskJpeg?: JpegMasker;
+  /** 있으면 저장 전에 명단과 맞춘다 */
+  roster?: Student[] | null;
 }
 
 const exists = (p: string) => access(p).then(() => true, () => false);
@@ -43,9 +48,10 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
     const name = transcriptFileName(page);
     if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length }); continue; }
     try {
-      const image = (await readFile(path.join(setDir, 'pages', pageImageName(page)))).toString('base64');
+      const image = (await imageToSend(await readFile(path.join(setDir, 'pages', pageImageName(page))), key, opts.maskJpeg)).toString('base64');
       const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort }, signal);
-      await writeJsonAtomic(outDir, name, rejudgeTranscript(key, r.transcript).transcript); // 잠긴 파일이면 사람 말 오류(검토 저장과 같은 길) // 사례·정답 정확 일치는 저장 전에 맞춘다
+      const judged = rejudgeTranscript(key, r.transcript).transcript; // 사례·정답 정확 일치는 저장 전에 맞춘다
+      await writeJsonAtomic(outDir, name, opts.roster ? matchRoster(judged, key, opts.roster).transcript : judged); // 잠긴 파일이면 사람 말 오류(검토 저장과 같은 길)
       ok.push(page); done++;
       opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
     } catch (e) {

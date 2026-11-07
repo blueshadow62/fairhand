@@ -43,6 +43,10 @@ export function keyProblems(k: unknown): string[] {
       if (typeof c?.답 !== 'string' || !c.답.trim()) p.push(`사례 ${i + 1}: 답이 비었습니다`);
     });
   }
+  if (o.이름가림 !== undefined) {
+    const m = o.이름가림, ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+    if (!m || ![m.x, m.y, m.w, m.h].every(ok) || m.w <= 0 || m.h <= 0 || m.x + m.w > 1 + 1e-9 || m.y + m.h > 1 + 1e-9) p.push('이름가림 영역이 쪽을 벗어나거나 잘못되었습니다');
+  }
   return p;
 }
 

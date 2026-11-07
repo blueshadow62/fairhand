@@ -1,4 +1,4 @@
-import type { AnswerKey, Student, Transcript, UploadRecord } from '../core/types.js';
+import type { AnswerKey, MaskRect, Student, Transcript, UploadRecord } from '../core/types.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
 /** 장 그림을 불러오는 주소(메인의 프로토콜 처리와 렌더러 img.src가 같은 규칙) */
@@ -41,6 +41,7 @@ export const CHANNELS = {
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
+  setNameMask: 'set:name-mask', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
@@ -90,6 +91,10 @@ export interface GeulnunApi {
   /** 사례를 기록하고 같은 단위·같은 답의 장을 결정적으로 다시 판정한다(검토 화면, 사례로 기록이 켜져 있을 때) */
   applyCase(폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }): Promise<RejudgeResult>;
   removeCase(폴더: string, 단위: string, 답: string): Promise<AnswerKey>;
+  /** 이름 칸 가리기 설정. null이면 끈다 */
+  setNameMask(폴더: string, rect: MaskRect | null): Promise<AnswerKey>;
+  /** 이미 전사한 장을 명단과 맞춘다(이 PC 안에서만) */
+  matchRoster(폴더: string): Promise<RejudgeResult>;
   /** 결정적 재판정(모델 호출 없음) */
   rejudge(폴더: string): Promise<RejudgeResult>;
   /** 글만 보내는 모델 재판정. 진행은 onProgress */

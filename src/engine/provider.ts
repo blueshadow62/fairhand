@@ -38,7 +38,8 @@ export function toTranscript(raw: unknown, key: AnswerKey, page: number, info: T
   // 손으로 쓴 전사와 달리 모델 출력의 누락은 빈칸(0점)으로 세지 않고 다시 묻는다
   const missing = [...key.정량.filter(u => !t.정량[u.id]), ...key.정성.filter(u => !t.정성[u.id])].map(u => u.id);
   if (missing.length) throw new EngineError('invalid-output', `모델 출력에 단위 누락: ${missing.join(', ')}`);
-  return { ...t, 확인완료: false, 전사정보: info };
+  // 가려 보낸 세트는 이름을 모델 출력에서 받지 않는다(답 글에서 옮겨 적었어도 버린다). 이름은 명단에서만 온다
+  return { ...t, ...(key.이름가림 ? { 이름: null } : {}), 확인완료: false, 전사정보: info };
 }
 
 export const RETRYABLE: ReadonlySet<EngineErrorKind> = new Set(['rate-limit', 'overloaded', 'network', 'timeout']);

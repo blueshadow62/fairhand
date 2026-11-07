@@ -4,12 +4,14 @@ import { api, imageUrl, thumbUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
-import type { UploadRecord } from '../../core/types.js';
+import type { MaskRect, UploadRecord } from '../../core/types.js';
 import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
 const PRICE_IN = 5, PRICE_OUT = 25;
+// 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
+const DEFAULT_MASK: MaskRect = { x: 0.74, y: 0.07, w: 0.26, h: 0.05 };
 const BATCH = 10; // 한 번에 너무 큰 IPC 전송을 피한다
 const THUMB_W = 320; // 격자 칸(130~200px)의 두 배면 또렷하다. 원본(1650px)을 그대로 보이면 장당 디코드 60ms가 쌓여 화면이 끊긴다
 function shrink(c: HTMLCanvasElement, w: number): HTMLCanvasElement {
@@ -41,6 +43,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const thumbsBox = el('div');
   const runBox = el('div');
   const resultBox = el('div');
+  const privacyBox = el('div');
+  const maskCanvas = el('canvas', { class: 'preview' });
+  let maskImage: HTMLImageElement | null = null;
+  let maskPage: number | null = null;
+  let dragRect: MaskRect | null = null; // 끄는 중인 영역(놓으면 저장)
 
   async function reload(): Promise<void> {
     const 폴더 = store.state.current;
@@ -56,8 +63,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     body.append(el('h3', {}, t('common.set', { name: 폴더 })), countBox,
       el('div', { class: 'card' }, el('h3', {}, t('run.upload')), uploadBox),
       el('div', { class: 'card' }, thumbsTitle, thumbsBox),
+      el('div', { class: 'card' }, el('h3', {}, t('run.privacy')), privacyBox),
       el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox), resultBox);
-    renderUpload(); renderThumbs(); renderRun();
+    renderUpload(); renderThumbs(); renderPrivacy(); renderRun();
   }
 
   function renderCounts(): void {
@@ -161,7 +169,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function refresh(): Promise<void> {
     if (!data) return;
     data = await api.readSet(data.폴더);
-    renderCounts(); renderUpload(); renderThumbs(); renderRun(); await store.refreshSets();
+    renderCounts(); renderUpload(); renderThumbs(); renderPrivacy(); renderRun(); await store.refreshSets();
   }
 
   function renderThumbs(): void {
@@ -189,6 +197,91 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     } catch (e) { showError((e as Error).message); }
   }
 
+  // ── 학생 정보 보호: 이름 칸 가리기·명단 대조 ──
+  function drawMask(): void {
+    if (!maskImage?.naturalWidth) return;
+    const scale = 0.5;
+    maskCanvas.width = Math.round(maskImage.naturalWidth * scale); maskCanvas.height = Math.round(maskImage.naturalHeight * scale);
+    const g = maskCanvas.getContext('2d')!;
+    g.drawImage(maskImage, 0, 0, maskCanvas.width, maskCanvas.height);
+    const r = dragRect ?? data?.key.이름가림;
+    if (!r) return;
+    const box = [r.x * maskCanvas.width, r.y * maskCanvas.height, r.w * maskCanvas.width, r.h * maskCanvas.height] as const;
+    g.fillStyle = '#fff'; g.fillRect(...box);
+    g.strokeStyle = '#d33'; g.lineWidth = 2; g.strokeRect(...box);
+  }
+
+  function showMaskPage(page: number): void {
+    if (!data) return;
+    maskPage = page;
+    const img = new Image();
+    img.onload = () => { if (maskPage === page) { maskImage = img; drawMask(); } };
+    img.src = imageUrl(data.폴더, page);
+  }
+
+  async function saveMask(rect: MaskRect | null): Promise<void> {
+    if (!data) return;
+    try { data.key = await api.setNameMask(data.폴더, rect); }
+    catch (e) { showError((e as Error).message); }
+    dragRect = null; renderPrivacy();
+  }
+
+  const canvasPoint = (e: PointerEvent) => {
+    const b = maskCanvas.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
+  };
+  let dragFrom: { x: number; y: number } | null = null;
+  maskCanvas.addEventListener('pointerdown', e => { if (running || !data?.key.이름가림) return; dragFrom = canvasPoint(e); maskCanvas.setPointerCapture(e.pointerId); });
+  maskCanvas.addEventListener('pointermove', e => {
+    if (!dragFrom) return;
+    const p = canvasPoint(e);
+    dragRect = { x: Math.min(p.x, dragFrom.x), y: Math.min(p.y, dragFrom.y), w: Math.abs(p.x - dragFrom.x), h: Math.abs(p.y - dragFrom.y) };
+    drawMask();
+  });
+  maskCanvas.addEventListener('pointerup', () => {
+    const r = dragRect; dragFrom = null;
+    if (r && r.w > 0.01 && r.h > 0.005) void saveMask(r); else { dragRect = null; drawMask(); } // 그냥 누른 것은 영역으로 치지 않는다
+  });
+
+  async function matchWithRoster(): Promise<void> {
+    if (!data) return;
+    try {
+      const r = await api.matchRoster(data.폴더);
+      if (r.엑셀오류) showError(t('common.excelFailed', { error: r.엑셀오류 }));
+      else showInfo(r.바뀐장.length ? t('run.matchDone', { n: r.바뀐장.length }) : t('run.matchNone'));
+      clear(resultBox);
+      if (r.바뀐장.length) resultBox.append(el('div', { class: 'card' }, el('h3', {}, t('run.matchRoster')),
+        el('table', {}, ...r.바뀐장.map(b => el('tr', {}, el('td', {}, tag(b.page)), el('td', {}, b.변경.join('; '))))),
+        el('div', { class: 'row' }, el('button', { class: 'primary', onclick: () => ctx.goTo('review') }, t('run.goReview')))));
+      await refresh();
+    } catch (e) { showError((e as Error).message); }
+  }
+
+  function renderPrivacy(): void {
+    clear(privacyBox);
+    if (!data) return;
+    const on = !!data.key.이름가림;
+    put(privacyBox,
+      el('div', { class: 'row' }, el('label', {}, el('input', { type: 'checkbox', checked: on, disabled: running,
+        onchange: (e: Event) => void saveMask((e.target as HTMLInputElement).checked ? DEFAULT_MASK : null) }), t('run.maskToggle'))),
+      el('div', { class: 'muted' }, t('run.maskHelp')));
+    if (on) {
+      put(privacyBox, el('div', { class: 'band warn' }, t('run.maskLimit')), data.명단있음 ? null : el('div', { class: 'band warn' }, t('run.maskNoRoster')));
+      if (!data.pages.length) put(privacyBox, el('div', { class: 'muted' }, t('run.maskNoPages')));
+      else {
+        if (maskPage === null || !data.pages.includes(maskPage)) maskPage = data.pages[0]!;
+        const picker = el('select', { onchange: () => showMaskPage(Number(picker.value)) }, ...data.pages.map(p => el('option', { value: String(p), selected: p === maskPage }, tag(p))));
+        put(privacyBox, el('div', { class: 'row' }, t('run.maskPage'), picker,
+          el('button', { disabled: running, onclick: () => void saveMask(DEFAULT_MASK) }, t('run.maskReset'))), maskCanvas);
+        showMaskPage(maskPage);
+      }
+    }
+    put(privacyBox,
+      el('div', { class: 'row' }, el('button', { disabled: running || !data.명단있음 || !data.transcripts.length, onclick: () => void matchWithRoster() }, t('run.matchRoster')),
+        data.명단있음 ? null : el('span', { class: 'muted' }, t('run.matchNeedRoster'))),
+      el('div', { class: 'muted' }, t('run.matchHelp')));
+  }
+
   // ── 전사 ──
   const progressBar = el('progress', { max: '1', value: '0' });
   const progressText = el('span');
@@ -199,7 +292,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const 폴더 = data.폴더;
     const profile = store.state.settings.프로필.find(p => p.id === store.state.settings.사용중);
     const isApi = profile?.종류 === 'api';
-    running = true; renderRun(); renderThumbs(); clear(resultBox);
+    running = true; renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
     const started = Date.now();
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
@@ -215,7 +308,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       showResult(await api.startRun(폴더, opts));
     } catch (e) { showError((e as Error).message); }
     finally {
-      clearInterval(timer); off(); tick(); running = false; renderRun(); renderThumbs();
+      clearInterval(timer); off(); tick(); running = false; renderRun(); renderThumbs(); renderPrivacy();
       if (store.state.current === 폴더) { data = await api.readSet(폴더).catch(() => data); renderCounts(); }
       await store.refreshSets().catch(() => undefined);
     }
