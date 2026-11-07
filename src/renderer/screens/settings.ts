@@ -190,7 +190,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   root.append(el('h2', {}, t('settings.title')),
     el('section', {}, semesterBox, rosterBox, rotationBox),
-    el('section', {}, el('h2', {}, t('settings.profiles')), profileBox),
+    el('section', {}, el('h2', {}, t('settings.profiles')), el('div', { class: 'band info' }, t('settings.aiNotice')), profileBox),
     el('section', {}, el('h2', {}, t('settings.about')),
       el('div', { class: 'row' }, t('settings.version'), versionText,
         el('button', { onclick: () => guard(() => api.openExternal('guide')) }, t('settings.guide')),
