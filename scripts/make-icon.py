@@ -1,64 +1,66 @@
-# 한 번만 돌린다: python -X utf8 scripts/make-icon.py → build/icon.png(512), build/icon.ico(16~256)
-# 그림: 맑은 하늘(#0277bd, styles.css 기본 강조색) 둥근 사각형 위에 흰색 '펜을 쥔 손'과 펜 끝의 글씨 한 줄.
-# 손·펜은 흰색으로 채우고 바탕색 테두리를 둘러, 겹치는 곳(손가락이 펜 앞, 펜이 손바닥 앞)이 선으로 갈라져 보이게 한다.
-# 위치는 펜 축 기준(t: 펜 끝 0 → 펜촉 1, s: 축에서 오른쪽 아래로 떨어진 거리)으로 잡는다.
-# 작은 크기(32px 이하)는 갈라지는 선을 굵게 따로 그려 뭉개지지 않게 한다. SVG를 그림으로 바꾸는 데 PyMuPDF를 쓴다(개발용, 앱에는 안 들어감).
-import io
-import math
+# 아이콘 원본은 build/icon-source.png(1024px, 둥근 사각형 바깥은 투명)이다. 그림은 Codex 이미지 생성으로 그렸다.
+# 투명 배경으로 생성하면 타일 위 광택·그림자까지 배경으로 알고 구멍을 내서, 캔버스 전체가 단색 배경인 그림을 받아
+# 배경을 #0277bd(styles.css 기본 강조색)로 맞추고 둥근 모서리는 여기서 자른다.
+#   새 그림으로 바꿀 때: python -X utf8 scripts/make-icon.py --from <생성한 PNG>  (원본을 다시 만들고 아래까지 진행)
+#   원본에서 아이콘만 다시 만들 때: python -X utf8 scripts/make-icon.py → build/icon.png(512), build/icon.ico(16~256)
+# 개발용 스크립트라 앱에는 안 들어간다(Pillow, numpy 필요).
 import sys
-import pymupdf
-from PIL import Image
+from pathlib import Path
 
-BLUE, WHITE = '#0277bd', '#ffffff'
-A, B = (408, 82), (178, 312)          # 펜 위 끝, 펜촉 시작
-L = math.dist(A, B)
-U = ((B[0] - A[0]) / L, (B[1] - A[1]) / L)   # 펜 방향(왼쪽 아래)
-N = (U[1], -U[0])                            # 펜에서 오른쪽 아래로
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
-
-def pt(t, s=0.0):
-    return (A[0] + (B[0] - A[0]) * t + N[0] * s, A[1] + (B[1] - A[1]) * t + N[1] * s)
+BUILD = Path(__file__).resolve().parent.parent / 'build'
+TILE = np.array([0x02, 0x77, 0xBD], float)
+SIZES = (16, 24, 32, 48, 64, 128, 256)
+SIDE, MARGIN, RADIUS = 1024, 32, 0.20   # 여백 32/1024는 옛 아이콘(16/512)과 같아 작업 표시줄에서 크기가 그대로 보인다
 
 
-def part(p, q, core, line):
-    """바탕색 테두리를 두른 흰 캡슐(손가락·손바닥·펜): 굵은 파란 선 위에 조금 가는 흰 선"""
-    xy = f'x1="{p[0]:.1f}" y1="{p[1]:.1f}" x2="{q[0]:.1f}" y2="{q[1]:.1f}"'
-    return (f'<line {xy} stroke="{BLUE}" stroke-width="{core + 2 * line}" stroke-linecap="round"/>'
-            f'<line {xy} stroke="{WHITE}" stroke-width="{core}" stroke-linecap="round"/>')
+def master_from_render(path: Path) -> Image.Image:
+    arr = np.asarray(Image.open(path).convert('RGB')).astype(float)
+    e = 16
+    edge = np.concatenate([arr[:e].reshape(-1, 3), arr[-e:].reshape(-1, 3),
+                           arr[:, :e].reshape(-1, 3), arr[:, -e:].reshape(-1, 3)])
+    bg = np.median(edge, axis=0)
+    dist = np.linalg.norm(arr - bg, axis=-1)
+    # 생성 그림의 배경은 #0277bd에서 조금 비켜 있다. 배경 화소는 정확히 맞추고, 손·펜과 섞인 가장자리 화소는
+    # 배경이 섞인 만큼만 옮겨야 옛 배경색이 테두리처럼 남지 않는다.
+    w = np.clip((dist - 8) / 24, 0, 1)[..., None]
+    out = arr + (TILE - bg) * (1 - w)
+    out[dist <= 8] = TILE
+    side = SIDE - 2 * MARGIN
+    tile = Image.fromarray(out.clip(0, 255).astype(np.uint8)).resize((side, side), Image.Resampling.LANCZOS)
+    tile = tile.convert('RGBA')
+    mask = Image.new('L', (side * 4, side * 4), 0)   # 4배로 그려 줄여야 모서리 곡선이 매끈하다
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, side * 4 - 1, side * 4 - 1), radius=int(side * RADIUS * 4), fill=255)
+    tile.putalpha(mask.resize((side, side), Image.Resampling.LANCZOS))
+    canvas = Image.new('RGBA', (SIDE, SIDE), (0, 0, 0, 0))
+    canvas.paste(tile, (MARGIN, MARGIN), tile)
+    return canvas
 
 
-def svg(line):
-    """line: 갈라지는 선 굵기(512 기준). 작은 크기일수록 굵게"""
-    half = 23                                         # 펜 굵기의 절반
-    tip = (B[0] + U[0] * 66, B[1] + U[1] * 66)        # 펜촉 끝
-    nib = [pt(1, -half), pt(1, half), tip]
-    hole = (B[0] + U[0] * 22, B[1] + U[1] * 22)
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-<defs><clipPath id="tile"><rect x="16" y="16" width="480" height="480" rx="96"/></clipPath></defs>
-<rect x="16" y="16" width="480" height="480" rx="96" fill="{BLUE}"/>
-<g clip-path="url(#tile)">
-  <path d="M 42 412 C 58 380, 76 380, 82 402 S 102 426, 110 396 S {tip[0] - 6:.1f} {tip[1] + 10:.1f}, {tip[0]:.1f} {tip[1]:.1f}" fill="none" stroke="{WHITE}" stroke-width="{max(16, line)}" stroke-linecap="round" stroke-linejoin="round"/>
-  {part(pt(0.50, 80), pt(0.66, 330), 132, line)}
-  {part(pt(0.34, 62), pt(0.52, 78), 150, line)}
-  {part(pt(-0.02), pt(1.0), 2 * half, line)}
-  <polygon points="{' '.join(f'{x:.1f},{y:.1f}' for x, y in nib)}" fill="{WHITE}" stroke="{BLUE}" stroke-width="{line * 0.6:.1f}" stroke-linejoin="round"/>
-  <circle cx="{hole[0]:.1f}" cy="{hole[1]:.1f}" r="{max(7, line * 0.45):.1f}" fill="{BLUE}"/>
-  {part(pt(0.56, 96), pt(0.74, 40), 54, line)}
-  {part(pt(0.36, -30), pt(0.80, -36), 58, line)}
-</g>
-</svg>'''
+def at(src: Image.Image, size: int) -> Image.Image:
+    im = src.resize((size, size), Image.Resampling.LANCZOS)
+    if size > 32:
+        return im
+    # 32px 이하로 줄이면 윤곽이 흐려져 펜과 손이 한 덩어리로 보여서 살짝 날을 세운다(투명도는 그대로)
+    sharp = im.convert('RGB').filter(ImageFilter.UnsharpMask(radius=1, percent=70, threshold=1))
+    sharp.putalpha(im.getchannel('A'))
+    return sharp
 
 
-def render(line, size):
-    page = pymupdf.open(stream=svg(line).encode('utf-8'), filetype='svg')[0]
-    pix = page.get_pixmap(matrix=pymupdf.Matrix(size / 512, size / 512), alpha=True)
-    return Image.open(io.BytesIO(pix.tobytes('png'))).convert('RGBA')
+def main() -> None:
+    args = sys.argv[1:]
+    if args[:1] == ['--from']:
+        master_from_render(Path(args[1])).save(BUILD / 'icon-source.png')
+        args = args[2:]
+    out = Path(args[0]) if args else BUILD
+    src = Image.open(BUILD / 'icon-source.png').convert('RGBA')
+    at(src, 512).save(out / 'icon.png')
+    imgs = [at(src, s) for s in SIZES]
+    imgs[-1].save(out / 'icon.ico', sizes=[(s, s) for s in SIZES], append_images=imgs[:-1])
+    print('ok')
 
 
 if __name__ == '__main__':
-    out = sys.argv[1] if len(sys.argv) > 1 else 'build'
-    render(12, 512).save(f'{out}/icon.png')
-    sizes = [16, 24, 32, 48, 64, 128, 256]
-    imgs = [render(30 if s <= 32 else 18 if s <= 64 else 12, s) for s in sizes]
-    imgs[-1].save(f'{out}/icon.ico', sizes=[(s, s) for s in sizes], append_images=imgs[:-1])
-    print('ok')
+    main()
