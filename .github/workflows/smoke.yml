@@ -18,6 +18,8 @@ jobs:
           - os: macos-latest
             # 맥은 제품 이름을 영문으로 덮어써야 뜬다(package.json의 pack:mac 참고)
             pack: npm run pack:mac -- --arm64
+          - os: macos-15-intel   # 인텔 맥판(x64 dmg)도 실제로 띄워 본다
+            pack: npm run pack:mac -- --x64
           - os: ubuntu-latest
             pack: npx electron-builder --linux --dir
     runs-on: ${{ matrix.os }}
@@ -32,7 +34,7 @@ jobs:
       - run: ${{ matrix.pack }}
       - if: runner.os == 'macOS'
         # 임시 서명(ad-hoc)이 붙어야 Apple 실리콘에서 실행된다. 서명 상태를 기록해 둔다
-        run: mkdir -p smoke-out && codesign -dv --verbose=2 release/mac-arm64/*.app 2>&1 | tee smoke-out/codesign.txt
+        run: mkdir -p smoke-out && codesign -dv --verbose=2 release/mac*/*.app 2>&1 | tee smoke-out/codesign.txt
       - if: runner.os == 'Linux'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
       - if: runner.os == 'Linux'
@@ -43,7 +45,7 @@ jobs:
         # 맥에서 앱이 죽으면 원인을 볼 자료: 앱 꾸러미 안 이름들(보조 프로세스 앱), Info.plist, 충돌 보고서
         run: |
           mkdir -p smoke-out/diag
-          APP=$(ls -d release/mac-arm64/*.app | head -1)
+          APP=$(ls -d release/mac*/*.app | head -1)
           ls -la "$APP/Contents/MacOS" "$APP/Contents/Frameworks" > smoke-out/diag/bundle.txt 2>&1
           plutil -p "$APP/Contents/Info.plist" > smoke-out/diag/info-plist.txt 2>&1
           for h in "$APP"/Contents/Frameworks/*Helper*.app; do echo "== $h"; plutil -p "$h/Contents/Info.plist" | grep -E "CFBundle(Name|Executable|DisplayName)"; done > smoke-out/diag/helpers.txt 2>&1
