@@ -2,7 +2,7 @@
 
 ## 신고
 보안 문제는 공개 이슈에 적지 말고 GitHub의 비공개 신고로 알려 주세요:
-https://github.com/blueshadow62/geulnun/security/advisories/new
+https://github.com/blueshadow62/fairhand/security/advisories/new
 
 Please report security issues privately through the link above, not in public issues.
 

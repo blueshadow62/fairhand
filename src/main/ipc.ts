@@ -19,7 +19,7 @@ import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
 import { copySampleSet, makeDefaultSemester } from './sample.js';
 
-const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/geulnun#readme' };
+const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/fairhand/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/fairhand#readme' };
 
 export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater; sampleDir: string }
 
