@@ -12,7 +12,7 @@ import { DataError } from '../src/core/types.js';
 
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
-const out = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: { '1-1': { answer: 'x', verdict: 'X' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] });
+const out = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: [{ id: '1-1', answer: 'x', verdict: 'X' }, { id: '3-1', answer: '', verdict: '빈칸' }], qual: [{ id: 'E1', responded: false, answer: '' }], notes: [] });
 const fakeProvider = (): TranscribeProvider => ({
   id: 'api',
   async complete(req: StructuredRequest): Promise<RawResult> { const page = Number(/page는 (\d+)/.exec(req.user)?.[1]); return { output: out(page), model: 'fake' }; },

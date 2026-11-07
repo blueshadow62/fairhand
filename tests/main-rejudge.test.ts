@@ -63,7 +63,7 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
     const gate = new Promise<void>(r => { release = r; });
     const fake: TranscribeProvider = {
       id: 'api',
-      async complete(req: StructuredRequest): Promise<RawResult> { await gate; void req; return { output: { quant: { '1-1': { verdict: 'X' }, '3-1': { verdict: 'O' } } }, model: 'f' }; },
+      async complete(req: StructuredRequest): Promise<RawResult> { await gate; void req; return { output: { quant: [{ id: '1-1', verdict: 'X' }, { id: '3-1', verdict: 'O' }] }, model: 'f' }; },
       async transcribe(): Promise<RawResult> { throw new Error('쓰지 않음'); },
     };
     (bridge as any).provider = async () => fake;

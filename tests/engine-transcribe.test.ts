@@ -12,7 +12,7 @@ import { transcribePage, transcribeSet } from '../src/engine/transcribe.js';
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
 const key = parseKey(readFileSync(path.join(FX, '정답표.json'), 'utf-8'));
 const rules = await loadRules();
-const good = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: { '1-1': { answer: 'x', verdict: 'X' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] });
+const good = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: [{ id: '1-1', answer: 'x', verdict: 'X' }, { id: '3-1', answer: '', verdict: '빈칸' }], qual: [{ id: 'E1', responded: false, answer: '' }], notes: [] });
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]); // 검사용 최소 JPEG 바이트. 모델에 보내지 않는다.
 
 function provider(script: (page: number, call: number) => RawResult | Error): TranscribeProvider & { calls: number } {

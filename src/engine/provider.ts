@@ -35,6 +35,9 @@ export function toTranscript(raw: unknown, key: AnswerKey, page: number, info: T
   if (t.page !== page) throw new EngineError('invalid-output', `모델 출력의 page가 ${t.page}인데 요청한 쪽은 ${page}`);
   try { validateTranscripts(key, [t]); }
   catch (e) { if (e instanceof DataError) throw new EngineError('invalid-output', `모델 출력 검증 실패: ${e.message}`); throw e; }
+  // 손으로 쓴 전사와 달리 모델 출력의 누락은 빈칸(0점)으로 세지 않고 다시 묻는다
+  const missing = [...key.정량.filter(u => !t.정량[u.id]), ...key.정성.filter(u => !t.정성[u.id])].map(u => u.id);
+  if (missing.length) throw new EngineError('invalid-output', `모델 출력에 단위 누락: ${missing.join(', ')}`);
   return { ...t, 확인완료: false, 전사정보: info };
 }
 
