@@ -1,4 +1,4 @@
-import type { SetInfo, Settings } from '../shared/ipc.js';
+import type { SetInfo, Settings, Theme } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
@@ -33,6 +33,17 @@ function takeTabAfterReload(): Tab | null {
   try { const v = sessionStorage.getItem(TAB_AFTER_RELOAD); sessionStorage.removeItem(TAB_AFTER_RELOAD); return v as Tab | null; } catch { return null; }
 }
 
+/** 화면 색은 <html data-theme>로 바꾼다(styles.css). 기준은 설정 파일이고, 로컬 저장소 사본은
+ *  다음 실행 때 설정을 받기 전에 먼저 칠해 어두운 화면이 밝게 번쩍이지 않게 하는 데만 쓴다 */
+const THEME_KEY = 'geulnun.theme';
+export function applyTheme(theme: Theme): void {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* 못 적어도 설정 파일이 기준 */ }
+}
+function applyCachedTheme(): void {
+  try { const v = localStorage.getItem(THEME_KEY); if (v) document.documentElement.dataset.theme = v; } catch { /* 없으면 기본 색 */ }
+}
+
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 function toast(kind: 'error' | 'info', message: string): void {
   const t = document.getElementById('toast')!;
@@ -54,6 +65,7 @@ const TABS: { id: Tab; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
 const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 async function start(): Promise<void> {
+  applyCachedTheme();
   window.addEventListener('unhandledrejection', e => showError(errText(e.reason)));
   window.addEventListener('error', e => showError(errText(e.error ?? e.message)));
   const root = document.getElementById('app')!;
@@ -66,6 +78,7 @@ async function start(): Promise<void> {
 
   store.update({ settings: await api.getSettings() });
   setLanguage(store.state.settings.언어); // 이 뒤의 t()가 모두 이 언어로 나온다
+  applyTheme(store.state.settings.화면색);
   store.subscribe(s => { current.textContent = s.current ? t('common.set', { name: s.current }) : t('app.noSet'); });
   store.update({});
 

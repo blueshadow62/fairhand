@@ -1,5 +1,5 @@
-import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, MODELS, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type UpdateStatus } from '../../shared/ipc.js';
-import { reloadTo, type Ctx } from '../app.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, EFFORTS, MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus } from '../../shared/ipc.js';
+import { applyTheme, reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
 import { t, type Key } from '../lib/i18n.js';
@@ -90,6 +90,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const langSel = el('select', { onchange: () => guard(async () => { await api.saveSettings({ 언어: langSel.value as Language }); reloadTo('settings'); }) },
       el('option', { value: 'ko', selected: s.언어 !== 'en' }, '한국어'), el('option', { value: 'en', selected: s.언어 === 'en' }, 'English'));
     rotationBox.append(el('div', { class: 'row' }, t('settings.language'), langSel, el('span', { class: 'muted' }, t('settings.languageHelp'))));
+    // 화면 색은 CSS 변수만 바뀌므로 다시 불러오지 않고 고르는 즉시 칠한 뒤 저장한다
+    const themeSel = el('select', { onchange: () => guard(async () => {
+      const v = themeSel.value as Theme;
+      applyTheme(v);
+      store.update({ settings: await api.saveSettings({ 화면색: v }) });
+    }) }, ...THEMES.map(v => el('option', { value: v, selected: s.화면색 === v }, t(`settings.theme.${v}` as Key))));
+    rotationBox.append(el('div', { class: 'row' }, t('settings.theme'), themeSel, el('span', { class: 'muted' }, t('settings.themeHelp'))));
   }
 
   function profileCard(p: Profile): HTMLElement {

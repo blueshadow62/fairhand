@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DataError } from '../core/types.js';
-import { EFFORTS, MODELS, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings } from '../shared/ipc.js';
+import { EFFORTS, MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
 
 export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
@@ -11,7 +11,7 @@ const optStr = (v: unknown): string | undefined => (typeof v === 'string' && v.t
 const optAbs = (v: unknown): string | undefined => { const s = optStr(v); return s && path.isAbsolute(s) ? s : undefined; };
 
 export function defaultSettings(): Settings {
-  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true };
+  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true, 화면색: THEMES[0] };
 }
 
 function parseProfile(v: unknown): Profile | null {
@@ -47,6 +47,7 @@ export function parseSettings(raw: unknown): Settings {
     사용중: optStr(raw.사용중) ?? null,
     언어: raw.언어 === 'en' ? 'en' : 'ko',
     자동업데이트: raw.자동업데이트 !== false,
+    화면색: (THEMES as readonly unknown[]).includes(raw.화면색) ? (raw.화면색 as Theme) : THEMES[0],
   });
 }
 

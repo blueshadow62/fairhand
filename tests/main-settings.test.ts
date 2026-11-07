@@ -25,6 +25,14 @@ test('parseSettings: 자동업데이트는 기본 켜짐, false일 때만 꺼짐
   assert.equal(parseSettings({ 자동업데이트: false }).자동업데이트, false);
 });
 
+test('parseSettings: 화면색은 sky·dawn·dark만, 없거나 모르는 값은 sky', () => {
+  assert.equal(parseSettings({}).화면색, 'sky');
+  assert.equal(parseSettings({ 화면색: 'dawn' }).화면색, 'dawn');
+  assert.equal(parseSettings({ 화면색: 'dark' }).화면색, 'dark');
+  assert.equal(parseSettings({ 화면색: 'pink' }).화면색, 'sky');
+  assert.equal(applyPatch(defaultSettings(), { 화면색: 'dark' }).화면색, 'dark');
+});
+
 test('applyPatch: id 중복·빈 이름은 DataError, 사용중은 목록 안에서만', () => {
   const cur = defaultSettings();
   assert.throws(() => applyPatch(cur, { 프로필: [DEFAULT_PROFILE, { id: 'cli-default', 이름: 'x', 종류: 'cli' }] }), DataError);
