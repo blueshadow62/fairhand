@@ -37,10 +37,10 @@ export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]
 export interface JudgeResult extends RejudgeResult { failed: { page: number; error: string }[] }
 /** 자동 업데이트 상태. error는 설정 화면의 한 줄과 로그에만 보인다(창을 띄우지 않음) */
 export type UpdateStatus =
-  | { kind: 'disabled'; reason: 'dev' | 'off' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
+  | { kind: 'disabled'; reason: 'dev' | 'off' | 'manual' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
   | { kind: 'available'; version: string } | { kind: 'downloading'; percent: number } | { kind: 'downloaded'; version: string } | { kind: 'error'; message: string };
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
-export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'privacy' | 'guide';
+export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'privacy' | 'guide' | 'releases';
 export type LeaveChoice = 'save' | 'discard' | 'stay';
 
 export const CHANNELS = {

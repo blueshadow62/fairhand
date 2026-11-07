@@ -33,6 +33,17 @@ test('scheduleChecks: 처음 한 번 뒤 주기적으로, 멈추면 더 없음',
   stop();
 });
 
+test('startUpdater: 맥(서명 없는 시험판)은 disabled/manual, 확인·켜기로도 바뀌지 않고 GitHub에 가지 않는다', async () => {
+  const seen: unknown[] = [];
+  const u = startUpdater({ enabled: () => true, packaged: true, platform: 'darwin', onStatus: s => seen.push(s), log: () => undefined });
+  await u.check(); u.setEnabled(true);
+  assert.deepEqual(u.status(), { kind: 'disabled', reason: 'manual' });
+  assert.deepEqual(seen, []);
+  assert.deepEqual(reduce({ kind: 'disabled', reason: 'manual' }, { type: 'on' }), { kind: 'disabled', reason: 'manual' });
+  assert.match(statusText({ kind: 'disabled', reason: 'manual' }, 'ko'), /맥 시험판/);
+  u.stop();
+});
+
 test('startUpdater: 개발 실행이면 disabled/dev, 확인해도 GitHub에 가지 않는다', async () => {
   const seen: unknown[] = [];
   const u = startUpdater({ enabled: () => true, packaged: false, onStatus: s => seen.push(s), log: () => undefined });

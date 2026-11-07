@@ -4,7 +4,7 @@ export type UpdateEvent = { type: 'check' } | { type: 'none'; version: string } 
   | { type: 'downloaded'; version: string } | { type: 'error'; message: string } | { type: 'off' } | { type: 'on' };
 
 export function reduce(prev: UpdateStatus, ev: UpdateEvent): UpdateStatus {
-  if (prev.kind === 'disabled' && prev.reason === 'dev') return prev;
+  if (prev.kind === 'disabled' && (prev.reason === 'dev' || prev.reason === 'manual')) return prev;
   if (ev.type === 'off') return { kind: 'disabled', reason: 'off' };
   if (ev.type === 'on') return prev.kind === 'disabled' ? { kind: 'idle' } : prev;
   if (prev.kind === 'disabled') return prev;
@@ -24,7 +24,9 @@ export function reduce(prev: UpdateStatus, ev: UpdateEvent): UpdateStatus {
 export function statusText(s: UpdateStatus, lang: Language): string {
   const ko = lang === 'ko';
   switch (s.kind) {
-    case 'disabled': return s.reason === 'dev' ? (ko ? '개발 실행에서는 확인하지 않습니다' : 'Not checked in a development run') : (ko ? '자동 확인이 꺼져 있습니다' : 'Automatic checking is off');
+    case 'disabled': return s.reason === 'dev' ? (ko ? '개발 실행에서는 확인하지 않습니다' : 'Not checked in a development run')
+      : s.reason === 'manual' ? (ko ? '맥 시험판은 자동 업데이트가 없습니다' : 'The Mac beta does not update automatically')
+      : (ko ? '자동 확인이 꺼져 있습니다' : 'Automatic checking is off');
     case 'idle': return ko ? '아직 확인하지 않았습니다' : 'Not checked yet';
     case 'checking': return ko ? '확인 중…' : 'Checking…';
     case 'none': return ko ? `최신 버전입니다(${s.version})` : `Up to date (${s.version})`;
@@ -48,9 +50,14 @@ export interface Updater { check(): Promise<void>; install(): void; status(): Up
 
 const FIRST_DELAY_MS = 10_000, INTERVAL_MS = 4 * 60 * 60 * 1000;
 
-/** electron-updater 연결. 개발 실행·꺼짐이면 GitHub에 접속하지 않고, 오류는 상태와 로그로만 남긴다(창을 띄우지 않음) */
-export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; onStatus(s: UpdateStatus): void; log(level: 'warn' | 'info', ...p: unknown[]): void }): Updater {
-  let status: UpdateStatus = !deps.packaged ? { kind: 'disabled', reason: 'dev' } : deps.enabled() ? { kind: 'idle' } : { kind: 'disabled', reason: 'off' };
+/**
+ * electron-updater 연결. 개발 실행·꺼짐이면 GitHub에 접속하지 않고, 오류는 상태와 로그로만 남긴다(창을 띄우지 않음).
+ * 맥은 앱에 Apple 서명이 있어야 자동 업데이트가 설치되는데 시험판은 서명이 없어, 확인하지 않고 릴리스 페이지로 안내한다(manual).
+ */
+export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; platform?: NodeJS.Platform; onStatus(s: UpdateStatus): void; log(level: 'warn' | 'info', ...p: unknown[]): void }): Updater {
+  const manual = (deps.platform ?? process.platform) === 'darwin';
+  let status: UpdateStatus = !deps.packaged ? { kind: 'disabled', reason: 'dev' } : manual ? { kind: 'disabled', reason: 'manual' }
+    : deps.enabled() ? { kind: 'idle' } : { kind: 'disabled', reason: 'off' };
   const set = (ev: UpdateEvent) => {
     const next = reduce(status, ev);
     if (JSON.stringify(next) === JSON.stringify(status)) return;
@@ -62,7 +69,7 @@ export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; 
     deps.log('warn', '[update]', message);
     set({ type: 'error', message });
   };
-  if (!deps.packaged) return { check: async () => undefined, install: () => undefined, status: () => status, setEnabled: () => undefined, stop: () => undefined };
+  if (!deps.packaged || manual) return { check: async () => undefined, install: () => undefined, status: () => status, setEnabled: () => undefined, stop: () => undefined };
 
   type AU = import('electron-updater').AppUpdater;
   let au: AU | null = null;

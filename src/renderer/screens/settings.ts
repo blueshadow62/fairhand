@@ -6,7 +6,7 @@ import { t, type Key } from '../lib/i18n.js';
 import { makeGuard } from '../lib/screen-utils.js';
 
 function updateText(s: UpdateStatus): string {
-  if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : t('settings.update.status.off');
+  if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : s.reason === 'manual' ? t('settings.update.manual') : t('settings.update.status.off');
   return t(`settings.update.status.${s.kind}` as Key, { version: 'version' in s ? s.version : '', percent: 'percent' in s ? s.percent : '' });
 }
 
@@ -57,14 +57,15 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderUpdate(s: UpdateStatus): void {
     clear(updateBox);
     const busy = s.kind === 'checking' || s.kind === 'available' || s.kind === 'downloading';
+    const manual = s.kind === 'disabled' && s.reason === 'manual'; // 서명 없는 맥 시험판: 새 버전은 릴리스 페이지에서 직접 받는다
     const auto = el('input', { type: 'checkbox', checked: store.state.settings.자동업데이트, disabled: s.kind === 'disabled' && s.reason === 'dev',
       onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 자동업데이트: auto.checked }) }); renderUpdate(await api.updateStatus()); }) });
     updateBox.append(el('h3', {}, t('settings.update.title')),
       el('div', { class: 'row' }, el('span', {}, updateText(s)),
-        el('button', { disabled: busy || s.kind === 'disabled', onclick: () => guard(() => api.checkUpdate()) }, t('settings.update.check')),
+        manual ? el('button', { onclick: () => guard(() => api.openExternal('releases')) }, t('settings.update.openReleases'))
+          : el('button', { disabled: busy || s.kind === 'disabled', onclick: () => guard(() => api.checkUpdate()) }, t('settings.update.check')),
         s.kind === 'downloaded' ? el('button', { class: 'primary', onclick: () => guard(() => api.installUpdate()) }, t('settings.update.install')) : null),
-      el('div', { class: 'row' }, el('label', {}, auto, t('settings.update.auto'))),
-      el('div', { class: 'muted' }, t('settings.update.note')));
+      ...(manual ? [] : [el('div', { class: 'row' }, el('label', {}, auto, t('settings.update.auto'))), el('div', { class: 'muted' }, t('settings.update.note'))]));
   }
 
   function renderBasics(): void {
