@@ -1,0 +1,46 @@
+name: smoke
+# 묶은 앱을 Windows·맥·리눅스 서버에서 실제로 띄워 탭마다 화면을 찍는다(scripts/smoke.mjs).
+# 개발 PC에서 맥·리눅스를 직접 볼 수 없어서, 찍은 화면과 summary.json을 결과물(artifact)로 받아 확인한다.
+on:
+  push:
+    branches: [mac-support]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            pack: npx electron-builder --win --dir
+          - os: macos-latest
+            pack: npx electron-builder --mac --dir --arm64
+          - os: ubuntu-latest
+            pack: npx electron-builder --linux --dir
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: ${{ matrix.pack }}
+      - if: runner.os == 'macOS'
+        # 임시 서명(ad-hoc)이 붙어야 Apple 실리콘에서 실행된다. 서명 상태를 기록해 둔다
+        run: mkdir -p smoke-out && codesign -dv --verbose=2 release/mac-arm64/*.app 2>&1 | tee smoke-out/codesign.txt
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a --server-args="-screen 0 1280x900x24" node scripts/smoke.mjs smoke-out
+      - if: runner.os != 'Linux'
+        run: node scripts/smoke.mjs smoke-out
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: smoke-${{ matrix.os }}
+          path: smoke-out
+          retention-days: 14

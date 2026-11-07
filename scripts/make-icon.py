@@ -59,7 +59,17 @@ def main() -> None:
     at(src, 512).save(out / 'icon.png')
     imgs = [at(src, s) for s in SIZES]
     imgs[-1].save(out / 'icon.ico', sizes=[(s, s) for s in SIZES], append_images=imgs[:-1])
+    mac_icon(src).save(out / 'icon-mac.png')
     print('ok')
+
+
+def mac_icon(src: Image.Image) -> Image.Image:
+    """맥 Dock·Finder 아이콘은 1024 캔버스 안에 824 크기 타일을 두는 Apple 격자를 따른다. 그대로 쓰면 다른 앱보다 커 보인다"""
+    side = 824
+    tile = src.crop((MARGIN, MARGIN, SIDE - MARGIN, SIDE - MARGIN)).resize((side, side), Image.Resampling.LANCZOS)
+    canvas = Image.new('RGBA', (SIDE, SIDE), (0, 0, 0, 0))
+    canvas.paste(tile, ((SIDE - side) // 2, (SIDE - side) // 2), tile)
+    return canvas
 
 
 if __name__ == '__main__':
