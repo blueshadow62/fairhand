@@ -59,7 +59,7 @@ export function askShellPath(shell: string, timeoutMs: number, exec: Exec = run)
 
 /** env.PATH를 고친다(기본은 process.env라 이후 띄우는 모든 자식 프로세스에 적용된다) */
 export async function fixPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform, exec?: Exec): Promise<void> {
-  if (platform === 'win32') return;
+  if (platform === 'win32' || env.GEULNUN_NO_SHELL_PATH) return; // 셸 설정 때문에 문제가 생기면 이 변수로 끌 수 있다
   const home = env.HOME || os.homedir();
   const shell = env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
   const fromShell = await askShellPath(shell, 3000, exec);

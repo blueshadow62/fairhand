@@ -47,6 +47,13 @@ jobs:
           plutil -p "$APP/Contents/Info.plist" > smoke-out/diag/info-plist.txt 2>&1
           for h in "$APP"/Contents/Frameworks/*Helper*.app; do echo "== $h"; plutil -p "$h/Contents/Info.plist" | grep -E "CFBundle(Name|Executable|DisplayName)"; done > smoke-out/diag/helpers.txt 2>&1
           cp ~/Library/Logs/DiagnosticReports/*.ips smoke-out/diag/ 2>/dev/null || true
+      - if: failure() && runner.os == 'macOS'
+        # 같은 앱을 조건을 바꿔 띄워 원인을 가른다: 출력 연결 없음 / PATH 묻기 끔 / 묶지 않은 원본 Electron
+        run: |
+          SMOKE_STDIO=ignore node scripts/smoke.mjs smoke-out/var-stdio-ignore || true
+          GEULNUN_NO_SHELL_PATH=1 node scripts/smoke.mjs smoke-out/var-no-shell-path || true
+          SMOKE_DEV=1 node scripts/smoke.mjs smoke-out/var-dev-electron || true
+          SMOKE_DEV=1 GEULNUN_NO_SHELL_PATH=1 node scripts/smoke.mjs smoke-out/var-dev-no-shell-path || true
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

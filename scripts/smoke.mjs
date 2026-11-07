@@ -2,8 +2,11 @@
 // 개발 PC에서 직접 볼 수 없는 맥·리눅스 판을 CI에서 확인하려고 만들었다. 추가 패키지 없이 Chromium 디버깅 포트(CDP)로 조작한다.
 // 사용: node scripts/smoke.mjs <저장 폴더>   (리눅스는 xvfb-run 아래에서)
 // 결과: <저장 폴더>/NN-탭.png, summary.json. 화면 예외가 있거나 탭·그림이 안 뜨면 종료 코드 1
+// 원인을 가를 때: SMOKE_DEV=1이면 묶은 앱 대신 원본 Electron으로(서명·퓨즈 영향 배제),
+// SMOKE_STDIO=ignore면 앱의 표준 출력을 연결하지 않고(Finder에서 연 것과 같게) Chromium 로그는 파일로 받는다
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -27,20 +30,26 @@ function findApp(dir) {
   return path.join(u, bin);
 }
 
-const exe = findApp(path.resolve('release'));
+const DEV = process.env.SMOKE_DEV === '1';
+const PIPE = process.env.SMOKE_STDIO !== 'ignore';
+const exe = DEV ? createRequire(import.meta.url)('electron') : findApp(path.resolve('release'));
 // 사용자 설정과 섞이지 않게 빈 설정 폴더와 학기 폴더를 새로 만든다
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'geulnun-smoke-'));
 const semester = path.join(userData, 'semester');
 fs.mkdirSync(semester);
 fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ 학기폴더: semester, 언어: 'ko', 자동업데이트: false }));
 // Ubuntu 23.10+는 권한 없는 사용자 네임스페이스를 막아 Chromium 격리가 실패한다(CI 전용 우회)
-// --enable-logging=stderr: 시작하자마자 죽을 때 Chromium의 치명 오류 문구가 app.log에 남는다(기본은 어디에도 안 찍힘)
-const args = [`--remote-debugging-port=${PORT}`, '--enable-logging=stderr', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])];
-const app = spawn(exe, args, { env: { ...process.env, GEULNUN_USER_DATA: userData }, stdio: ['ignore', 'pipe', 'pipe'] });
-const appLog = fs.createWriteStream(path.join(out, 'app.log'));
-app.stdout.pipe(appLog); app.stderr.pipe(appLog);
+// Chromium 로그: 시작하자마자 죽을 때 치명 오류 문구가 남게(기본은 어디에도 안 찍힘)
+const logging = PIPE ? ['--enable-logging=stderr'] : ['--enable-logging=file', `--log-file=${path.join(out, 'chromium.log')}`];
+const args = [...(DEV ? [path.resolve('.')] : []), `--remote-debugging-port=${PORT}`, ...logging, ...(process.platform === 'linux' ? ['--no-sandbox'] : [])];
+const app = spawn(exe, args, { env: { ...process.env, GEULNUN_USER_DATA: userData }, stdio: PIPE ? ['ignore', 'pipe', 'pipe'] : 'ignore' });
+if (PIPE) {
+  const appLog = fs.createWriteStream(path.join(out, 'app.log'));
+  app.stdout.pipe(appLog); app.stderr.pipe(appLog);
+}
 
-const summary = { platform: process.platform, arch: process.arch, exe, shots: [], exceptions: [], consoleErrors: [], toasts: [] };
+const summary = { platform: process.platform, arch: process.arch, exe, dev: DEV, stdio: PIPE ? 'pipe' : 'ignore', noShellPath: !!process.env.GEULNUN_NO_SHELL_PATH,
+  shots: [], exceptions: [], consoleErrors: [], toasts: [] };
 let failed = false;
 const fail = msg => { failed = true; summary.problems = [...(summary.problems ?? []), msg]; console.error('문제:', msg); };
 
@@ -49,6 +58,7 @@ try {
   for (let i = 0; i < 120 && !page; i++) {
     try { page = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find(t => t.type === 'page' && t.url.startsWith('geulnun://app')); }
     catch { /* 아직 안 떴다 */ }
+    if (app.exitCode !== null || app.signalCode !== null) break; // 앱이 이미 죽었으면 더 기다리지 않는다
     if (!page) await sleep(500);
   }
   if (!page) {
@@ -56,7 +66,7 @@ try {
     summary.debugPort = await fetch(`http://127.0.0.1:${PORT}/json/version`).then(r => r.json()).catch(e => `응답 없음: ${e.message}`);
     summary.targets = await fetch(`http://127.0.0.1:${PORT}/json/list`).then(r => r.json()).catch(() => null);
     summary.appExited = app.exitCode ?? app.signalCode ?? null;
-    throw new Error('60초 안에 글눈 창이 뜨지 않음');
+    throw new Error(summary.appExited !== null ? `글눈이 창을 띄우기 전에 끝남(${summary.appExited})` : '60초 안에 글눈 창이 뜨지 않음');
   }
 
   const ws = new WebSocket(page.webSocketDebuggerUrl);
