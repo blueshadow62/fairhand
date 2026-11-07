@@ -28,7 +28,7 @@ export interface AnswerKey {
   이름가림?: MaskRect;
 }
 
-export interface TranscribeInfo { 엔진: 'cli' | 'api' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
+export interface TranscribeInfo { 엔진: 'cli' | 'api' | 'codex' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
 
 export interface Transcript {
   page: number;

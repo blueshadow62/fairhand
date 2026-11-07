@@ -28,14 +28,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(statusBox);
     const s = store.state.settings;
     const profile = s.프로필.find(p => p.id === s.사용중);
-    const profileLine = el('div', {}, profile ? t('home.profile', { name: profile.이름, kind: profile.종류 === 'cli' ? 'Claude Code' : 'API' }) : t('home.profileNone'));
+    const profileLine = el('div', {}, profile ? t('home.profile', { name: profile.이름, kind: profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : 'API' }) : t('home.profileNone'));
     const detail = el('div', { class: 'muted' }, profile ? t('home.checking') : '');
     statusBox.append(el('h3', {}, t('home.status')),
       el('div', {}, s.학기폴더 ? t('home.semester', { path: s.학기폴더 }) : t('home.semesterNone')),
       profileLine, detail);
     if (!profile) return;
     try {
-      const text = profile.종류 === 'cli' ? cliStatusText(await api.cliStatus(profile.id))
+      const text = profile.종류 !== 'api' ? cliStatusText(await api.cliStatus(profile.id))
         : (await api.secretView(profile.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');
       if (seq === statusSeq) detail.textContent = text;
     } catch (e) { if (seq === statusSeq) detail.textContent = (e as Error).message; }

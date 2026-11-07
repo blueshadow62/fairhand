@@ -37,11 +37,11 @@ test('parseAuthStatus·parseVersion', () => {
 test('claudeStatus: 미설치·옛 버전·미로그인을 구분한다', async () => {
   const run = (answers: Record<string, string>) => async (_p: unknown, args: string[]) => ({ code: 0, stdout: answers[args.join(' ')] ?? '', stderr: '' });
   const fakeLocate = (found: boolean) => () => (found ? { command: 'c', prefixArgs: [] } : null);
-  assert.deepEqual(await claudeStatus(run({}), fakeLocate(false)), { installed: false });
+  assert.deepEqual(await claudeStatus(run({}), fakeLocate(false)), { installed: false, minVersion: MIN_CLI_VERSION });
   const old = await claudeStatus(run({ '--version': '2.1.100 (Claude Code)', 'auth status --json': '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}' }), fakeLocate(true));
   assert.equal(old.tooOld, true);
   const cur = await claudeStatus(run({ '--version': '2.1.316 (Claude Code)', 'auth status --json': '{"loggedIn":false,"authMethod":"none"}' }), fakeLocate(true));
-  assert.deepEqual(cur, { installed: true, version: '2.1.316', tooOld: false, loggedIn: false, authMethod: 'none', subscriptionType: undefined });
+  assert.deepEqual(cur, { installed: true, version: '2.1.316', tooOld: false, loggedIn: false, authMethod: 'none', subscriptionType: undefined, minVersion: MIN_CLI_VERSION });
 });
 
 test('locateClaude: configuredPath가 있으면 그것을, 없으면 GEULNUN_CLAUDE_PATH를 먼저 본다', () => {

@@ -7,6 +7,7 @@ import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
+import { CODEX, CodexProvider, codexEnv, codexStatus, locateCodex } from '../engine/codex.js';
 import { childEnv } from '../engine/env.js';
 import { judgePage } from '../engine/judge.js';
 import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
@@ -48,11 +49,14 @@ export class EngineBridge {
     return p;
   }
 
-  private cliEnv(p: Profile): NodeJS.ProcessEnv { return childEnv(this.env, { configDir: p.configDir }); }
+  private cliEnv(p: Profile): NodeJS.ProcessEnv {
+    return p.종류 === 'codex' ? codexEnv(this.env, { configDir: p.configDir }) : childEnv(this.env, { configDir: p.configDir });
+  }
 
   async provider(id?: string): Promise<TranscribeProvider> {
     const p = await this.profile(id);
     if (p.종류 === 'cli') return new CliProvider({ program: locateClaude(this.env, existsSync, p.cliPath), env: this.cliEnv(p), model: p.모델 ?? DEFAULT_MODEL });
+    if (p.종류 === 'codex') return new CodexProvider({ program: locateCodex(this.env, existsSync, p.cliPath), env: this.cliEnv(p), model: p.모델 });
     const apiKey = await this.deps.secrets.open(p.id);
     if (!apiKey) throw new EngineError('signed-out', `프로필 '${p.이름}'에 API 키가 없습니다. 설정에서 입력해 주세요`);
     return new ApiProvider({ apiKey, model: p.모델 ?? DEFAULT_MODEL });
@@ -70,6 +74,12 @@ export class EngineBridge {
 
   private async cliStatusNow(id: string): Promise<CliStatusView> {
     const p = await this.profile(id);
+    if (p.종류 === 'codex') {
+      const program = locateCodex(this.env, existsSync, p.cliPath);
+      const s = await codexStatus(undefined, () => program, this.cliEnv(p));
+      // npm 설치면 실행 파일이 node.exe라 사용자가 알아볼 codex.js 경로를 보인다
+      return { ...s, configDir: p.configDir, command: program ? (program.prefixArgs[0] ?? program.command) : undefined };
+    }
     if (p.종류 !== 'cli') throw new DataError('CLI 프로필이 아닙니다');
     const program = locateClaude(this.env, existsSync, p.cliPath);
     const s = await claudeStatus(undefined, () => program, this.cliEnv(p));
@@ -78,6 +88,11 @@ export class EngineBridge {
 
   async openLogin(id: string): Promise<{ ok: boolean; message?: string }> {
     const p = await this.profile(id);
+    if (p.종류 === 'codex') {
+      const program = locateCodex(this.env, existsSync, p.cliPath);
+      if (!program) return { ok: false, message: `${CODEX}가 설치되어 있지 않습니다. 설치 안내를 보세요` };
+      return openLogin(program, this.cliEnv(p), undefined, undefined, ['login']);
+    }
     const program = locateClaude(this.env, existsSync, p.cliPath);
     if (!program) return { ok: false, message: 'Claude Code가 설치되어 있지 않습니다. 설치 안내를 보세요' };
     return openLogin(program, this.cliEnv(p));

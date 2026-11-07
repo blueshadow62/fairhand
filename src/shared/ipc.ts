@@ -13,14 +13,16 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type EffortLevel = typeof EFFORTS[number];
 export const DEFAULT_MODEL: ModelId = 'claude-opus-5-5';
 export const DEFAULT_EFFORT: EffortLevel = 'medium';
-export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api'; cliPath?: string; configDir?: string; 모델?: ModelId; 노력?: EffortLevel }
+/** 종류: cli = Claude Code(구독), api = Anthropic API 키, codex = Codex(ChatGPT 구독).
+ *  모델: cli·api는 MODELS 중 하나, codex는 Codex 모델 이름(비우면 Codex 기본 모델). configDir: cli는 CLAUDE_CONFIG_DIR, codex는 CODEX_HOME */
+export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api' | 'codex'; cliPath?: string; configDir?: string; 모델?: ModelId | string; 노력?: EffortLevel }
 export type Language = 'ko' | 'en';
 /** 화면 색. 값은 styles.css의 :root[data-theme]와 짝이다. 맨 앞이 기본 */
 export const THEMES = ['sky', 'dawn', 'dark'] as const;
 export type Theme = typeof THEMES[number];
 export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 화면색: Theme }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
-export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string }
+export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string; minVersion?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
 export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 올린파일: UploadRecord[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
@@ -34,7 +36,7 @@ export type UpdateStatus =
   | { kind: 'disabled'; reason: 'dev' | 'off' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
   | { kind: 'available'; version: string } | { kind: 'downloading'; percent: number } | { kind: 'downloaded'; version: string } | { kind: 'error'; message: string };
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
-export type ExternalLink = 'install' | 'privacy' | 'guide';
+export type ExternalLink = 'install' | 'codexInstall' | 'privacy' | 'guide';
 export type LeaveChoice = 'save' | 'discard' | 'stay';
 
 export const CHANNELS = {

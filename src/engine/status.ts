@@ -6,7 +6,7 @@ import { childEnv } from './env.js';
 export interface ClaudeProgram { command: string; prefixArgs: string[] }
 export const MIN_CLI_VERSION = '2.1.248';
 
-function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): string | null {
+export function onPath(name: string, env: NodeJS.ProcessEnv, exists: (p: string) => boolean): string | null {
   for (const dir of (env.PATH ?? env.Path ?? '').split(';').filter(Boolean)) {
     const p = path.join(dir, name);
     if (exists(p)) return p;
@@ -69,14 +69,14 @@ export const runClaude: Runner = (program, args, env) => new Promise(res => {
     (err, stdout, stderr) => res({ code: err && 'code' in err && typeof err.code === 'number' ? err.code : err ? 1 : 0, stdout: String(stdout), stderr: String(stderr) }));
 });
 
-export interface ClaudeStatus { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; authMethod?: string; subscriptionType?: string }
+export interface ClaudeStatus { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; authMethod?: string; subscriptionType?: string; minVersion?: string }
 
 export async function claudeStatus(run: Runner = runClaude, locate: () => ClaudeProgram | null = () => locateClaude(), env: NodeJS.ProcessEnv = childEnv(process.env)): Promise<ClaudeStatus> {
   const program = locate();
-  if (!program) return { installed: false };
+  if (!program) return { installed: false, minVersion: MIN_CLI_VERSION };
   const [ver, st] = await Promise.all([run(program, ['--version'], env), run(program, ['auth', 'status', '--json'], env)]); // 서로 무관한 두 명령은 같이 띄운다(1초 안팎 단축)
   const v = parseVersion(ver.stdout) ?? undefined;
   const auth = parseAuthStatus(st.stdout);
   return { installed: true, version: v, tooOld: v ? compareVersion(v, MIN_CLI_VERSION) < 0 : undefined,
-    loggedIn: auth?.loggedIn, authMethod: auth?.authMethod, subscriptionType: auth?.subscriptionType };
+    loggedIn: auth?.loggedIn, authMethod: auth?.authMethod, subscriptionType: auth?.subscriptionType, minVersion: MIN_CLI_VERSION };
 }

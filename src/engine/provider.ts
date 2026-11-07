@@ -7,7 +7,8 @@ export type EngineErrorKind = 'not-installed' | 'needs-update' | 'signed-out' | 
   | 'timeout' | 'refusal' | 'invalid-output' | 'unsafe-tools' | 'cancelled' | 'other';
 
 export class EngineError extends Error {
-  constructor(public readonly kind: EngineErrorKind, message: string, public readonly resetsAt?: number) { super(message); }
+  /** who: 안내 문구에 넣을 프로그램 이름(설치·로그인·업데이트·도구 오류). 기본은 Claude Code */
+  constructor(public readonly kind: EngineErrorKind, message: string, public readonly resetsAt?: number, public readonly who: string = 'Claude Code') { super(message); }
 }
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -20,7 +21,7 @@ export interface RawResult { output: unknown; inputTokens?: number; outputTokens
 export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; images?: string[]; schema: Record<string, unknown>; effort: Effort }
 /** 요청의 그림 전부(한 장 + 여러 장), 보내는 순서대로 */
 export const requestImages = (req: StructuredRequest): string[] => [...(req.imageJpegBase64 ? [req.imageJpegBase64] : []), ...(req.images ?? [])];
-export interface StructuredProvider { readonly id: 'cli' | 'api'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
+export interface StructuredProvider { readonly id: 'cli' | 'api' | 'codex'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
 export interface TranscribeProvider extends StructuredProvider { transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
 
 export function transcribeRequest(input: TranscribeInput): StructuredRequest {
@@ -65,16 +66,16 @@ export function userFacingMessage(e: unknown): string {
   if (!(e instanceof EngineError)) return e instanceof Error ? e.message : String(e);
   const until = e.resetsAt ? ` (${new Date(e.resetsAt).toLocaleString('ko-KR')}에 풀림)` : '';
   switch (e.kind) {
-    case 'not-installed': return 'Claude Code가 설치되어 있지 않습니다. 설정에서 설치 안내를 보세요.';
-    case 'needs-update': return 'Claude Code가 너무 오래된 버전입니다. 업데이트한 뒤 다시 해 주세요.';
-    case 'signed-out': return 'Claude Code에 로그인이 필요합니다. 설정에서 로그인을 열어 주세요.';
+    case 'not-installed': return `${e.who}가 설치되어 있지 않습니다. 설정에서 설치 안내를 보세요.`;
+    case 'needs-update': return `${e.who}가 너무 오래된 버전입니다. 업데이트한 뒤 다시 해 주세요.`;
+    case 'signed-out': return `${e.who}에 로그인이 필요합니다. 설정에서 로그인을 열어 주세요.`;
     case 'rate-limit': return `사용 한도에 닿았습니다${until}. 기다리거나 API 키로 바꿔 주세요.`;
     case 'overloaded': return '서버가 혼잡합니다. 잠시 뒤 다시 해 주세요.';
     case 'network': return '인터넷 연결을 확인해 주세요.';
     case 'timeout': return '응답이 너무 오래 걸려 중단했습니다. 다시 해 주세요.';
     case 'refusal': return '모델이 이 장의 전사를 거절했습니다. 검토 화면에서 직접 입력해 주세요.';
     case 'invalid-output': return `모델 출력이 양식에 맞지 않습니다: ${e.message}`;
-    case 'unsafe-tools': return `Claude Code가 예상 밖의 도구와 함께 시작되어 중단했습니다: ${e.message}`;
+    case 'unsafe-tools': return `${e.who}에서 예상 밖의 도구 사용이 감지되어 중단했습니다: ${e.message}`;
     case 'cancelled': return '중단했습니다.';
     default: return e.message;
   }

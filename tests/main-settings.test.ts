@@ -33,6 +33,17 @@ test('parseSettings: 화면색은 sky·dawn·dark만, 없거나 모르는 값은
   assert.equal(applyPatch(defaultSettings(), { 화면색: 'dark' }).화면색, 'dark');
 });
 
+test('parseSettings: Codex 프로필은 실행 파일·로그인 폴더와 명령줄에 안전한 모델 이름만 남긴다', () => {
+  const s = parseSettings({ 프로필: [
+    { id: 'c', 이름: 'GPT', 종류: 'codex', cliPath: 'C:\\npm\\codex.cmd', configDir: 'C:\\u\\.codex-b', 모델: 'gpt-x.1', 노력: 'xhigh' },
+    { id: 'd', 이름: 'GPT2', 종류: 'codex', 모델: 'gpt; rm -rf' },
+    { id: 'e', 이름: 'API', 종류: 'api', 모델: 'gpt-x.1' }] });
+  const c = s.프로필.find(p => p.id === 'c')!, d = s.프로필.find(p => p.id === 'd')!, e = s.프로필.find(p => p.id === 'e')!;
+  assert.deepEqual(c, { id: 'c', 이름: 'GPT', 종류: 'codex', cliPath: 'C:\\npm\\codex.cmd', configDir: 'C:\\u\\.codex-b', 모델: 'gpt-x.1', 노력: 'xhigh' });
+  assert.equal(d.모델, undefined);
+  assert.equal(e.모델, undefined); // API 키 프로필은 Claude 모델만
+});
+
 test('applyPatch: id 중복·빈 이름은 DataError, 사용중은 목록 안에서만', () => {
   const cur = defaultSettings();
   assert.throws(() => applyPatch(cur, { 프로필: [DEFAULT_PROFILE, { id: 'cli-default', 이름: 'x', 종류: 'cli' }] }), DataError);

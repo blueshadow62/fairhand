@@ -17,12 +17,16 @@ export function defaultSettings(): Settings {
 function parseProfile(v: unknown): Profile | null {
   if (!isObj(v)) return null;
   const id = optStr(v.id), 이름 = optStr(v.이름);
-  if (!id || !이름 || (v.종류 !== 'cli' && v.종류 !== 'api')) return null;
+  if (!id || !이름 || (v.종류 !== 'cli' && v.종류 !== 'api' && v.종류 !== 'codex')) return null;
   const p: Profile = { id, 이름, 종류: v.종류 };
+  const local = p.종류 === 'cli' || p.종류 === 'codex'; // 이 PC의 프로그램을 띄우는 종류만 실행 파일·로그인 폴더를 둔다
   const cliPath = optAbs(v.cliPath), configDir = optAbs(v.configDir);
-  if (p.종류 === 'cli' && cliPath && /\.(exe|cmd)$/i.test(cliPath)) p.cliPath = cliPath;
-  if (p.종류 === 'cli' && configDir) p.configDir = configDir;
-  if ((MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as ModelId;
+  if (local && cliPath && /\.(exe|cmd)$/i.test(cliPath)) p.cliPath = cliPath;
+  if (local && configDir) p.configDir = configDir;
+  // Codex 모델 이름은 목록이 정해져 있지 않아 명령줄에 안전한 글자만 받는다
+  const codexModel = optStr(v.모델);
+  if (p.종류 === 'codex') { if (codexModel && /^[\w.:-]{1,64}$/.test(codexModel)) p.모델 = codexModel; }
+  else if ((MODELS as readonly string[]).includes(v.모델 as string)) p.모델 = v.모델 as ModelId;
   if ((EFFORTS as readonly string[]).includes(v.노력 as string)) p.노력 = v.노력 as EffortLevel;
   return p;
 }
