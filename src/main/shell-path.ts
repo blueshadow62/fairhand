@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -29,12 +29,32 @@ export const commonDirs = (home: string): string[] => ['/opt/homebrew/bin', '/us
   ...['.local/bin', '.npm-global/bin', '.volta/bin', '.bun/bin'].map(d => path.posix.join(home, d))];
 
 type Exec = (file: string, args: readonly string[], opts: { timeout: number; env: NodeJS.ProcessEnv }, cb: (err: Error | null, stdout: string) => void) => void;
-const run: Exec = (file, args, opts, cb) => { execFile(file, [...args], { ...opts, encoding: 'utf8', maxBuffer: 1 << 20 }, (err, stdout) => cb(err, String(stdout ?? ''))); };
+/**
+ * 입력은 막는다(/dev/null): 셸 설정(zsh 자동 완성 초기화 등)이 'y/n?'을 물으면 입력을 기다리며 멈춘다.
+ * 시간이 지나면 SIGKILL로 끈다: 대화형 셸은 보통의 종료 신호(SIGTERM)를 무시한다.
+ */
+const run: Exec = (file, args, opts, cb) => {
+  let out = '';
+  const child = spawn(file, [...args], { env: opts.env, stdio: ['ignore', 'pipe', 'ignore'] });
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (d: string) => { if (out.length < 1 << 20) out += d; });
+  const t = setTimeout(() => child.kill('SIGKILL'), opts.timeout);
+  child.on('error', e => { clearTimeout(t); cb(e, out); });
+  child.on('close', () => { clearTimeout(t); cb(null, out); });
+};
 
-/** 로그인·대화형(-ilc)이라야 .zprofile·.zshrc에서 PATH를 늘리는 Homebrew·nvm 설정까지 읽힌다. 실패·시간 초과면 null */
+/**
+ * 로그인·대화형(-ilc)이라야 .zprofile·.zshrc에서 PATH를 늘리는 Homebrew·nvm 설정까지 읽힌다. 실패·시간 초과면 null.
+ * 셸이 끝나지 않아도 timeoutMs 뒤에는 기다리지 않는다: 이것을 기다리는 동안 창이 뜨지 않는다(0.2.9 개발 중 맥에서 겪음)
+ */
 export function askShellPath(shell: string, timeoutMs: number, exec: Exec = run): Promise<string | null> {
   if (path.posix.basename(shell) === 'fish') return Promise.resolve(null); // fish는 PATH가 목록이라 문법이 달라 흔한 위치만 쓴다
-  return new Promise(res => exec(shell, ['-ilc', SCRIPT], { timeout: timeoutMs, env: { ...process.env, TERM: 'dumb' } }, (_err, out) => res(parseShellPath(out))));
+  return new Promise(res => {
+    let done = false;
+    const finish = (v: string | null) => { if (!done) { done = true; clearTimeout(guard); res(v); } };
+    const guard = setTimeout(() => finish(null), timeoutMs + 500);
+    exec(shell, ['-ilc', SCRIPT], { timeout: timeoutMs, env: { ...process.env, TERM: 'dumb' } }, (_err, out) => finish(parseShellPath(out)));
+  });
 }
 
 /** env.PATH를 고친다(기본은 process.env라 이후 띄우는 모든 자식 프로세스에 적용된다) */

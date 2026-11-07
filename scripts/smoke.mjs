@@ -50,7 +50,13 @@ try {
     catch { /* 아직 안 떴다 */ }
     if (!page) await sleep(500);
   }
-  if (!page) throw new Error('60초 안에 글눈 창이 뜨지 않음');
+  if (!page) {
+    // 창이 안 뜬 이유를 가르기 위해: 포트가 열렸는지(=앱 프로세스는 떴는지), 떠 있는 화면 목록
+    summary.debugPort = await fetch(`http://127.0.0.1:${PORT}/json/version`).then(r => r.json()).catch(e => `응답 없음: ${e.message}`);
+    summary.targets = await fetch(`http://127.0.0.1:${PORT}/json/list`).then(r => r.json()).catch(() => null);
+    summary.appExited = app.exitCode ?? app.signalCode ?? null;
+    throw new Error('60초 안에 글눈 창이 뜨지 않음');
+  }
 
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.addEventListener('open', res, { once: true }); ws.addEventListener('error', rej, { once: true }); });
@@ -111,6 +117,8 @@ try {
 } finally {
   app.kill();
   await sleep(1000);
+  // 앱이 설정 폴더에 남긴 로그(시작·경고·오류)를 함께 남긴다
+  try { fs.cpSync(path.join(userData, 'logs'), path.join(out, 'app-logs'), { recursive: true }); } catch { /* 로그를 못 남길 만큼 일찍 멈췄다 */ }
   fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
   try { fs.rmSync(userData, { recursive: true, force: true }); } catch { /* 앱이 아직 파일을 쥐고 있으면 남겨 둔다 */ }
