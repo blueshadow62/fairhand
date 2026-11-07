@@ -35,6 +35,21 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 - After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
 - Every changed verdict is noted in the page's remarks; the student's answer text is never changed.
 
+## Comparison of models and effort levels
+A short test with real handwritten answer sheets on 2026-11-06 (Claude Code subscription, 16 grade-3 pages and 7 grade-2 pages). The reference is the teacher's own grading.
+
+| Setting | Verdicts correct (grade 3) | Verdicts correct (grade 2) | Student ID correct (grade 3 / grade 2) | Time per page (grade 3 / grade 2) |
+|---|---|---|---|---|
+| Opus 5.5 low | 288/288 (100%) | 160/161 (99.4%) | 14/16 / 7/7 | 11 s / 21 s |
+| **Opus 5.5 medium (default)** | 288/288 (100%) | 161/161 (100%) | 14/16 / 7/7 | 14 s / 28 s |
+| Opus 5.5 high | 288/288 (100%) | 161/161 (100%) | 14/16 / 7/7 | 20 s / 55 s |
+| Sonnet 5.5 high | 270/270 (100%, 15 pages) | 160/161 (99.4%) | 12/15 / 7/7 | 57 s / 82 s |
+
+- Verdicts correct: the number of answer cells where the O/X verdict is the same as the teacher's. Student ID correct: the number of pages where grade, class and number are read correctly.
+- The two grade-3 pages with a wrong ID are the same pages for all settings (one digit of the number is written unclearly). Always check the number in Review.
+- Sonnet 5.5 did not complete one page (the model tried to use a tool, and the geulnun safety guard stopped that page).
+- This is a small test: two sets from one school, 23 pages. Results can be different for other handwriting and questions. For details, see [CHANGELOG.md](CHANGELOG.md), section 0.2.3 (Korean).
+
 ## Known limitations
 - Scanned PDFs compressed with JBIG2 or JPEG2000 may fail to split into pages (ordinary JPEG scans are fine).
 
