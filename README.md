@@ -4,14 +4,23 @@
 
 손글씨로 쓴 서·논술형 답안지(스캔 PDF)를 문항별 글자로 옮기고, 정답표와 비교해 엑셀로 정리하는 선생님용 프로그램입니다.
 
-- 전사(손글씨 읽기)는 선생님 PC에 설치된 Claude Code(본인 구독 로그인)로 합니다. API 키도 쓸 수 있습니다.
-- 학생 답안지에는 **학년, 반, 번호만** 입력되어 있는 걸 추천합니다. 이름이 있으면 그림과 함께 Anthropic 서버로 전송됩니다. 명단(이름)은 PC 안에서만 씁니다. 자세한 내용은 [PRIVACY.md](PRIVACY.md).
+- 전사(손글씨 읽기)는 선생님 PC에 설치된 Claude Code·Codex(본인 구독 로그인)나 API 키(Anthropic·Gemini)로 합니다. 정확도는 AI 도구에 따라 다르며, 개발자는 Claude를 추천합니다.
+- 학생 답안지에는 **학년, 반, 번호만** 입력되어 있는 걸 추천합니다. 이름이 있으면 그림과 함께 AI 제공자 서버(Claude는 Anthropic, Codex는 OpenAI, Gemini는 Google)로 전송됩니다. 명단(이름)은 PC 안에서만 씁니다. 자세한 내용은 [PRIVACY.md](PRIVACY.md).
 
 ## 설치
+### Windows
 1. [Releases](https://github.com/blueshadow62/fairhand/releases)에서 `fairhand-setup-x.y.z.exe`를 받습니다.
 2. 받은 파일을 실행합니다. 코드 서명이 없어 Windows가 '알 수 없는 게시자'나 'Windows의 PC 보호' 창을 띄웁니다. **추가 정보 → 실행**을 누르면 설치가 이어집니다. 관리자 권한은 필요 없습니다(사용자별 설치).
 3. 첫 실행에서 **설정**의 '기본 폴더 만들기(문서\글눈)'를 누르거나 학기 폴더를 고르고, AI 프로필을 정합니다.
 4. Claude Code로 전사하려면 Claude Code를 설치하고 로그인합니다([설치 안내](https://code.claude.com/docs/ko/setup)). 설정 화면의 '로그인 열기'가 순서를 안내합니다.
+
+### 맥(시험판)
+개발자가 맥에서 직접 써 보지 못한 시험판입니다(자동 검사 서버에서 실행과 화면만 확인). 문제가 있으면 [문제 보고](#문제-보고)로 알려 주세요.
+1. [Releases](https://github.com/blueshadow62/fairhand/releases)에서 칩에 맞는 파일을 받습니다. Apple 실리콘(M1 이후)은 `fairhand-x.y.z-mac-arm64.dmg`, 인텔은 `fairhand-x.y.z-mac-x64.dmg`입니다. 칩은 Apple 메뉴 > 이 Mac에 관하여에서 볼 수 있습니다.
+2. dmg를 열고 **Fairhand**를 응용 프로그램 폴더로 끌어 넣습니다. 맥에서는 앱 이름이 Fairhand로 보이고, 프로그램 안은 똑같이 글눈입니다.
+3. 처음 열면 Apple 서명이 없어 'Apple이 확인할 수 없음' 창이 뜹니다. **완료**를 누른 뒤 시스템 설정 > 개인정보 보호 및 보안 아래쪽의 **그래도 열기**를 누르고 다시 엽니다. '손상되었기 때문에 열 수 없습니다'가 뜨면 터미널에서 `xattr -dr com.apple.quarantine /Applications/Fairhand.app`을 실행한 뒤 엽니다.
+4. 자동 업데이트가 없습니다. 새 버전은 설정의 '릴리스 페이지 열기'에서 받아 같은 방법으로 덮어씁니다.
+5. Claude Code·Codex는 맥용으로 설치합니다. 설정의 '로그인 열기'를 누르면 터미널 창에서 로그인이 시작됩니다.
 
 ## 업데이트
 - 새 버전이 있는지 켤 때(10초 뒤)와 4시간마다 GitHub에서 확인하고, 있으면 받아 둡니다. 설정 화면에 '다시 시작해 적용' 버튼이 나오며, 누를 때만 설치됩니다.

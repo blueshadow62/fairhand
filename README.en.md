@@ -4,14 +4,23 @@
 
 A desktop tool for teachers that transcribes scanned handwritten short-answer/essay answer sheets (PDF) question by question, compares them with an answer key, and writes the results to Excel.
 
-- Transcription runs through the teacher's own locally installed Claude Code (their own subscription login). An Anthropic API key can be used instead.
-- We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent to Anthropic's servers together with the image. The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
+- Transcription runs through the teacher's own locally installed Claude Code or Codex (their own subscription login), or an API key (Anthropic or Gemini). Accuracy depends on the AI tool; the developer recommends Claude.
+- We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent with the image to the AI provider's servers (Anthropic for Claude, OpenAI for Codex, Google for Gemini). The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
 
 ## Install
+### Windows
 1. Download `fairhand-setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/fairhand/releases).
 2. Run it. Because it is not code-signed, Windows shows an 'Unknown publisher' / 'Windows protected your PC' warning. Press **More info → Run anyway**. No administrator rights are needed (per-user install).
 3. On first start, open **설정** (Settings) and press the button to create the default folder (Documents), or choose a semester folder, and set an AI profile.
 4. To transcribe with Claude Code, install it and log in ([setup guide](https://code.claude.com/docs/en/setup)). The Settings screen walks you through the login.
+
+### Mac (beta)
+The developer has not used this beta on a real Mac; it has only been launched and screen-checked on CI servers. Please report problems (see [Reporting problems](#reporting-problems)).
+1. From [Releases](https://github.com/blueshadow62/fairhand/releases), download the file for your chip: `fairhand-x.y.z-mac-arm64.dmg` for Apple silicon (M1 and later), `fairhand-x.y.z-mac-x64.dmg` for Intel. Apple menu > About This Mac shows the chip.
+2. Open the dmg and drag **Fairhand** into Applications. On the Mac the app is named Fairhand; inside it is the same 글눈.
+3. It is not signed by Apple, so the first launch shows a 'cannot be verified' dialog. Press **Done**, then **Open Anyway** at the bottom of System Settings > Privacy & Security, and open it again. If you see 'is damaged and can't be opened', run `xattr -dr com.apple.quarantine /Applications/Fairhand.app` in Terminal and open it again.
+4. There is no automatic update. Download new versions with 'Open releases page' in Settings and replace the app the same way.
+5. Install the Mac versions of Claude Code or Codex. 'Open login' in Settings starts the login in a Terminal window.
 
 ## Updates
 - The app checks GitHub for a new version 10 seconds after start and every 4 hours, and downloads it. A 'Restart to apply' button then appears in Settings; the update installs only when you press it.
@@ -48,6 +57,8 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 - Requires Node 24+ (same major as the Node bundled in Electron 45; CI uses 24)
 - `npm install` → `npm test` → `npm start` (builds first)
 - Installer: `npm run dist` → `release/fairhand-setup-<version>.exe` (`npm run pack` for a quick `release/win-unpacked/Fairhand.exe`). Pushing a `v*` tag makes GitHub Actions build the installer and create a draft release.
+- Mac (must be built on a Mac): `npm run dist:mac` → Apple silicon and Intel dmg. A Mac app packaged with the Korean product name crashes at launch (helper app naming, found 2026-11), so Mac builds override the product name with `Fairhand`. Without an Apple certificate it is only ad-hoc signed.
+- Smoke test: `npm run pack`, then `npm run smoke` launches the app and saves a screenshot of every tab in `smoke-out/`. The GitHub Actions smoke workflow does the same on Windows, Mac and Linux and keeps the results as artifacts.
 - During development keep settings and keys under the ignored `local/` folder: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - Paths with spaces break when passed through `npm run`; after `npm run build`, call scripts directly, e.g. `node dist/scripts/transcribe-set.js "<set folder>" --engine cli`. To use another Claude Code account set `$env:CLAUDE_CONFIG_DIR` first.
 
