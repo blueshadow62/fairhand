@@ -46,6 +46,8 @@
 - 요구: Node 24 이상(Electron 45가 품은 Node와 같은 판. CI도 24)
 - `npm install` → `npm test` → `npm start`(빌드 포함)
 - 설치 파일: `npm run dist` → `release/fairhand-setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Fairhand.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
+- 맥(맥에서만 묶을 수 있음): `npm run dist:mac` → Apple 실리콘·인텔 dmg. 한글 제품 이름으로 묶은 맥 앱은 시작하자마자 죽어서(보조 프로세스 앱 이름 문제, 2026-11 확인) 맥만 제품 이름을 `Fairhand`로 덮어씁니다. Apple 서명이 없어 임시 서명(ad-hoc)만 붙입니다.
+- 실행 확인: `npm run pack` 뒤 `npm run smoke` → 앱을 띄워 탭마다 화면을 `smoke-out/`에 찍습니다. GitHub Actions의 smoke 작업이 Windows·맥·리눅스에서 같은 것을 돌려 결과물로 남깁니다.
 - 개발 중에는 설정·API 키를 저장소의 `local/`(무시됨)에 두고 실행: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - 명령줄 스크립트는 경로에 공백이 있으면 `npm run`으로 인수를 넘기지 말고 빌드(`npm run build`) 뒤 직접 부릅니다.
   - 세트 채점: `node dist/scripts/score-set.js "<세트 폴더>" --roster "<명단.xlsx>"`
