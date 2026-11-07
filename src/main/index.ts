@@ -5,6 +5,7 @@ import { EngineBridge } from './engine-bridge.js';
 import { maskJpegNative } from './mask.js';
 import { registerIpc } from './ipc.js';
 import { installLog } from './log.js';
+import { menuTemplate } from './menu.js';
 import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
@@ -42,8 +43,8 @@ app.whenReady().then(async () => {
     if ('자동업데이트' in patch) updater.setEnabled(settingsCache.자동업데이트);
     return settingsCache;
   };
-  // 창 위 기본 메뉴(File·Edit…)는 쓰지 않는다. 설정·언어·정보는 프로그램 안 '설정' 화면에 있다. 복사·붙여넣기는 Windows가 메뉴 없이도 처리한다.
-  Menu.setApplicationMenu(null);
+  const menu = menuTemplate(process.platform); // Windows는 메뉴 없음, 맥은 단축키용 최소 메뉴
+  Menu.setApplicationMenu(menu ? Menu.buildFromTemplate(menu) : null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
     () => settingsCache.학기폴더);
   await pathFixed; // 화면이 AI 도구 상태를 묻기 전에

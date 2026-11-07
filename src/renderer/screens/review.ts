@@ -9,6 +9,9 @@ import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
 
 const sid = (t: { 학년: number | null; 반: number | null; 번호: number | null }) => `${t.학년 ?? '?'}-${t.반 ?? '?'}-${t.번호 ?? '?'}`;
 const numOrNull = (v: string) => (v.trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const MAC = /Mac/.test(navigator.platform);
+/** 맥에서 Option+←/→는 입력란에서 낱말 단위로 커서를 옮기는 기본 동작이라, 글을 고치는 중에는 쪽 넘기기로 가로채지 않는다 */
+const editingText = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && !['checkbox', 'radio', 'button'].includes(t.type)));
 /** 비고 문장에 단위 id가 들어 있는지('1-1'이 '1-10'에 걸리지 않게) */
 const mentions = (notes: string[], id: string) => notes.some(n => new RegExp(`(^|[^\\w-])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(n));
 
@@ -146,9 +149,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!T) return;
     updateScore();
     put(headerBox, el('div', { class: 'row' },
-      el('button', { onclick: () => step(-1), title: 'Alt+←' }, t('review.prev')), el('button', { onclick: () => step(1), title: 'Alt+→' }, t('review.next')),
+      el('button', { onclick: () => step(-1), title: MAC ? '⌥←' : 'Alt+←' }, t('review.prev')), el('button', { onclick: () => step(1), title: MAC ? '⌥→' : 'Alt+→' }, t('review.next')),
       el('strong', {}, tag(T.page)), scoreText,
-      el('button', { class: 'primary', onclick: () => void save(), title: 'Ctrl+S' }, t('common.save')),
+      el('button', { class: 'primary', onclick: () => void save(), title: MAC ? '⌘S' : 'Ctrl+S' }, t('common.save')),
       el('label', { title: t('review.recordCasesTitle') }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), t('review.recordCases')),
       dirty ? el('span', { class: 'band warn' }, t('review.unsaved')) : null));
   }
@@ -240,7 +243,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   document.addEventListener('keydown', e => {
     if (root.classList.contains('hidden') || !T) return;
-    if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); }
+    if ((e.ctrlKey || (MAC && e.metaKey)) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } // 맥은 ⌘S
+    else if (MAC && e.altKey && editingText(e.target)) return;
     else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
     else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   });
