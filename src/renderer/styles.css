@@ -231,6 +231,8 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .screen[data-tab="settings"] > section:has(.card) { background: transparent; border: none; padding: 0; }
 .screen[data-tab="settings"] > section > .row:first-child { margin-top: 0; }
 .screen[data-tab="settings"] > section > :last-child { margin-bottom: 0; }
+/* 사용 중인 AI 프로필 카드: 강조색 테두리와 왼쪽 띠 */
+.card.in-use { border-color: var(--accent-line); box-shadow: inset 4px 0 0 var(--accent); }
 
 /* 초안 수정 채팅 */
 .chat-log { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }

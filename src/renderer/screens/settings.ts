@@ -32,6 +32,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let profiles: Profile[] = store.state.settings.프로필.map(p => ({ ...p }));
   let 사용중 = store.state.settings.사용중;
   let dirty = false;
+  // 단추 옆 글은 고른 프로필만 '사용 중', 나머지는 '사용하기'(전에는 모든 카드에 '사용 중'이 붙어 헷갈렸다).
+  // 고르면 다시 그리지 않고 글과 카드 테두리만 바꾼다. 다시 그리면 CLI 상태 점검이 또 돈다
+  const useMarks = new Map<string, { text: HTMLElement; card: HTMLElement }>();
+  const markInUse = (): void => {
+    for (const [id, m] of useMarks) { const on = id === 사용중; m.text.textContent = t(on ? 'settings.inUse' : 'settings.useThis'); m.card.classList.toggle('in-use', on); }
+  };
 
   const guard = makeGuard(showError);
   const persist = async () => {
@@ -103,8 +109,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const status = el('div', { class: 'muted' }, t('settings.checking'));
     const card = el('div', { class: 'card' });
     const nameInput = el('input', { value: p.이름, onchange: () => { p.이름 = nameInput.value; dirty = true; } });
+    const useText = el('span');
+    useMarks.set(p.id, { text: useText, card });
     card.append(el('div', { class: 'row' },
-      el('label', {}, el('input', { type: 'radio', name: 'using', checked: 사용중 === p.id, onchange: () => { 사용중 = p.id; dirty = true; } }), t('settings.inUse')),
+      el('label', {}, el('input', { type: 'radio', name: 'using', checked: 사용중 === p.id, onchange: () => { 사용중 = p.id; dirty = true; markInUse(); } }), useText),
       nameInput, el('span', { class: 'muted' }, t(p.종류 === 'cli' ? 'settings.kind.cli' : p.종류 === 'codex' ? 'settings.kind.codex' : p.종류 === 'gemini' ? 'settings.kind.gemini' : 'settings.kind.api')),
       p.id === DEFAULT_ID ? null : el('button', { class: 'danger', onclick: () => {
         if (!confirm(t('settings.deleteProfileConfirm', { name: p.이름 }))) return;
@@ -182,7 +190,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function renderProfiles(): void {
     clear(profileBox);
+    useMarks.clear();
     for (const p of profiles) profileBox.append(profileCard(p));
+    markInUse();
     const newName = el('input', { placeholder: t('settings.newProfileName') });
     const newKind = el('select', {}, el('option', { value: 'cli' }, t('settings.kind.cli')), el('option', { value: 'codex' }, t('settings.kind.codex')), el('option', { value: 'gemini' }, t('settings.kind.gemini')), el('option', { value: 'api' }, t('settings.kind.api')));
     profileBox.append(el('div', { class: 'row' }, newName, newKind, el('button', { onclick: () => {
