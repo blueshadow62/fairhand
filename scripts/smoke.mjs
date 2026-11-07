@@ -32,7 +32,7 @@ function findApp(dir) {
 
 const DEV = process.env.SMOKE_DEV === '1';
 const PIPE = process.env.SMOKE_STDIO !== 'ignore';
-const exe = DEV ? createRequire(import.meta.url)('electron') : findApp(path.resolve('release'));
+const exe = DEV ? createRequire(import.meta.url)('electron') : findApp(path.resolve(process.env.SMOKE_RELEASE_DIR ?? 'release'));
 // 사용자 설정과 섞이지 않게 빈 설정 폴더와 학기 폴더를 새로 만든다
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'geulnun-smoke-'));
 const semester = path.join(userData, 'semester');

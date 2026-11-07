@@ -48,12 +48,21 @@ jobs:
           for h in "$APP"/Contents/Frameworks/*Helper*.app; do echo "== $h"; plutil -p "$h/Contents/Info.plist" | grep -E "CFBundle(Name|Executable|DisplayName)"; done > smoke-out/diag/helpers.txt 2>&1
           cp ~/Library/Logs/DiagnosticReports/*.ips smoke-out/diag/ 2>/dev/null || true
       - if: failure() && runner.os == 'macOS'
-        # 같은 앱을 조건을 바꿔 띄워 원인을 가른다: 출력 연결 없음 / PATH 묻기 끔 / 묶지 않은 원본 Electron
+        # 원본 Electron으로는 뜨고 묶은 앱만 죽는다(0.2.9 개발 중). 묶을 때만 달라지는 것을 하나씩 바꿔 원인을 가른다
         run: |
-          SMOKE_STDIO=ignore node scripts/smoke.mjs smoke-out/var-stdio-ignore || true
-          GEULNUN_NO_SHELL_PATH=1 node scripts/smoke.mjs smoke-out/var-no-shell-path || true
-          SMOKE_DEV=1 node scripts/smoke.mjs smoke-out/var-dev-electron || true
-          SMOKE_DEV=1 GEULNUN_NO_SHELL_PATH=1 node scripts/smoke.mjs smoke-out/var-dev-no-shell-path || true
+          # 1) 디버깅 포트 등 추가 인수 없이 띄워 15초 뒤 살아 있는지, 화면 캡처
+          APP=$(ls -d release/mac-arm64/*.app | head -1); D=$(mktemp -d)
+          GEULNUN_USER_DATA=$D "$APP/Contents/MacOS/Fairhand" > smoke-out/var-noflags.log 2>&1 & PID=$!
+          sleep 15
+          if kill -0 $PID 2>/dev/null; then echo "15초 뒤 살아 있음" > smoke-out/var-noflags.txt; screencapture -x smoke-out/var-noflags.png || true; kill $PID
+          else wait $PID; echo "끝남: 종료 코드 $?" > smoke-out/var-noflags.txt; fi
+          # 2) 퓨즈를 Electron 기본값으로 / 3) 쿠키 암호화 퓨즈만 끔 / 4) 제품 이름을 영문으로(보조 앱 이름이 'Fairhand Helper'가 된다)
+          npx electron-builder --mac --dir --arm64 -c.directories.output=release-fuses-default -c.electronFuses.runAsNode=true -c.electronFuses.enableCookieEncryption=false -c.electronFuses.enableNodeOptionsEnvironmentVariable=true -c.electronFuses.enableNodeCliInspectArguments=true -c.electronFuses.onlyLoadAppFromAsar=false > smoke-out/build-fuses-default.log 2>&1 || true
+          SMOKE_RELEASE_DIR=release-fuses-default node scripts/smoke.mjs smoke-out/var-fuses-default || true
+          npx electron-builder --mac --dir --arm64 -c.directories.output=release-no-cookie-enc -c.electronFuses.enableCookieEncryption=false > smoke-out/build-no-cookie-enc.log 2>&1 || true
+          SMOKE_RELEASE_DIR=release-no-cookie-enc node scripts/smoke.mjs smoke-out/var-no-cookie-enc || true
+          npx electron-builder --mac --dir --arm64 -c.directories.output=release-ascii-name -c.productName=Fairhand > smoke-out/build-ascii-name.log 2>&1 || true
+          SMOKE_RELEASE_DIR=release-ascii-name node scripts/smoke.mjs smoke-out/var-ascii-name || true
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
