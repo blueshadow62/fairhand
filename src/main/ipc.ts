@@ -10,7 +10,7 @@ import { DataError, type AnswerKey, type MaskRect, type UploadRecord } from '../
 import { EngineError, userFacingMessage } from '../engine/provider.js';
 import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
-import { leaveChoice, leaveDialogOptions } from './dialogs.js';
+import { leaveChoice, leaveDialogOptions, pickFileOptions, type PickKind } from './dialogs.js';
 import { listSets, nextPageNumber, pageFile, resolveSetDir, uniqueFolderName } from './paths.js';
 import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
 import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
@@ -43,9 +43,8 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.getSettings, () => d.settings.load());
   h(CHANNELS.saveSettings, (patch: Parameters<SettingsStore['save']>[0]) => d.settings.save(patch));
   h(CHANNELS.pickFolder, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0] ?? null; });
-  h(CHANNELS.pickFile, async (kind: 'roster' | 'exe' | 'json') => {
-    const filters = kind === 'roster' ? [{ name: '명단', extensions: ['xlsx', 'csv'] }] : kind === 'exe' ? [{ name: '실행 파일', extensions: ['exe', 'cmd'] }] : [{ name: 'JSON', extensions: ['json'] }];
-    const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters }); return r.canceled ? null : r.filePaths[0] ?? null;
+  h(CHANNELS.pickFile, async (kind: PickKind) => {
+    const r = await dialog.showOpenDialog(d.window()!, pickFileOptions(kind, process.platform)); return r.canceled ? null : r.filePaths[0] ?? null;
   });
   h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
   h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });

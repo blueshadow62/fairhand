@@ -34,7 +34,7 @@ test('listSets·nextPageNumber: 정답표가 있는 폴더만, 쪽 번호는 마
 });
 
 test('uniqueFolderName: 겹치면 (2), (3)', () => {
-  const taken = new Set(['D:\\학기\\a', 'D:\\학기\\a (2)']);
+  const taken = new Set([path.join('D:\\학기', 'a'), path.join('D:\\학기', 'a (2)')]); // 경로 결합은 운영체제 규칙을 따른다
   assert.equal(uniqueFolderName('D:\\학기', 'a', p => taken.has(p)), 'a (3)');
   assert.equal(uniqueFolderName('D:\\학기', 'b', p => taken.has(p)), 'b');
 });
