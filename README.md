@@ -45,7 +45,7 @@
 ## 개발
 - 요구: Node 24 이상(Electron 45가 품은 Node와 같은 판. CI도 24)
 - `npm install` → `npm test` → `npm start`(빌드 포함)
-- 설치 파일: `npm run dist` → `release/fairhand-setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Geulnun.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
+- 설치 파일: `npm run dist` → `release/fairhand-setup-<버전>.exe`(빠른 확인은 `npm run pack` → `release/win-unpacked/Fairhand.exe`). 태그 `v*`를 올리면 GitHub Actions가 설치 파일을 만들어 초안 릴리스로 올립니다.
 - 개발 중에는 설정·API 키를 저장소의 `local/`(무시됨)에 두고 실행: PowerShell `$env:GEULNUN_USER_DATA='local\userData'; npm start`
 - 명령줄 스크립트는 경로에 공백이 있으면 `npm run`으로 인수를 넘기지 말고 빌드(`npm run build`) 뒤 직접 부릅니다.
   - 세트 채점: `node dist/scripts/score-set.js "<세트 폴더>" --roster "<명단.xlsx>"`

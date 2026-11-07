@@ -35,7 +35,7 @@
   "build": {
     "appId": "kr.geulnun.app",
     "productName": "글눈",
-    "executableName": "Geulnun",
+    "executableName": "Fairhand",
     "copyright": "Copyright © 2026 blueshadow62. Apache-2.0.",
     "asar": true,
     "electronFuses": {
