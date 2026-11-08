@@ -16,6 +16,47 @@ const editingText = (t: EventTarget | null) => t instanceof HTMLElement && (t.is
 /** 비고 문장에 단위 id가 들어 있는지('1-1'이 '1-10'에 걸리지 않게) */
 const mentions = (notes: string[], id: string) => notes.some(n => new RegExp(`(^|[^\\w-])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(n));
 
+// 접힌 칸의 너비가 바뀌면(창·나눔선) 넘침 표시를 다시 잰다. 편집 칸을 새로 그릴 때 disconnect
+const clipFits = new WeakMap<Element, () => void>();
+const clipWatch = new ResizeObserver(es => { for (const e of es) if (document.activeElement !== e.target) clipFits.get(e.target)?.(); });
+
+/**
+ * 평소에는 rows줄로 접혀 있다가, 누르면(포커스) 쓴 답이 다 보이게 넓고 길게 펼쳐지는 입력란.
+ * 한 줄 칸에서는 긴 답(논술형 등)이 잘려 보이지 않았다. 접힌 채 넘치면 끝에 '…'를 보인다.
+ */
+function growArea(value: string, onInput: (v: string) => void, opts: { rows: number; singleLine?: boolean; label?: string }): HTMLElement {
+  const area = el('textarea', { rows: opts.rows, 'aria-label': opts.label, oninput: () => { onInput(area.value); fit(); } });
+  area.value = value;
+  const wrap = el('div', { class: 'grow' }, area);
+  function fit(): void {
+    const on = document.activeElement === area, scroll = area.scrollTop;
+    wrap.classList.remove('open');
+    for (const p of ['height', 'width']) area.style.removeProperty(p);
+    wrap.style.removeProperty('height');
+    if (on) {
+      // 답 칸은 좁아서(표의 자동 너비) 높이만 늘리면 두세 글자씩 끊긴다. 왼쪽 설명 칸 위로 넓히고, 판정 칸은 그대로 보이게 둔다.
+      // 펼친 입력란은 띄워서(absolute) 표가 칸 너비를 다시 재지 않게 하고, 감싼 칸이 높이를 차지해 아래 줄을 밀어낸다
+      const box = wrap.getBoundingClientRect(); // 접힌 모양: 표가 정한 칸 너비와 접힌 높이
+      const cells = wrap.closest('tr')?.children;
+      const extra = cells && cells.length > 2 ? Math.max(0, Math.round(box.left - (cells[1] as HTMLElement).getBoundingClientRect().left - 6)) : 0;
+      wrap.classList.add('open');
+      wrap.style.height = `${box.height}px`;
+      area.style.width = `${Math.round(box.width) + extra}px`;
+      const border = area.offsetHeight - area.clientHeight;
+      const h = Math.max(box.height, Math.min(area.scrollHeight + border, Math.round(window.innerHeight * 0.45))); // 접힌 높이보다 줄이지는 않는다
+      area.style.height = wrap.style.height = `${h}px`;
+      area.scrollTop = scroll; // 잠깐 접었다 펼치는 사이 글 위치가 맨 위로 튀지 않게
+    }
+    wrap.classList.toggle('clipped', !on && area.scrollHeight > area.clientHeight + 1);
+  }
+  area.addEventListener('focus', fit);
+  area.addEventListener('blur', () => { fit(); area.scrollTop = 0; });
+  // 예전 한 줄 칸처럼 Enter로는 줄을 바꾸지 않는다(Shift+Enter는 줄바꿈). 한글 조합 중 Enter는 글자 확정이라 막지 않는다
+  if (opts.singleLine) area.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) e.preventDefault(); });
+  clipFits.set(area, fit); clipWatch.observe(area);
+  return wrap;
+}
+
 export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
   root.classList.add('review-screen');
@@ -40,8 +81,36 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const zoomText = el('span');
   const viewer = el('div', { class: 'viewer' });
   const editor = el('div', { class: 'editor' });
-  const grid = el('div', { class: 'review' }, list, viewer, editor);
+  const splitter = el('div', { class: 'splitter', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': t('review.splitter'), title: t('review.splitterHelp') });
+  const grid = el('div', { class: 'review' }, list, viewer, splitter, editor);
   root.append(top, notice, grid);
+
+  // ── 그림 칸과 전사 칸 사이를 끌어 너비 바꾸기. 두 칸의 최소 너비는 CSS(minmax)가 지킨다 ──
+  const EDITOR_PREF = 'geulnun.review.editorWidth';
+  const editorWidth = () => editor.getBoundingClientRect().width;
+  const setEditorWidth = (px: number | null) => { if (px === null) grid.style.removeProperty('--editor-w'); else grid.style.setProperty('--editor-w', `${Math.round(px)}px`); };
+  const keepEditorWidth = () => {
+    if (grid.style.getPropertyValue('--editor-w')) setEditorWidth(editorWidth()); // 최소·최대에 걸린 값이면 실제 너비로 맞춰 둔다
+    try { const v = grid.style.getPropertyValue('--editor-w'); if (v) localStorage.setItem(EDITOR_PREF, v); else localStorage.removeItem(EDITOR_PREF); } catch { /* 못 저장하면 다음에 기본 너비 */ }
+  };
+  try { const v = localStorage.getItem(EDITOR_PREF); if (v && /^\d+px$/.test(v)) grid.style.setProperty('--editor-w', v); } catch { /* 기본 너비 */ }
+  let split: { x: number; w: number } | null = null;
+  splitter.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // 끄는 동안 글자가 선택되지 않게
+    splitter.setPointerCapture(e.pointerId);
+    split = { x: e.clientX, w: editorWidth() }; splitter.classList.add('dragging');
+  });
+  splitter.addEventListener('pointermove', e => { if (split) setEditorWidth(split.w - (e.clientX - split.x)); });
+  const endSplit = () => { if (!split) return; split = null; splitter.classList.remove('dragging'); keepEditorWidth(); };
+  splitter.addEventListener('pointerup', endSplit);
+  splitter.addEventListener('pointercancel', endSplit);
+  splitter.addEventListener('dblclick', () => { setEditorWidth(null); keepEditorWidth(); });
+  splitter.addEventListener('keydown', e => {
+    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    setEditorWidth(editorWidth() + (e.key === 'ArrowLeft' ? 24 : -24)); keepEditorWidth();
+  });
 
   // ── 그림: 확대·축소, Ctrl+휠, 끌어서 옮기기 ──
   const setZoom = (z: number) => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 10) / 10)); img.style.width = `${zoom * 100}%`; zoomText.textContent = `${Math.round(zoom * 100)}%`; };
@@ -208,7 +277,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   function renderEditor(): void {
-    clear(editor);
+    clipWatch.disconnect(); clear(editor);
     if (!T || !data) { editor.append(el('div', { class: 'muted' }, t('review.noTranscriptEditor'))); return; }
     const tr = T, key = data.key;
     const numIn = (k: '학년' | '반' | '번호') => { const i = el('input', { type: 'number', min: '1', 'aria-label': t(k === '학년' ? 'review.grade' : k === '반' ? 'review.class' : 'review.number'), value: tr[k] === null ? '' : String(tr[k]), oninput: () => { tr[k] = numOrNull(i.value); touch(); } }); i.style.width = '64px'; return i; };
@@ -222,7 +291,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
     const qtyRows = key.정량.map(u => {
       const v = tr.정량[u.id] ??= { 답: '', 판정: '빈칸' };
-      const ans = el('input', { value: v.답, oninput: () => { v.답 = ans.value; touch(); } });
+      const ans = growArea(v.답, s => { v.답 = s; touch(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
       const keyLine = t('review.keyLine', { answer: u.정답, allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
@@ -231,7 +300,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const qualRows = key.정성.map(u => {
       const v = tr.정성[u.id] ??= { 응답: false, 답: '' };
       const cb = el('input', { type: 'checkbox', checked: v.응답, onchange: () => { v.응답 = cb.checked; touch(); } });
-      const ta = el('textarea', { rows: 3, oninput: () => { v.답 = ta.value; touch(); } }); ta.value = v.답;
+      const ta = growArea(v.답, s => { v.답 = s; touch(); }, { rows: 3, label: t('review.col.answer') });
       return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명), el('td', {}, el('label', {}, cb, t('review.responded'))), el('td', {}, ta));
     });
     const qtyTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.descKey')), el('th', {}, t('review.col.student')), el('th', {}, t('review.col.verdict'))), ...qtyRows);

@@ -208,7 +208,10 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 canvas.preview { display: block; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); max-width: 100%; margin: var(--sp-2) 0; }
 
 /* ── 검토: 장 목록 | 답안지 그림 | 전사 편집 세 단 ── */
-.review { display: grid; grid-template-columns: 210px minmax(0, 1fr) 420px; height: calc(100vh - var(--top-h) - 132px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); overflow: hidden; }
+/* 전사 칸 너비는 나눔선으로 바꾼다(--editor-w). 전사 칸은 --editor-min보다, 그림 칸은 --viewer-min보다 좁아지지 않는다 */
+.review { --list-w: 210px; --split-w: 9px; --viewer-min: 260px; --editor-min: 360px; --editor-default: 420px;
+  display: grid; grid-template-columns: var(--list-w) minmax(0, 1fr) var(--split-w) minmax(var(--editor-min), min(var(--editor-w, var(--editor-default)), calc(100% - var(--list-w) - var(--split-w) - var(--viewer-min))));
+  height: calc(100vh - var(--top-h) - 132px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); overflow: hidden; }
 .review .list { overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
 .review .list .filters { padding: 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; gap: 6px; }
 .review .list .filters label { font-size: var(--fs-m); min-height: 28px; }
@@ -223,16 +226,28 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .review .viewer img { display: block; transform-origin: 0 0; }
 .review .viewer-bar { position: sticky; top: 0; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--viewer-bar); border-bottom: 1px solid var(--line); z-index: 1; }
 .review .viewer-bar button { min-height: 32px; padding: 0 10px; border-radius: var(--r-s); }
-.review .viewer-bar .muted { font-size: var(--fs-s); }
-.review .editor { overflow: auto; padding: 10px 14px 20px; background: var(--surface); border-left: 1px solid var(--line); }
+.review .viewer-bar .muted { font-size: var(--fs-s); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* 그림 칸을 좁혀도 막대가 여러 줄로 늘지 않게 */
+.review .editor { overflow: auto; padding: 10px 14px 20px; background: var(--surface); }
+.review .splitter { position: relative; cursor: col-resize; touch-action: none; background: var(--surface-2); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.review .splitter::after { content: ''; position: absolute; left: 50%; top: 50%; width: 3px; height: 40px; border-radius: 2px; transform: translate(-50%, -50%); background: var(--line-h); }
+.review .splitter:hover, .review .splitter.dragging { background: var(--accent-soft); }
+.review .splitter:hover::after, .review .splitter.dragging::after { background: var(--accent); }
+.review .splitter:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.review .grow { position: relative; }
+.review .grow textarea { display: block; resize: none; overflow: hidden; }
+/* 접힌 칸: 넘친 글은 안쪽 여백까지 비쳐 보여 아래 여백을 없앤다. 한 줄 칸은 줄 높이로 칸 높이(36px)를 채운다 */
+.review .grow:not(.open) textarea { padding-bottom: 0; }
+.review .grow:not(.open) textarea[rows="1"] { padding-top: 4px; line-height: 30px; }
+.review .grow.open textarea { overflow: auto; position: absolute; top: 0; right: 0; z-index: 2; box-shadow: var(--focus), 0 6px 16px var(--shadow); }
+.review .grow.clipped::after { content: '…'; position: absolute; right: 1px; bottom: 1px; padding: 0 8px 5px 16px; border-radius: 0 0 var(--r) 0; background: linear-gradient(to right, transparent, var(--surface) 45%); color: var(--text-2); font-weight: 700; pointer-events: none; }
 .review .editor h3 { margin: var(--sp-4) 0 var(--sp-2); font-size: var(--fs); color: var(--text-2); }
 .review .editor th, .review .editor td { padding: 6px 8px; }
 .review .editor td:first-child { white-space: nowrap; }
 .review .editor td select { min-width: 84px; }
-.review .editor td input, .review .editor td select { padding-left: 8px; padding-right: 8px; }
+.review .editor td input, .review .editor td select, .review .editor td textarea { padding-left: 8px; padding-right: 8px; }
 .review .editor .row > strong { font-size: var(--fs-l); }
 /* 좁은 창: 양옆 단을 줄이고 확대 안내 글은 숨겨 그림 자리를 지킨다 */
-@media (max-width: 1200px) { .review { grid-template-columns: 190px minmax(0, 1fr) 392px; } .review .viewer-bar .muted { display: none; } }
+@media (max-width: 1200px) { .review { --list-w: 190px; --editor-default: 392px; } .review .viewer-bar .muted { display: none; } }
 
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
 .screen[data-tab="settings"] > section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--sp-4) 18px; margin-bottom: var(--sp-4); }
