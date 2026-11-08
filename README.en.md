@@ -43,7 +43,7 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 - Question types: Blank, Short, Sentence, Elements, Essay, and Response. Points are set per unit (default 1), and a score is the sum of points for correct units. Essay questions are graded item by item: whether each given sentence is quoted almost verbatim and whether each required term is used.
 - Each set has three grading rules (Questions screen): spelling variants with the same meaning, answers broader than the key, and sentence keywords (all / any).
 - Verdicts changed in Review are recorded as precedents (can be turned off) and applied right away to other pages with the same answer for the same unit, and to pages transcribed later. When other pages will change, a dialog shows them before you save, and 'Undo' after saving reverses the change. In By question, a precedent is recorded when you change the verdict of a whole group of the same answer.
-- After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
+- After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images). If a re-judge changes a verdict on a page that you already checked, the app removes the check from that page, so that you can check it again in Review.
 - Every changed verdict is noted in the page's remarks; the student's answer text is never changed.
 
 ## Known limitations
