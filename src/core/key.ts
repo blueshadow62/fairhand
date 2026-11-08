@@ -48,7 +48,22 @@ export function keyProblems(k: unknown): string[] {
   const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
   const badMask = (m: any) => !m || ![m.x, m.y, m.w, m.h].every(ok) || m.w <= 0 || m.h <= 0 || m.x + m.w > 1 + 1e-9 || m.y + m.h > 1 + 1e-9;
   for (const f of ['이름가림', '신원가림']) if (o[f] !== undefined && badMask(o[f])) p.push(`${f} 영역이 쪽을 벗어나거나 잘못되었습니다`);
+  if (o.답영역 !== undefined) {
+    if (!o.답영역 || typeof o.답영역 !== 'object' || Array.isArray(o.답영역)) p.push('답영역은 단위 id를 키로 하는 객체여야 합니다');
+    else for (const [id, m] of Object.entries(o.답영역)) {
+      if (!ids.has(id)) p.push(`답영역: 정답표에 없는 단위 ${id}`);
+      if (badMask(m)) p.push(`답영역 ${id}: 영역이 쪽을 벗어나거나 잘못되었습니다`);
+    }
+  }
   return p;
+}
+
+/** 정답표에 남은 단위의 답 칸만 고른다. 문항 설정 저장으로 단위가 빠지면 그 영역도 버린다. 남는 것이 없으면 undefined */
+export function keptRegions(regions: Record<string, MaskRect> | undefined, key: Pick<AnswerKey, '정량' | '정성'>): Record<string, MaskRect> | undefined {
+  if (!regions) return undefined;
+  const ids = new Set([...key.정량, ...key.정성].map(u => u.id));
+  const kept = Object.fromEntries(Object.entries(regions).filter(([id]) => ids.has(id)));
+  return Object.keys(kept).length ? kept : undefined;
 }
 
 /** 문항별 검토의 그림 보기에서 칠하는 기본 영역: 쪽 위 15%(머리 줄의 학년·반·번호·이름이 드는 자리) */

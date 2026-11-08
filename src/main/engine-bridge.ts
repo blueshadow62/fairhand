@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { isConfirmed, parseKey } from '../core/key.js';
+import { isConfirmed, keptRegions, parseKey } from '../core/key.js';
 import { addCase, mergeCases, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
@@ -174,9 +174,9 @@ export class EngineBridge {
   /** 정답표 저장. 채점 내용이 바뀌었으면 확인을 지운다(화면만 믿지 않는다). 채점규칙·사례만 바뀐 저장은 확인 유지 */
   async saveKey(setDir: string, raw: unknown): Promise<AnswerKey> {
     // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
-    // 문항별 검토의 신원 영역도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask로만 바꾼다. 그래서 두 칸은 받지 않는다.
+    // 문항별 검토의 신원 영역·답 칸도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask·setAnswerRegion으로만 바꾼다. 그래서 이 칸들은 받지 않는다.
     // 정답표에서 지운 단위를 가리키는 사례는 검사 전에 버린다(그대로 두면 단위를 지운 저장이 막힌다)
-    const { 이름가림: _name, 신원가림: _identity, ...o } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+    const { 이름가림: _name, 신원가림: _identity, 답영역: _regions, ...o } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
     const ids = new Set(Array.isArray(o.정량) ? o.정량.map((u: any) => u?.id) : []);
     if (Array.isArray(o.사례)) o.사례 = o.사례.filter((c: any) => ids.has(c?.단위));
     const key = parseKey(JSON.stringify(o), '정답표.json');
@@ -185,6 +185,8 @@ export class EngineBridge {
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
     if (old?.이름가림) key.이름가림 = old.이름가림;
     if (old?.신원가림) key.신원가림 = old.신원가림;
+    const 답영역 = keptRegions(old?.답영역, key); // 지운 단위의 답 칸은 버린다
+    if (답영역) key.답영역 = 답영역;
     // 화면은 세트를 열 때 읽은 사례를 보낸다. 그사이 검토에서 쌓인 사례가 지워지지 않게 파일의 사례를 기준으로 합친다
     const 사례 = mergeCases(old?.사례, key.사례, key);
     if (사례.length) key.사례 = 사례; else delete key.사례;
@@ -197,6 +199,19 @@ export class EngineBridge {
     const { key } = await loadSet(setDir);
     delete key.신원가림;
     const next = parseKey(JSON.stringify(rect ? { ...key, 신원가림: rect } : key), '신원 영역 설정');
+    await saveKeyFile(setDir, next);
+    return next;
+  }
+
+  /** 문항별 검토에서 손글씨를 잘라 보일 단위의 답 칸. null이면 그 단위의 영역을 지운다. 화면에만 쓰고 AI에는 보내지 않아 전사 중에도 바꾼다 */
+  async setAnswerRegion(setDir: string, 단위: unknown, rect: MaskRect | null): Promise<AnswerKey> {
+    if (typeof 단위 !== 'string' || !단위) throw new DataError('단위가 없습니다');
+    const { key } = await loadSet(setDir);
+    if (![...key.정량, ...key.정성].some(u => u.id === 단위)) throw new DataError(`정답표에 단위 ${단위}가 없습니다`);
+    const { 답영역: before = {}, ...rest } = key;
+    const regions = { ...before };
+    if (rect) regions[단위] = rect; else delete regions[단위];
+    const next = parseKey(JSON.stringify(Object.keys(regions).length ? { ...rest, 답영역: regions } : rest), '답 칸 설정');
     await saveKeyFile(setDir, next);
     return next;
   }

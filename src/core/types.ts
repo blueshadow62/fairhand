@@ -32,6 +32,11 @@ export interface AnswerKey {
   이름가림?: MaskRect;
   /** 문항별 검토의 그림 보기에서 칠할 학생 정보 영역. 없으면 DEFAULT_IDENTITY_MASK(key.ts) */
   신원가림?: MaskRect;
+  /**
+   * 문항별 검토에서 손글씨를 잘라 보일 단위별 답 칸(단위 id → 쪽 비율 영역). 한 세트는 같은 양식이라 한 장에서 잡은 자리를 모든 장에 쓴다.
+   * 단위 안이 아니라 여기 두는 까닭: 문항 설정 저장은 단위를 새로 조립하고, 확인 표시를 지우는 기준은 정량·정성만 본다
+   */
+  답영역?: Record<string, MaskRect>;
 }
 
 export interface TranscribeInfo { 엔진: 'cli' | 'api' | 'codex' | 'gemini' | 'openai' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }

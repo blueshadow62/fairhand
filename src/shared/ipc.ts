@@ -56,7 +56,7 @@ export const CHANNELS = {
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
-  setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', matchRoster: 'roster:match',
+  setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
@@ -113,6 +113,8 @@ export interface GeulnunApi {
   setNameMask(폴더: string, rect: MaskRect | null): Promise<AnswerKey>;
   /** 문항별 검토 그림 보기에서 칠할 신원 영역. null이면 기본 영역(쪽 위 15%) */
   setIdentityMask(폴더: string, rect: MaskRect | null): Promise<AnswerKey>;
+  /** 문항별 검토에서 손글씨를 잘라 보일 단위의 답 칸. null이면 그 단위의 영역을 지운다 */
+  setAnswerRegion(폴더: string, 단위: string, rect: MaskRect | null): Promise<AnswerKey>;
   /** 이미 전사한 장을 명단과 맞춘다(이 PC 안에서만) */
   matchRoster(폴더: string): Promise<RejudgeResult>;
   /** 결정적 재판정(모델 호출 없음) */
