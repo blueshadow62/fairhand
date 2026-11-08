@@ -16,7 +16,8 @@ export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /** 기본 모델. CLI·API 두 경로가 같이 쓴다(프로필에 모델이 없을 때) */
 export const MODEL = 'claude-opus-5-5';
 
-export interface TranscribeInput { imageJpegBase64: string; key: AnswerKey; rules: Rules; page: number; effort: Effort }
+/** 위치: 정량 단위마다 답의 세로 위치도 받는다(설정 '답 위치 받기'). 없거나 false면 지시문·양식이 위치 없이 그대로다 */
+export interface TranscribeInput { imageJpegBase64: string; key: AnswerKey; rules: Rules; page: number; effort: Effort; 위치?: boolean }
 export interface RawResult { output: unknown; inputTokens?: number; outputTokens?: number; model: string }
 /** 시스템 프롬프트 + 사용자 글(+그림) + 출력 스키마. 전사와 정답 초안이 같은 CLI/API 경로를 쓴다. */
 export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; images?: string[]; schema: Record<string, unknown>; effort: Effort }
@@ -26,7 +27,8 @@ export interface StructuredProvider { readonly id: 'cli' | 'api' | 'codex' | 'ge
 export interface TranscribeProvider extends StructuredProvider { transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
 
 export function transcribeRequest(input: TranscribeInput): StructuredRequest {
-  return { system: systemPrompt(input.rules, input.key), user: userText(input.page), imageJpegBase64: input.imageJpegBase64, schema: transcriptSchema(input.key), effort: input.effort };
+  const opts = { 위치: input.위치 === true }; // 지시문과 양식이 같은 값을 보게 한 곳에서 정한다
+  return { system: systemPrompt(input.rules, input.key, opts), user: userText(input.page), imageJpegBase64: input.imageJpegBase64, schema: transcriptSchema(input.key, opts), effort: input.effort };
 }
 
 /** 모델 출력(이미 스키마 검증을 거쳤어도) 값을 다시 검사해 전사로 만든다. 틀리면 invalid-output. */

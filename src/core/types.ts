@@ -45,7 +45,8 @@ export interface Transcript {
   page: number;
   학년: number | null; 반: number | null; 번호: number | null; 이름: string | null;
   식별확신: Hwaksin;
-  정량: Record<string, { 답: string; 판정: Panjeong }>;
+  /** 위치: 그 단위의 답이 있는 세로 위치(쪽 맨 위 0 ~ 맨 아래 1). '답 위치 받기'를 켜고 전사한 장에만 있고, 화면에서 그 자리로 가는 데만 쓴다 */
+  정량: Record<string, { 답: string; 판정: Panjeong; 위치?: number }>;
   정성: Record<string, { 응답: boolean; 답: string }>;
   비고: string[];
   확인완료?: boolean;

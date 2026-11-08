@@ -80,6 +80,24 @@ test('tryPage: 시험 한 장을 저장하지 않고 전사해 돌려준다(모�
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('startRun·tryPage: 설정 답 위치 받기를 전사 요청에 넘긴다(끄면 위치 없이)', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const asked: (boolean | undefined)[] = [];
+    (bridge as any).provider = async () => ({ ...fakeProvider(), async transcribe(input: { page: number; 위치?: boolean }): Promise<RawResult> { asked.push(input.위치); return { output: out(input.page), model: 'fake' }; } });
+    await bridge.tryPage(set, JPEG);
+    const settings = new SettingsStore(path.join(dir, 'settings.json'));
+    await settings.save({ 답위치: true });
+    await bridge.tryPage(set, JPEG);
+    await bridge.startRun(set, { pages: [1] }, () => undefined);
+    assert.deepEqual(asked, [false, true, true]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('cancel: 중단하면 끝낸 장은 남고 나머지는 멈춘다', async () => {
   const { dir, set, bridge } = await setup();
   try {

@@ -734,6 +734,18 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'muted' }, t(sub ? 'run.ai.subscriptionHelp' : priceOf(p) ? 'run.ai.apiHelp' : 'run.ai.apiNoPrice')));
   }
 
+  /**
+   * 설정 '답 위치 받기'(모든 세트에 적용, 바로 저장). 켜면 AI 지시문·양식에 위치 칸이 붙어 장당 출력이 조금 는다.
+   * 전사 중에는 바꾸지 않는다(돌고 있는 전사는 시작할 때의 값을 쓴다)
+   */
+  function positionsRow(): HTMLElement {
+    const box = el('input', { type: 'checkbox', checked: store.state.settings.답위치, disabled: running || trying, onchange: () => void (async () => {
+      try { store.update({ settings: await api.saveSettings({ 답위치: box.checked }) }); }
+      catch (e) { box.checked = !box.checked; showError((e as Error).message); }
+    })() });
+    return el('div', {}, el('label', {}, box, t('run.positions')), el('div', { class: 'muted' }, t('run.positionsHelp')));
+  }
+
   function renderRun(): void {
     clear(runBox);
     if (!data) return;
@@ -749,9 +761,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('button', { class: 'danger', disabled: !running, onclick: () => api.cancelRun().catch(e => showError(e.message)) }, t('run.cancel')),
         progressBar, progressText),
       el('div', { class: 'muted' }, t('run.startHelp')),
-      // 처음 쓰는 사람에게는 '전사 시작' 하나면 되어 다시 전사할 장은 접어 둔다. 전사 칸을 다시 그려도 사용자가 연 상태는 그대로
+      // 처음 쓰는 사람에게는 '전사 시작' 하나면 되어 답 위치 받기와 다시 전사할 장은 접어 둔다. 전사 칸을 다시 그려도 사용자가 연 상태는 그대로
       el('details', { class: 'advanced', open: redoOpen, ontoggle: (e: Event) => { redoOpen = (e.target as HTMLDetailsElement).open; } },
         el('summary', {}, t('run.advanced'), el('span', { class: 'muted' }, t('run.advancedHint'))),
+        positionsRow(),
         el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
           el('button', { disabled: running || trying || !confirmed, onclick: () => {
             const pages = parsePageSpec(pagesInput.value);

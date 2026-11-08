@@ -28,6 +28,10 @@ export function parseTranscript(text: string, where: string): Transcript {
     const ok = t.논술글 && typeof t.논술글 === 'object' && !Array.isArray(t.논술글) ? Object.entries(t.논술글).filter(([, v]) => typeof v === 'string') : [];
     if (ok.length) t.논술글 = Object.fromEntries(ok); else delete t.논술글;
   }
+  // 답 위치도 화면에만 쓴다. 0~1의 수가 아니면(모델이 null·퍼센트로 준 것 포함) 그 단위의 위치를 모르는 것으로 둔다. 전사를 실패로 보지 않는다
+  for (const v of Object.values(t.정량)) {
+    if (v && typeof v === 'object' && '위치' in v && !(typeof v.위치 === 'number' && v.위치 >= 0 && v.위치 <= 1)) delete v.위치;
+  }
   return t as Transcript;
 }
 

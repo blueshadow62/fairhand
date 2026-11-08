@@ -63,3 +63,10 @@ test('parseTranscript: 논술글(화면에만 쓰는 칸)은 글자 값만 남�
   assert.deepEqual(parseTranscript(JSON.stringify({ ...base, 논술글: { 9: '글 전체', 10: 3, 11: '' } }), 'x').논술글, { 9: '글 전체', 11: '' });
   for (const 논술글 of ['글', ['글'], null, { 9: null }]) assert.ok(!('논술글' in parseTranscript(JSON.stringify({ ...base, 논술글 }), 'x')), JSON.stringify(논술글));
 });
+
+test('parseTranscript: 답 위치는 0~1의 수만 남기고 다른 값은 그 단위에서 지운다(채점 칸은 그대로 검사)', () => {
+  const t = parseTranscript(JSON.stringify({ page: 2, 학년: 3, 반: 1, 번호: 1, 이름: null, 식별확신: '확실', 비고: [],
+    정량: { '1-1': { 답: 'a', 판정: 'O', 위치: 0.3 }, '3-1': { 답: '', 판정: '빈칸', 위치: 1.5 }, x: { 답: 'b', 판정: 'X', 위치: '0.2' }, y: { 답: 'c', 판정: 'X', 위치: null } } }), 'x');
+  assert.deepEqual(t.정량, { '1-1': { 답: 'a', 판정: 'O', 위치: 0.3 }, '3-1': { 답: '', 판정: '빈칸' }, x: { 답: 'b', 판정: 'X' }, y: { 답: 'c', 판정: 'X' } });
+  validateTranscripts(key, [{ ...load('p01.json'), 정량: { '1-1': { 답: 'a', 판정: 'O', 위치: 0.3 } } }]);
+});

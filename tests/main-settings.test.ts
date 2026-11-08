@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DEFAULT_PROFILE, SettingsStore, applyPatch, defaultSettings, parseSettings } from '../src/main/settings.js';
 import { DataError } from '../src/core/types.js';
+import { DEFAULT_ANSWER_POSITIONS } from '../src/shared/ipc.js';
 
 test('parseSettings: 비었거나 깨진 값은 기본값, 모르는 회전은 0', () => {
   assert.deepEqual(parseSettings(undefined), defaultSettings());
@@ -34,6 +35,14 @@ test('parseSettings: 화면색은 sky·dawn·dark만, 없거나 모르는 값은
   assert.equal(parseSettings({ 화면색: 'dark' }).화면색, 'dark');
   assert.equal(parseSettings({ 화면색: 'pink' }).화면색, 'sky');
   assert.equal(applyPatch(defaultSettings(), { 화면색: 'dark' }).화면색, 'dark');
+});
+
+test('parseSettings: 답 위치 받기는 기본값(꺼짐)을 따르고 true·false만 받는다', () => {
+  assert.equal(DEFAULT_ANSWER_POSITIONS, false); // 켜면 모든 세트의 지시문이 바뀐다. 실제 모델로 잰 뒤에 바꾼다
+  assert.equal(parseSettings({}).답위치, false);
+  assert.equal(parseSettings({ 답위치: 'yes' }).답위치, false);
+  assert.equal(parseSettings({ 답위치: true }).답위치, true);
+  assert.equal(applyPatch(applyPatch(defaultSettings(), { 답위치: true }), { 언어: 'en' }).답위치, true);
 });
 
 test('parseSettings: Codex 프로필은 실행 파일·로그인 폴더와 명령줄에 안전한 모델 이름만 남긴다', () => {

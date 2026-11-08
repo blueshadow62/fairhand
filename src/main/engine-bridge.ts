@@ -48,6 +48,9 @@ export class EngineBridge {
   /** 사용 중 프로필의 노력 단계(없으면 high) */
   async effort(): Promise<Effort> { return (await this.profile()).노력 ?? DEFAULT_EFFORT; }
 
+  /** 설정 '답 위치 받기': 전사할 때 정량 단위마다 답의 세로 위치도 받는다(전사와 시험 한 장이 같은 지시문을 쓰게) */
+  private async positions(): Promise<boolean> { return (await this.deps.settings.load()).답위치; }
+
   async profile(id?: string): Promise<Profile> {
     const s = await this.deps.settings.load();
     const p = s.프로필.find(x => x.id === (id ?? s.사용중));
@@ -162,10 +165,10 @@ export class EngineBridge {
     const { key } = await this.confirmedSet(setDir);
     const image = (await imageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
     return this.exclusive(async signal => {
-      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort();
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), 위치 = await this.positions();
       const meter = runMeter(); // 시험 한 장도 같은 일이라 예상 기록에 더한다(전사 시작 전에 예상을 보이려고 먼저 해 보는 경우가 많다)
       // 저장하지 않는 시험이라 장 번호는 쓰이지 않지만, 전사 검사가 1 이상을 요구한다(0으로 물으면 모델이 0을 돌려줘 늘 실패했다)
-      const { transcript, inputTokens, outputTokens } = await transcribePage(provider, { imageJpegBase64: image, key, rules, page: 1, effort }, signal);
+      const { transcript, inputTokens, outputTokens } = await transcribePage(provider, { imageJpegBase64: image, key, rules, page: 1, effort, 위치 }, signal);
       meter.add({ inputTokens, outputTokens });
       await this.recordRun(profile, meter.stat);
       const roster = await this.rosterOrNull();
@@ -392,9 +395,9 @@ export class EngineBridge {
       const { key } = await this.confirmedSet(setDir);
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
-      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), roster = await this.rosterOrNull();
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), roster = await this.rosterOrNull(), 위치 = await this.positions();
       const meter = runMeter(); // 장마다 걸린 시간·토큰(다음 전사의 예상 시간·비용에 쓴다)
-      const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster });
+      const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster, 위치 });
       await this.recordRun(profile, meter.stat);
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }

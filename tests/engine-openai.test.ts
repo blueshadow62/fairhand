@@ -117,7 +117,8 @@ function strictProblems(s: unknown, at = '$'): string[] {
 test('양식(전사·재판정·정답 초안)이 OpenAI 엄격 모드 규칙을 지킨다', () => {
   const key = { 정량: [{ id: '1-1' }, { id: '2-1' }], 정성: [{ id: 'E1' }] } as unknown as AnswerKey;
   const essay = { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 유형: '논술형' }] } as unknown as AnswerKey;
-  for (const [name, schema] of [['전사', transcriptSchema(key)], ['전사(논술형)', transcriptSchema(essay)], ['재판정', judgeSchema(key)], ['정답 초안', keyDraftSchema()]] as const) {
+  for (const [name, schema] of [['전사', transcriptSchema(key)], ['전사(논술형)', transcriptSchema(essay)], ['전사(답 위치)', transcriptSchema(essay, { 위치: true })],
+    ['재판정', judgeSchema(key)], ['정답 초안', keyDraftSchema()]] as const) {
     assert.equal((schema as any).type, 'object', `${name}: 뿌리가 object`);
     assert.deepEqual(strictProblems(schema), [], name);
   }

@@ -9,6 +9,7 @@ import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { MASK_FILL, cropAspect, cropRect, gridColumns, identityInCrop, toPixels } from '../lib/answer-crop.js';
+import { answerSpot, spotScrollLeft, spotScrollTop } from '../lib/answer-spot.js';
 import { cachedCrop, clearCrops, cropKey, loadCrop } from '../lib/crop-cache.js';
 import { essayNodes, essaySpanViews, essayTextOf } from '../lib/essay-view.js';
 import { anonLabels, anonOrder, groupAnswers, keyLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
@@ -98,14 +99,15 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   const zoomText = el('span', { class: 'zoom' });
   const viewBar = el('div', { class: 'viewer-bar' });
   const viewHelp = el('div', { class: 'view-help' });
-  const sheetWrap = el('div', { class: 'sheet-wrap' }, canvas);
+  const spotBox = el('div', { class: 'answer-spot', 'aria-hidden': 'true' }); // 이 단위의 답 자리를 잠깐 보이는 띠
+  const sheetWrap = el('div', { class: 'sheet-wrap' }, canvas, spotBox);
   const viewer = el('div', { class: 'item-viewer hidden' }, viewBar, viewHelp, sheetWrap);
   root.append(viewer);
   let view: { page: number; n: number; img: HTMLImageElement | null } | null = null;
   let zoom = 1, editing = false;
   let dragging: MaskRect | null = null; // 끄는 중인 새 영역
 
-  const setZoom = (z: number) => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 100) / 100)); canvas.style.width = `${zoom * 100}%`; zoomText.textContent = `${Math.round(zoom * 100)}%`; };
+  const setZoom = (z: number) => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 100) / 100)); canvas.style.width = `${zoom * 100}%`; zoomText.textContent = `${Math.round(zoom * 100)}%`; spotBox.classList.remove('flash'); };
   sheetWrap.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
   setZoom(1);
 
@@ -125,14 +127,27 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     restoreFocus();
   }
 
+  /** 연 그림을 이 단위의 답 자리로(교사가 잡은 답 칸이 먼저, 없으면 AI가 전사 때 돌려준 위치). 그림을 받아 처음 그린 뒤 한 번 */
+  function showSpot(): void {
+    const tr = view && data ? data.transcripts.find(x => x.page === view!.page) : undefined;
+    const s = tr && unitId ? answerSpot(data!.key, tr, unitId) : null;
+    if (!s || !canvas.offsetHeight) return;
+    const W = canvas.offsetWidth, H = canvas.offsetHeight, top = canvas.offsetTop + s.y * H, left = canvas.offsetLeft + s.x * W;
+    const toLeft = s.출처 === '답칸' ? spotScrollLeft({ left, scroll: sheetWrap.scrollLeft, view: sheetWrap.clientWidth }) : null;
+    sheetWrap.scrollTo({ top: spotScrollTop({ top, view: sheetWrap.clientHeight, max: sheetWrap.scrollHeight - sheetWrap.clientHeight }), ...(toLeft === null ? {} : { left: toLeft }) });
+    Object.assign(spotBox.style, { top: `${top}px`, left: `${left}px`, width: `${s.w * W}px`, height: `${s.h * H}px` });
+    spotBox.classList.remove('flash'); void spotBox.offsetWidth; spotBox.classList.add('flash');
+  }
+
   function openViewer(page: number, n: number): void {
     if (!data) return;
     view = { page, n, img: null }; editing = false; dragging = null;
     canvas.width = canvas.height = 0; // 앞서 본 답안이 새 그림을 받기 전까지 남지 않게
+    spotBox.classList.remove('flash');
     root.classList.add('viewing'); viewer.classList.remove('hidden');
     renderViewBar(); renderGroups();
     const img = new Image(); // 문서에 붙이지 않는 그림이라 가리기 전 모습은 화면에 나가지 않는다
-    img.onload = () => { if (view?.page === page) { view.img = img; draw(); } };
+    img.onload = () => { if (view?.page === page) { view.img = img; draw(); showSpot(); } };
     img.onerror = () => { if (view?.page === page) showError(t('item.imageFailed')); };
     img.src = imageUrl(data.폴더, page);
   }
@@ -141,6 +156,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     if (!view) return;
     view = null; editing = false; dragging = null;
     canvas.width = canvas.height = 0;
+    spotBox.classList.remove('flash');
     root.classList.remove('viewing'); viewer.classList.add('hidden');
     if (rerender) renderGroups();
   }

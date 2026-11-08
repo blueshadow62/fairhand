@@ -115,3 +115,15 @@ test('transcribeSet: 논술형 세트는 학생 글 전체(논술글)를 전사 
   assert.deepEqual(saved.논술글, { 9: '첫 문단.\n배움은 삶이다.' });
   assert.equal(saved.정량['9-1'].답, '배움은 삶이다');
 });
+
+test('transcribeSet: 답 위치를 켜면 요청에 넘기고, 받은 위치를 단위마다 저장한다(틀린 위치는 그 단위만 버림)', async () => {
+  const d = sampleSet([4]);
+  const asked: (boolean | undefined)[] = [];
+  const p: TranscribeProvider = { id: 'cli', async complete() { throw new Error('검사에서 쓰지 않음'); },
+    async transcribe(input) { asked.push(input.위치); const g = good(input.page); return { output: { ...g, quant: [{ ...g.quant[0]!, y: 0.31 }, { ...g.quant[1]!, y: 7 }] }, model: 'm' }; } };
+  const r = await transcribeSet(p, d, key, rules, [4], new AbortController().signal, { 위치: true });
+  assert.deepEqual([r.ok, asked], [[4], [true]]);
+  const saved = JSON.parse(readFileSync(path.join(d, 'transcripts', 'p04.json'), 'utf-8'));
+  assert.equal(saved.정량['1-1'].위치, 0.31);
+  assert.ok(!('위치' in saved.정량['3-1']));
+});

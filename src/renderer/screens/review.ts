@@ -5,6 +5,7 @@ import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
 import { setSheetDone } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
+import { answerSpot, spotScrollLeft, spotScrollTop } from '../lib/answer-spot.js';
 import { api, imageUrl } from '../lib/api.js';
 import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
@@ -152,10 +153,27 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   });
 
   // ── 그림: 확대·축소, Ctrl+휠, 끌어서 옮기기 ──
-  const setZoom = (z: number) => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 10) / 10)); img.style.width = `${zoom * 100}%`; zoomText.textContent = `${Math.round(zoom * 100)}%`; };
-  viewer.append(el('div', { class: 'viewer-bar' },
+  const setZoom = (z: number) => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 10) / 10)); img.style.width = `${zoom * 100}%`; zoomText.textContent = `${Math.round(zoom * 100)}%`; hideSpot(); };
+  const viewerBar = el('div', { class: 'viewer-bar' },
     el('button', { onclick: () => setZoom(zoom - 0.25) }, '−'), zoomText, el('button', { onclick: () => setZoom(zoom + 0.25) }, '+'),
-    el('button', { onclick: () => setZoom(1) }, t('review.fit')), el('span', { class: 'muted' }, t('review.zoomHelp'))), img);
+    el('button', { onclick: () => setZoom(1) }, t('review.fit')), el('span', { class: 'muted' }, t('review.zoomHelp')));
+  // 답 자리 띠: 단위를 누르면 그림을 그 높이로 옮기고 그 자리를 잠깐 보인다(그림 위 끌기는 막지 않는다)
+  const spotBox = el('div', { class: 'answer-spot', 'aria-hidden': 'true' });
+  viewer.append(viewerBar, img, spotBox);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function hideSpot(): void { spotBox.classList.remove('flash'); }
+  /** 교사가 잡은 답 칸(답영역)이 먼저, 없으면 AI가 전사 때 돌려준 위치. 둘 다 없거나 그림을 아직 받지 못했으면 움직이지 않는다 */
+  function showSpot(단위: string): void {
+    if (!T || !data || !img.complete || !img.naturalHeight) return;
+    const s = answerSpot(data.key, T, 단위);
+    if (!s) return;
+    const W = img.offsetWidth, H = img.offsetHeight, top = img.offsetTop + s.y * H, left = img.offsetLeft + s.x * W;
+    const toLeft = s.출처 === '답칸' ? spotScrollLeft({ left, scroll: viewer.scrollLeft, view: viewer.clientWidth }) : null;
+    viewer.scrollTo({ top: spotScrollTop({ top, bar: viewerBar.offsetHeight, view: viewer.clientHeight, max: viewer.scrollHeight - viewer.clientHeight }),
+      ...(toLeft === null ? {} : { left: toLeft }), behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+    Object.assign(spotBox.style, { top: `${top}px`, left: `${left}px`, width: `${s.w * W}px`, height: `${s.h * H}px` });
+    hideSpot(); void spotBox.offsetWidth; spotBox.classList.add('flash'); // 같은 단위를 다시 눌러도 처음부터 보인다
+  }
   viewer.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
   let drag: { x: number; y: number; l: number; t: number } | null = null;
   viewer.addEventListener('mousedown', e => { if (e.target !== img) return; e.preventDefault(); drag = { x: e.clientX, y: e.clientY, l: viewer.scrollLeft, t: viewer.scrollTop }; });
@@ -235,6 +253,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const saved = data.transcripts.find(x => x.page === page);
     T = saved ? structuredClone(saved) : blankTranscript(page);
     dirty = false;
+    hideSpot();
     img.src = imageUrl(data.폴더, page);
     renderEditor(); renderList();
   }
@@ -448,6 +467,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const qualTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.question')), el('th', {}, t('review.col.response')), el('th', {}, t('review.col.answer'))), ...qualRows);
     function markNotes(): void { for (const row of [...qtyRows, ...qualRows]) row.classList.toggle('note', mentions(tr.비고, row.dataset.unit!)); }
     markNotes();
+    // 단위 행을 누르거나 행 안 칸에 초점이 오면 그림을 그 답 자리로. 같은 행 안에서 칸을 옮길 때와 칸 안을 누를 때는 다시 움직이지 않는다
+    for (const row of [...qtyRows, ...qualRows]) {
+      const 단위 = row.dataset.unit!;
+      row.addEventListener('focusin', (e: FocusEvent) => { if (!(e.relatedTarget instanceof Node && row.contains(e.relatedTarget))) showSpot(단위); });
+      row.addEventListener('click', (e: MouseEvent) => { if (!(e.target instanceof Element && e.target.closest('textarea, input, select, button, label'))) showSpot(단위); });
+    }
 
     renderHeader();
     editor.append(headerBox,

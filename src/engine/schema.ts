@@ -22,11 +22,15 @@ const essayListSchema = (questions: string[]): Record<string, unknown> => ({
   items: { type: 'object', properties: { question: { type: 'string', enum: questions }, text: { type: 'string' } }, required: ['question', 'text'], additionalProperties: false },
 });
 
+/** 위치: 정량 단위마다 답의 세로 위치(y)도 받는다(설정 '답 위치 받기') */
+export interface TranscriptOptions { 위치?: boolean }
+
 /**
  * 정답표에서 만든 전사 JSON 스키마(영문 키). 논술형 세트에만 essays(글 전체)를 quant 앞에 둔다: 글을 먼저 옮긴 뒤 단위마다 그 글에서 찾게 하고,
- * 논술형이 없는 세트의 양식은 그대로 둔다(잰 정확도·토큰이 유지된다)
+ * 논술형이 없는 세트의 양식은 그대로 둔다(잰 정확도·토큰이 유지된다). y는 위치를 켰을 때만 붙인다.
+ * y의 0~1 범위는 양식에 적지 않는다(Anthropic 구조화 출력이 숫자 범위 제한을 받지 않는다). 받은 뒤 parseTranscript가 범위 밖 값을 버린다
  */
-export function transcriptSchema(key: AnswerKey): Record<string, unknown> {
+export function transcriptSchema(key: AnswerKey, opts: TranscriptOptions = {}): Record<string, unknown> {
   const essays = essayQuestions(key).map(String);
   return {
     type: 'object',
@@ -36,7 +40,7 @@ export function transcriptSchema(key: AnswerKey): Record<string, unknown> {
       name: { type: ['string', 'null'] },
       id_confidence: { type: 'string', enum: ['확실', '추정', '불명'] },
       ...(essays.length ? { essays: essayListSchema(essays) } : {}),
-      quant: unitListSchema(key.정량.map(u => u.id), { answer: { type: 'string' }, verdict: { type: 'string', enum: ['O', 'X', '빈칸'] } }),
+      quant: unitListSchema(key.정량.map(u => u.id), { answer: { type: 'string' }, verdict: { type: 'string', enum: ['O', 'X', '빈칸'] }, ...(opts.위치 ? { y: { type: ['number', 'null'] } } : {}) }),
       qual: unitListSchema(key.정성.map(u => u.id), { responded: { type: 'boolean' }, answer: { type: 'string' } }),
       notes: { type: 'array', items: { type: 'string' } },
     },
@@ -77,7 +81,7 @@ export function fromModelOutput(raw: unknown): unknown {
   if (!isObj(raw)) return raw;
   return {
     page: raw.page, 학년: raw.grade, 반: raw.class, 번호: raw.number, 이름: raw.name, 식별확신: raw.id_confidence,
-    정량: renameUnits(raw.quant, 'quant', { answer: '답', verdict: '판정' }),
+    정량: renameUnits(raw.quant, 'quant', { answer: '답', verdict: '판정', y: '위치' }),
     정성: renameUnits(raw.qual, 'qual', { responded: '응답', answer: '답' }),
     비고: raw.notes,
     ...(raw.essays !== undefined ? { 논술글: essaysByQuestion(raw.essays) } : {}),

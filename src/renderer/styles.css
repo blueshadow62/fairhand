@@ -509,6 +509,13 @@ details.essay-full > summary:hover, details.essay-full[open] > summary { color: 
 .essay-text .unit-tag { margin: 0 1px 0 3px; font-size: 10px; font-weight: 700; line-height: 0; color: var(--text-2); }
 .essay-legend { margin: 2px 0 0; font-size: var(--fs-s); }
 .review .editor tr.essay-row > td { padding-top: 0; white-space: normal; }
+
+/* ── 답 자리 띠: 단위를 누르면 그림을 그 높이로 옮긴 뒤 잠깐 보이고 사라진다. 그림 위 끌기·누르기는 막지 않고, 답안지별 그림 칸의 도구 막대 아래로 지나간다 ── */
+.review .viewer, .item-review .sheet-wrap { position: relative; }
+.answer-spot { position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; opacity: 0; border: 3px solid var(--accent); border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.answer-spot.flash { animation: spot-flash 1.8s ease-out forwards; }
+@keyframes spot-flash { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
 .item-review .answer-row > details.essay-full { flex: 1 0 100%; margin: 0 0 2px; }
 .item-review .hw-cell > details.essay-full .essay-text { font-size: var(--fs-m); }
 

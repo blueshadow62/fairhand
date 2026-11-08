@@ -35,6 +35,8 @@ export interface TranscribeOptions {
   maskJpeg?: JpegMasker;
   /** 있으면 저장 전에 명단과 맞춘다 */
   roster?: Student[] | null;
+  /** 정량 단위마다 답의 세로 위치도 받는다(설정 '답 위치 받기') */
+  위치?: boolean;
 }
 
 const exists = (p: string) => access(p).then(() => true, () => false);
@@ -50,7 +52,7 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
     if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length, skipped: true }); continue; }
     try {
       const image = (await imageToSend(await readFile(path.join(setDir, 'pages', pageImageName(page))), key, opts.maskJpeg)).toString('base64');
-      const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort }, signal);
+      const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort, 위치: opts.위치 }, signal);
       const judged = rejudgeTranscript(key, r.transcript).transcript; // 사례·정답 정확 일치는 저장 전에 맞춘다
       await writeJsonAtomic(outDir, name, opts.roster ? matchRoster(judged, key, opts.roster).transcript : judged); // 잠긴 파일이면 사람 말 오류(검토 저장과 같은 길)
       ok.push(page); done++;

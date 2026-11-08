@@ -94,3 +94,28 @@ test('toTranscript: 논술형 글 전체는 정답표의 논술형 문항 것만
   }
   assert.ok(!('논술글' in toTranscript(good, key, 4, info))); // 논술형이 없는 세트의 전사 파일은 그대로
 });
+
+test('transcribeRequest: 답 위치를 켜면 지시문과 양식에 함께 붙고, 없거나 끄면 그대로', async () => {
+  const rules = await loadRules();
+  const base = { imageJpegBase64: 'AAAA', key, rules, page: 3, effort: 'high' as const };
+  const off = transcribeRequest(base);
+  assert.deepEqual(transcribeRequest({ ...base, 위치: false }), off);
+  assert.equal(off.system, systemPrompt(rules, key));
+  assert.deepEqual(off.schema, transcriptSchema(key));
+  const on = transcribeRequest({ ...base, 위치: true });
+  assert.equal(on.system, systemPrompt(rules, key, { 위치: true }));
+  assert.deepEqual(on.schema, transcriptSchema(key, { 위치: true }));
+  assert.notEqual(on.system, off.system);
+});
+
+test('toTranscript: 답 위치는 0~1이면 두고, null·범위 밖·글자는 그 단위만 버린다(전사는 성공, 다시 묻지 않는다)', () => {
+  const quant = (y1: unknown, y2: unknown) => [{ id: '1-1', answer: '은영', verdict: 'O', y: y1 }, { id: '3-1', answer: '', verdict: '빈칸', y: y2 }];
+  const t = toTranscript({ ...good, quant: quant(0.42, 1) }, key, 4, info);
+  assert.deepEqual([t.정량['1-1'], t.정량['3-1']], [{ 답: '은영', 판정: 'O', 위치: 0.42 }, { 답: '', 판정: '빈칸', 위치: 1 }]);
+  for (const bad of [null, 42, -0.1, 1.01, '0.4', true]) {
+    const u = toTranscript({ ...good, quant: quant(bad, 0) }, key, 4, info);
+    assert.ok(!('위치' in u.정량['1-1']!), JSON.stringify(bad));
+    assert.equal(u.정량['1-1']!.판정, 'O');
+    assert.equal(u.정량['3-1']!.위치, 0);
+  }
+});

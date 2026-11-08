@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { transcriptSchema, fromModelOutput } from '../src/engine/schema.js';
 import { loadRules, systemPrompt, userText } from '../src/engine/rules.js';
+import { judgeRequest } from '../src/engine/judge.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 
@@ -110,4 +111,33 @@ test('systemPrompt: 논술형 세트는 글 전체를 essays로 받고, 단위�
   const section = p.slice(p.indexOf('# 논술형 문항'), p.indexOf('# 정답표'));
   assert.ok(section.includes('`essays`에는 논술형 문항마다 항목 하나 `{question, text}`를 한 번씩 넣는다'));
   assert.ok(section.includes('answer에는 그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로 옮긴다'));
+});
+
+test('transcriptSchema: 답 위치를 켜면 quant 항목에 y(수 또는 null)를 붙이고, 끄면 그대로', () => {
+  const plain = transcriptSchema(key) as any;
+  assert.deepEqual(transcriptSchema(key, { 위치: false }), plain);
+  const s = transcriptSchema(key, { 위치: true }) as any;
+  assert.deepEqual(s.properties.quant.items.properties.y, { type: ['number', 'null'] });
+  assert.deepEqual(s.properties.quant.items.required, ['id', 'answer', 'verdict', 'y']);
+  assert.ok(!('y' in s.properties.qual.items.properties)); // 정성은 위치를 받지 않는다
+  const { quant: _q, ...rest } = s.properties, { quant: _p, ...plainRest } = plain.properties;
+  assert.deepEqual(rest, plainRest);
+});
+
+test('fromModelOutput: y는 단위의 위치로(null도 그대로 넘겨 parseTranscript가 버린다)', () => {
+  const out = fromModelOutput({ page: 1, grade: 3, class: 1, number: 2, name: null, id_confidence: '확실',
+    quant: [{ id: '1-1', answer: '은영', verdict: 'O', y: 0.42 }, { id: '3-1', answer: '', verdict: '빈칸', y: null }], qual: [], notes: [] }) as any;
+  assert.deepEqual(out.정량, { '1-1': { 답: '은영', 판정: 'O', 위치: 0.42 }, '3-1': { 답: '', 판정: '빈칸', 위치: null } });
+});
+
+test('systemPrompt: 답 위치 절은 켰을 때만 붙고(논술형 절 뒤, 정답표 앞) 모델 재판정 지시문에는 없다', async () => {
+  const r = await loadRules();
+  assert.equal(systemPrompt(r, key, { 위치: false }), systemPrompt(r, key));
+  assert.ok(!systemPrompt(r, key).includes('# 답 위치'));
+  const essayKey = { ...key, 정량: [...key.정량, ...essayUnits] };
+  const p = systemPrompt(r, essayKey, { 위치: true });
+  assert.ok(p.includes('quant의 항목마다 `y`에 그 단위의 답이 있는 세로 위치를 적는다'));
+  assert.ok(p.indexOf('# 논술형 문항') < p.indexOf('# 답 위치') && p.indexOf('# 답 위치') < p.indexOf('# 정답표'));
+  const t = { page: 1, 학년: 3, 반: 1, 번호: 1, 이름: null, 식별확신: '확실' as const, 정량: {}, 정성: {}, 비고: [] };
+  assert.ok(!judgeRequest(essayKey, r, t).system.includes('# 답 위치'));
 });

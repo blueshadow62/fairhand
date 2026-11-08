@@ -31,8 +31,16 @@ export type Language = 'ko' | 'en';
 /** 화면 색. 값은 styles.css의 :root[data-theme]와 짝이다. 맨 앞이 기본 */
 export const THEMES = ['sky', 'dawn', 'dark'] as const;
 export type Theme = typeof THEMES[number];
-/** 전사기록: AI 설정(statKey)마다 최근 전사의 장당 시간·토큰. 채점 실행의 예상 시간·비용에 쓰고, 메인이 전사가 끝날 때 적는다 */
-export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 자동설치: boolean; 화면색: Theme; 전사기록?: Record<string, RunStat> }
+/**
+ * '답 위치 받기'의 기본값. 켜면 모든 세트의 AI 지시문·양식에 위치 칸이 붙으므로, 실제 모델로 정확도·토큰을 잰 뒤에 켤지 정한다.
+ * 꺼져 있으면 지시문·양식이 0.2.11과 같다
+ */
+export const DEFAULT_ANSWER_POSITIONS = false;
+/**
+ * 전사기록: AI 설정(statKey)마다 최근 전사의 장당 시간·토큰. 채점 실행의 예상 시간·비용에 쓰고, 메인이 전사가 끝날 때 적는다.
+ * 답위치: 전사할 때 단위마다 답의 세로 위치도 받는다(답안지별 검토에서 단위를 누르면 그림이 그 자리로)
+ */
+export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 자동설치: boolean; 화면색: Theme; 답위치: boolean; 전사기록?: Record<string, RunStat> }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string; minVersion?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }

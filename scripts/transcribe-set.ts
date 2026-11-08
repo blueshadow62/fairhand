@@ -10,9 +10,10 @@ import { DataError } from '../src/core/types.js';
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   engine: { type: 'string', default: 'cli' }, pages: { type: 'string' }, effort: { type: 'string', default: 'high' }, model: { type: 'string', default: 'claude-opus-5-5' },
-  out: { type: 'string' }, force: { type: 'boolean', default: false } } });
+  out: { type: 'string' }, force: { type: 'boolean', default: false }, positions: { type: 'boolean', default: false } } });
 const setDir = positionals[0];
-if (!setDir) { console.error('사용법: npm run transcribe -- "<세트 폴더>" --engine cli|api [--pages 1-3,7] [--effort high] [--model claude-opus-5-5|claude-sonnet-5-5] [--out <폴더>] [--force]'); process.exit(2); }
+// --positions: 앱 설정 '답 위치 받기'와 같은 지시문·양식(정량 단위마다 답의 세로 위치)으로 전사한다. 켜고 끈 두 결과를 eval로 비교한다
+if (!setDir) { console.error('사용법: npm run transcribe -- "<세트 폴더>" --engine cli|api [--pages 1-3,7] [--effort high] [--model claude-opus-5-5|claude-sonnet-5-5] [--out <폴더>] [--force] [--positions]'); process.exit(2); }
 
 function parsePages(spec: string | undefined, all: number[]): number[] {
   if (!spec) return all;
@@ -35,7 +36,7 @@ try {
   process.on('SIGINT', () => ac.abort());
   let inTok = 0, outTok = 0;
   const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, {
-    effort: values.effort as Effort, outDir: values.out ? path.resolve(values.out) : undefined, force: values.force,
+    effort: values.effort as Effort, outDir: values.out ? path.resolve(values.out) : undefined, force: values.force, 위치: values.positions,
     onProgress: e => { inTok += e.inputTokens ?? 0; outTok += e.outputTokens ?? 0; console.log(`${e.done}/${e.total} p${String(e.page).padStart(2, '0')} 입력 ${e.inputTokens ?? '-'} 출력 ${e.outputTokens ?? '-'}`); },
   });
   console.log(`끝: 성공 ${r.ok.length}, 실패 ${r.failed.length}, 건너뜀 ${r.skipped.length}, 토큰 입력 ${inTok} 출력 ${outTok}`);
