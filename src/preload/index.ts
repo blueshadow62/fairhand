@@ -10,7 +10,7 @@ const CHANNELS = {
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
   setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', matchRoster: 'roster:match',
-  applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
+  applyCase: 'case:apply', revertCase: 'case:revert', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
 } as const;
@@ -68,6 +68,7 @@ const api: GeulnunApi = {
   setAnswerRegion: (폴더, 단위, rect) => call(CHANNELS.setAnswerRegion, 폴더, 단위, rect),
   matchRoster: (폴더) => call(CHANNELS.matchRoster, 폴더),
   applyCase: (폴더, c) => call(CHANNELS.applyCase, 폴더, c),
+  revertCase: (폴더, req) => call(CHANNELS.revertCase, 폴더, req),
   removeCase: (폴더, 단위, 답) => call(CHANNELS.removeCase, 폴더, 단위, 답),
   rejudge: (폴더) => call(CHANNELS.rejudge, 폴더),
   judgeWithModel: (폴더, opts) => call(CHANNELS.judgeWithModel, 폴더, opts),

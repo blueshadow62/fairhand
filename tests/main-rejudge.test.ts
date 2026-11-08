@@ -29,18 +29,46 @@ async function setup(confirmed = true) {
 }
 const verdict = async (set: string, page: number, id: string) => (await loadSet(set)).transcripts.find(t => t.page === page)!.정량[id]!.판정;
 
-test('applyCase: 사례를 기록하고 같은 답의 다른 장을 바꾸며 엑셀을 만든다', async () => {
+test('applyCase: 사례를 기록하고 같은 답을 쓴 장만 바꾸며, 바뀐 판정을 구조로 돌려주고 엑셀을 만든다', async () => {
   const { dir, set, bridge } = await setup();
   try {
     const r = await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 }, () => new Date('2026-11-06T00:00:00Z'));
-    const { key } = await loadSet(set);
+    const { key, transcripts } = await loadSet(set);
     assert.deepEqual(key.사례, [{ 단위: '1-1', 답: '가나', 판정: 'X', 일시: '2026-11-06T00:00:00.000Z', 출처: '검토 p01' }]);
     assert.equal(key.확인?.완료, true); // 사례는 확인을 지우지 않는다
-    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 2, 3]); // p03은 빈 답이라 빈칸으로
+    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 2]); // 확인 창에 보인 장과 같게: 같은 답을 쓴 장만
     assert.deepEqual(r.바뀐장[1]!.변경, ['1-1 O→X']);
+    assert.deepEqual(r.판정변경, [{ page: 1, 단위: '1-1', 이전: 'O', 이후: 'X' }, { page: 2, 단위: '1-1', 이전: 'O', 이후: 'X' }]);
+    assert.equal(r.이전사례, undefined);
     assert.equal(await verdict(set, 2, '1-1'), 'X');
+    assert.deepEqual(transcripts.find(t => t.page === 3)!.정량['1-1'], { 답: '', 판정: 'X' }); // 전체 재판정이면 빈칸으로 바뀌었을 장
+    assert.deepEqual(transcripts.find(t => t.page === 2)!.비고, ['이름 흐림', '재판정: 1-1 O→X (사례)']);
     assert.ok(r.엑셀 && !r.엑셀오류);
-    assert.equal((await loadSet(set)).transcripts.find(t => t.page === 2)!.정량['1-1']!.답, '가나');
+    assert.equal(transcripts.find(t => t.page === 2)!.정량['1-1']!.답, '가나');
+    await assert.rejects(bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 0 }), /장 번호/);
+    await assert.rejects(bridge.applyCase(set, { 단위: '1-1', 답: ' ', 판정: 'X', page: 1 }), /빈 답/);
+    await assert.rejects(bridge.applyCase(set, { 단위: '9-9', 답: '가나', 판정: 'X', page: 1 }), /단위 9-9/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('revertCase: 사례를 지우고(바꿔 쓴 사례는 되살림) 함께 바뀐 장의 판정·비고를 돌리고, 그사이 바뀐 장은 그대로 둔다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'O', page: 2 }, () => new Date('2026-11-05T00:00:00Z')); // 판정은 그대로라 사례만
+    const before = await loadSet(set);
+    const r = await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 }, () => new Date('2026-11-06T00:00:00Z'));
+    assert.deepEqual(r.이전사례, { 단위: '1-1', 답: '가나', 판정: 'O', 일시: '2026-11-05T00:00:00.000Z', 출처: '검토 p02' });
+    const undo = { 사례: [{ 단위: '1-1', 답: '가나', 판정: 'X' as const, 이전사례: r.이전사례 }], 변경: r.판정변경.filter(c => c.page !== 1) };
+    const back = await bridge.revertCase(set, undo);
+    assert.deepEqual([back.사례, back.복원, back.건너뜀], [1, 1, 0]);
+    assert.ok(back.엑셀 && !back.엑셀오류);
+    const after = await loadSet(set);
+    assert.deepEqual(after.key.사례, before.key.사례); // 바꿔 쓴 사례가 그대로 돌아온다
+    assert.deepEqual(after.transcripts.find(t => t.page === 2), before.transcripts.find(t => t.page === 2)); // 판정과 비고 모두
+    assert.equal(await verdict(set, 1, '1-1'), 'X'); // 선생님이 직접 바꾼 장은 되돌리지 않는다
+    const again = await bridge.revertCase(set, undo); // 이미 돌렸으면 바꿀 것이 없다
+    assert.deepEqual([again.사례, again.복원, again.건너뜀, again.엑셀], [0, 0, 1, undefined]);
+    await assert.rejects(bridge.revertCase(set, { 사례: [{ 단위: '1-1', 답: '가나', 판정: 'X' }], 변경: [{ page: 2, 단위: '3-1', 이전: 'O', 이후: 'X' }] }), /단위가 사례와 맞지/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

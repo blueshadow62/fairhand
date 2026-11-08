@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { caseRequest, caseRevertRequest, planApplyCase, planCaseRevert } from '../core/cases.js';
 import { isConfirmed, keptRegions, parseKey } from '../core/key.js';
 import { addCase, mergeCases, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
@@ -19,7 +20,7 @@ import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } 
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
-import { DEFAULT_EFFORT, DEFAULT_MODEL, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type UnitResultsResult } from '../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type CaseResult, type CaseRevertResult, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type UnitResultsResult } from '../shared/ipc.js';
 import { openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -253,14 +254,38 @@ export class EngineBridge {
     return this.rejudgeWith(setDir, key, transcripts);
   }
 
-  async applyCase(setDir: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }, now: () => Date = () => new Date()): Promise<RejudgeResult> {
-    if (c.판정 !== 'O' && c.판정 !== 'X') throw new DataError('사례의 판정은 O 또는 X여야 합니다');
-    if (!c.답.trim()) throw new DataError('빈 답은 사례로 기록하지 않습니다');
+  /**
+   * 답안지별 검토의 사례 기록. 같은 단위에 같은 답을 쓴 장만 바꾸고(확인 창에 미리 보인 장과 같게), 바뀐 판정을 구조로 돌려준다.
+   * 엑셀은 바뀐 장이 있을 때만 다시 만든다(사례는 엑셀에 나오지 않는다)
+   */
+  async applyCase(setDir: string, raw: unknown, now: () => Date = () => new Date()): Promise<CaseResult> {
+    const c = caseRequest(raw);
     const { key, transcripts } = await loadSet(setDir);
-    if (!key.정량.some(u => u.id === c.단위)) throw new DataError(`정답표에 단위 ${c.단위}가 없습니다`);
-    const next = addCase(key, { 단위: c.단위, 답: c.답, 판정: c.판정, 일시: now().toISOString(), 출처: `검토 p${String(c.page).padStart(2, '0')}` });
-    await saveKeyFile(setDir, next); // 사례는 확인을 지우지 않는다
-    return this.rejudgeWith(setDir, next, transcripts);
+    const plan = planApplyCase(key, transcripts, c, now());
+    await saveKeyFile(setDir, plan.key); // 사례는 확인을 지우지 않는다
+    for (const t of plan.쓸전사) await saveTranscript(setDir, t);
+    return { 바뀐장: plan.변경.map(ch => ({ page: ch.page, 변경: [`${ch.단위} ${ch.이전}→${ch.이후}`] })), 판정변경: plan.변경,
+      ...(plan.이전사례 ? { 이전사례: plan.이전사례 } : {}), ...(plan.변경.length ? await this.rebuildSafe(setDir) : {}) };
+  }
+
+  /**
+   * 방금 기록한 사례 되돌리기: 사례를 지우고(바꿔 쓴 사례는 되살리고) 함께 바뀐 장의 판정을 이전 값으로. 그사이 바뀐 것은 그대로 둔다.
+   * 정답표를 먼저 쓴다(사례 기록과 같은 순서). 엑셀은 판정을 다 돌린 뒤 한 번만
+   */
+  async revertCase(setDir: string, raw: unknown): Promise<CaseRevertResult> {
+    const req = caseRevertRequest(raw);
+    const { key, transcripts } = await loadSet(setDir);
+    const plan = planCaseRevert(key, transcripts, req);
+    if (plan.key) await saveKeyFile(setDir, plan.key);
+    let written = 0;
+    for (const t of plan.쓸전사) {
+      try { await saveTranscript(setDir, t); written++; }
+      catch (e) {
+        if (written) await this.rebuildSafe(setDir); // 이미 돌린 장과 엑셀이 어긋나지 않게
+        throw new DataError(`${plan.쓸전사.length}장 중 ${written}장만 되돌렸습니다: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return { 사례: plan.사례, 복원: plan.복원, 건너뜀: plan.건너뜀, ...(written ? await this.rebuildSafe(setDir) : {}) };
   }
 
   /**
