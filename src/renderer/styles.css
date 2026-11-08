@@ -138,10 +138,14 @@ button.active { background: var(--accent-soft); border-color: var(--accent-line)
 #app.nav-collapsed #top { grid-column: 1 / -1; }
 #app.nav-collapsed #tabs { display: none; }
 
-/* ── 토스트 ── */
-#toast { position: fixed; top: calc(var(--top-h) + 12px); left: 50%; transform: translateX(-50%); max-width: 70vw; padding: 12px 18px; border-radius: var(--r); z-index: 10; white-space: pre-wrap; font-weight: 500; box-shadow: 0 6px 20px var(--shadow); }
+/* ── 토스트: 오른쪽 아래. 맨 위 가운데에 두었더니 검토 머리 줄의 단추를 가렸다.
+   여러 줄은 그대로 줄을 바꾸고, 긴 경로는 낱말 중간에서도 끊으며, 창보다 길면 알림 안에서 스크롤한다 ── */
+#toast { position: fixed; right: var(--sp-5); bottom: var(--sp-5); max-width: min(480px, calc(100vw - 2 * var(--sp-5))); max-height: calc(100vh - var(--top-h) - 2 * var(--sp-5)); overflow: auto;
+  padding: 12px 18px; border-radius: var(--r); z-index: 10; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; font-weight: 500; box-shadow: 0 6px 20px var(--shadow); }
 #toast.error { background: var(--bad-bg); color: #fff; }
 #toast.info { background: var(--accent); color: #fff; }
+/* 어두운 화면에서는 그림자가 바탕에 묻혀 알림의 가장자리가 흐려진다. 옅은 테두리로 바탕과 떼어 보인다 */
+:root[data-theme="dark"] #toast { box-shadow: 0 6px 20px var(--shadow), 0 0 0 1px rgba(255, 255, 255, .24); }
 
 /* ── 띠(info·warn·error)와 카드 ── */
 .band { padding: 10px 14px; border: 1px solid; border-radius: var(--r); margin: var(--sp-2) 0; white-space: pre-wrap; line-height: 1.45; }
