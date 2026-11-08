@@ -184,7 +184,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       정성: Object.fromEntries(k.정성.map(u => [u.id, { 응답: false, 답: '' }])), 비고: [], 확인완료: false };
   }
 
-  const leaveOk = makeLeaveGuard(api, { isDirty: () => dirty, save, discard: () => { dirty = false; } });
+  const leaveOk = makeLeaveGuard(api, { isDirty: () => dirty, save: async () => { await save(); }, discard: () => { dirty = false; } });
   ctx.setLeaveGuard(leaveOk);
 
   function go(page: number): void {
@@ -201,17 +201,24 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderEditor(); renderList();
   }
 
+  /** 지금 목록 순서에서 d칸 옆 장. 이 장이 목록에 없으면(필터로 빠짐) 목록의 첫 장 */
+  function neighbor(d: number): number | undefined {
+    if (!T) return undefined;
+    const pages = order(), i = pages.indexOf(T.page);
+    return pages[i < 0 ? 0 : i + d];
+  }
+
   function step(d: number): void {
-    const pages = order();
-    if (!T) return;
-    const i = pages.indexOf(T.page);
-    const next = pages[i < 0 ? 0 : i + d];
+    const next = neighbor(d);
     if (next !== undefined) go(next);
   }
 
-  const touch = () => { if (!dirty) { dirty = true; renderHeader(); } else updateScore(); };
+  // 머리 줄을 다시 그리지 않고 표시만 켠다. 다시 그리면 방금 누른 '확인 완료' 체크에서 초점이 빠진다
+  const unsavedTag = el('span', { class: 'band warn hidden' }, t('review.unsaved'));
+  const touch = () => { if (!dirty) { dirty = true; unsavedTag.classList.remove('hidden'); } updateScore(); };
   const headerBox = el('div');
   const scoreText = el('span');
+  let doneBox: HTMLInputElement | null = null;
   const updateScore = () => {
     if (!T || !data) return;
     const cur = T, k = data.key; // 배점(없으면 1점)만큼 더한다
@@ -222,18 +229,44 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderHeader(): void {
     clear(headerBox);
     if (!T) return;
+    const tr = T;
     updateScore();
+    unsavedTag.classList.toggle('hidden', !dirty);
+    const done = el('input', { type: 'checkbox', checked: tr.확인완료 === true, onchange: () => { tr.확인완료 = done.checked; touch(); } });
+    doneBox = done;
+    // 저장하지 않은 변경 표시는 사례 기록 앞에 둔다. 뒤에 두면 고치기 시작할 때 줄이 하나 늘어 아래가 밀린다
     put(headerBox, el('div', { class: 'row' },
       el('button', { onclick: () => step(-1), title: MAC ? '⌥←' : 'Alt+←' }, t('review.prev')), el('button', { onclick: () => step(1), title: MAC ? '⌥→' : 'Alt+→' }, t('review.next')),
-      el('strong', {}, tag(T.page)), scoreText,
+      el('strong', {}, tag(tr.page)), scoreText,
       el('button', { class: 'primary', onclick: () => void save(), title: MAC ? '⌘S' : 'Ctrl+S' }, t('common.save')),
-      el('label', { title: t('review.recordCasesTitle') }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), t('review.recordCases')),
-      dirty ? el('span', { class: 'band warn' }, t('review.unsaved')) : null));
+      el('button', { onclick: () => void saveAndNext(), title: MAC ? '⌘Enter' : 'Ctrl+Enter' }, t('review.saveNext')),
+      el('label', {}, done, t('review.done')),
+      unsavedTag,
+      el('label', { title: t('review.recordCasesTitle') }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), t('review.recordCases'))));
+  }
+
+  /** '저장하고 다음'(Ctrl+Enter): 이 장을 확인 완료로 저장하고 목록의 다음 장을 연다. 저장이 안 되면 머물고, 마지막 장이면 머물며 알린다 */
+  async function saveAndNext(): Promise<void> {
+    if (!T || !data || saving) return;
+    const page = T.page, 폴더 = data.폴더;
+    // 다음 장은 누른 때의 목록 순서로 정한다. 저장하면 목록이 다시 정렬되거나(문제 먼저) 이 장이 빠진다(미확인만)
+    const next = neighbor(1);
+    // 전사 없는 장을 손대지 않은 채 저장하면 빈 전사가 생겨 다음 전사 때 그 장을 건너뛴다. 이미 확인한 깨끗한 장은 다시 저장할 것이 없다
+    const blank = !data.transcripts.some(x => x.page === page);
+    const needSave = dirty || (!blank && !T.확인완료);
+    if (needSave) {
+      if (!T.확인완료) { T.확인완료 = true; if (doneBox) doneBox.checked = true; touch(); }
+      if (!(await save()) || data?.폴더 !== 폴더) return;
+    }
+    const target = next ?? page;
+    if (T?.page !== target) openPage(target); // 저장 뒤 다시 읽으면 '미확인만'에서는 이 장이 목록에서 빠져 다른 장이 열려 있다
+    if (next === undefined) showInfo(t(needSave ? 'review.savedLast' : 'review.lastPage'));
   }
 
   let saving = false; // Ctrl+S 연타·버튼 연타로 저장과 엑셀 생성이 두 벌 도는 것을 막는다
-  async function save(): Promise<void> {
-    if (!T || !data || saving) return;
+  /** 전사가 저장되고 사례 기록도 탈 없이 끝나면 true. '저장하고 다음'은 그때만 다음 장으로 간다 */
+  async function save(): Promise<boolean> {
+    if (!T || !data || saving) return false;
     saving = true;
     const tr = T, 폴더 = data.폴더;
     // 판정이 O·X로 바뀐 단위(답이 있을 때만)는 사례 후보. 빈칸으로 바꾼 것은 사례로 남기지 않는다
@@ -252,14 +285,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         } catch (e) { caseError = (e as Error).message; break; }
       }
       await reload(store.state.current === 폴더 ? tr.page : undefined); // reload가 notice를 비우므로 안내는 그 뒤에
-      if (caseError) showError(caseError);
       if (recordCases && cases.length) {
         const others텍스트 = others.size ? t('review.othersChanged', { list: [...others].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ') }) : t('review.noOthers');
         notice.append(el('div', { class: 'band info' }, t('review.casesRecorded', { n: cases.length, others: others텍스트 })));
       }
       if (r.엑셀오류) notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
-      else showInfo(t('review.saved'));
-    } catch (e) { showError((e as Error).message); }
+      else if (!caseError) showInfo(t('review.saved'));
+      // 알림은 하나만 보이므로 사례 기록 오류는 '저장했습니다'에 덮이지 않게 맨 뒤에
+      if (caseError) showError(caseError);
+      return caseError === null;
+    } catch (e) { showError((e as Error).message); return false; }
     finally { saving = false; }
   }
 
@@ -285,7 +320,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const conf = el('select', { onchange: () => { tr.식별확신 = conf.value as Hwaksin; touch(); } }, ...(['확실', '추정', '불명'] as Hwaksin[]).map(v => el('option', { value: v, selected: v === tr.식별확신 }, t(`hwaksin.${v}`))));
     const notes = el('textarea', { rows: 3, oninput: () => { tr.비고 = notes.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean); touch(); markNotes(); } });
     notes.value = tr.비고.join('\n');
-    const done = el('input', { type: 'checkbox', checked: tr.확인완료 === true, onchange: () => { tr.확인완료 = done.checked; touch(); } });
 
     // 1점이 아닌 단위만 배점을 보인다(대부분의 세트는 모두 1점이라 표가 그대로)
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
@@ -314,13 +348,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       data.명단 ? rosterPick(tr) : '',
       el('h3', {}, t('review.notes')), notes,
       el('h3', {}, t('review.qty')), qtyTable,
-      el('h3', {}, t('review.qual')), qualTable,
-      el('div', { class: 'row' }, el('label', {}, done, t('review.done'))));
+      el('h3', {}, t('review.qual')), qualTable);
   }
 
   document.addEventListener('keydown', e => {
     if (root.classList.contains('hidden') || !T) return;
     if ((e.ctrlKey || (MAC && e.metaKey)) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } // 맥은 ⌘S
+    // 한글 조합 중의 Enter는 글자 확정이다. 그때 넘기면 마지막 글자가 빠진 채 저장된다
+    else if ((e.ctrlKey || (MAC && e.metaKey)) && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); void saveAndNext(); } // 맥은 ⌘Enter
     else if (MAC && e.altKey && editingText(e.target)) return;
     else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
     else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); step(1); }
