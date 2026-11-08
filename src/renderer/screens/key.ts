@@ -195,17 +195,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
       const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
-      // 빈칸형처럼 행이 여럿인 문항은 한 번에 지울 수 있게(행이 하나면 행 삭제와 같아 단추를 두지 않는다)
-      const sameQuestion = rows.filter(x => x.문항 === r.문항).length;
-      const deleteQuestion = () => {
-        if (!confirm(t('key.deleteQuestionConfirm', { n: r.문항, rows: sameQuestion }))) return;
-        const q = r.문항; rows = rows.filter(x => x.문항 !== q); touch(); renderTable();
-      };
       const desc = el('td', essay ? { colspan: '5' } : {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
       const actions = el('td', {}, el('div', { class: 'row' },
         el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
-        el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow')),
-        sameQuestion > 1 ? el('button', { class: 'danger', onclick: deleteQuestion }, t('key.deleteQuestion')) : null));
+        el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow'))));
       // 논술형의 인용 문장·용어는 길어서 표 칸(좁으면 70px 남짓)에 넣으면 한두 글자씩 끊긴다. 바로 아래 줄을 넓게 쓴다
       if (essay) return [
         el('tr', { class: 'essay-main' }, el('td', {}, num), el('td', {}, type), desc, el('td', {}, pointsCell), actions),
