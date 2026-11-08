@@ -5,6 +5,7 @@ import { setSheetDone } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
+import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { keyLine } from '../lib/item-review.js';
@@ -89,6 +90,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const editor = el('div', { class: 'editor' });
   const splitter = el('div', { class: 'splitter', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': t('review.splitter'), title: t('review.splitterHelp') });
   const grid = el('div', { class: 'review' }, list, viewer, splitter, editor);
+  // 좁은 창(1024 등)에서 그림 칸이 240px 남짓이라 장 목록을 접을 수 있게 한다. 접으면 좁은 띠만 남는다
+  list.prepend(collapseToggle({ target: grid, cls: 'list-collapsed', pref: 'geulnun.review.listCollapsed', label: t('review.list.title'), collapse: t('review.list.collapse'), expand: t('review.list.expand') }));
   const item = createItemPane(ctx, { notice, refresh: () => reload(), recordCases: () => recordCases, setRecordCases: on => { recordCases = on; remember(on); } });
   root.append(top, notice, grid, item.root);
 

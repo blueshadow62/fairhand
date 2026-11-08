@@ -4,6 +4,7 @@ import { unitChecked, type UnitResultItem } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
+import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { MASK_FILL, cropAspect, cropRect, gridColumns, identityInCrop, toPixels } from '../lib/answer-crop.js';
@@ -34,6 +35,9 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   const units = el('div', { class: 'units' });
   const groups = el('div', { class: 'groups' });
   const root = el('div', { class: 'item-review hidden' }, units, groups);
+  // 좁은 창에서 답 묶음·그림 칸을 넓히려고 단위 목록을 접는다. renderUnits가 목록을 다시 그릴 때마다 맨 위에 다시 붙인다
+  const unitsToggle = collapseToggle({ target: root, cls: 'units-collapsed', pref: 'geulnun.review.unitsCollapsed', label: t('item.units.title'),
+    collapse: t('item.units.collapse'), expand: t('item.units.expand'), focusKey: 'units-toggle' });
   let data: SetData | null = null;
   let unitId: string | null = null;
   let onlyUnchecked = false;
@@ -174,7 +178,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
 
   function renderUnits(): void {
     holdFocus();
-    clear(units);
+    units.replaceChildren(unitsToggle);
     if (!data) return;
     const d = data, sums = unitSummaries(d.key, d.transcripts), p = progress(d.key, d.transcripts);
     const only = el('input', { type: 'checkbox', 'data-focus': 'only', checked: onlyUnchecked, onchange: () => { onlyUnchecked = only.checked; renderUnits(); } });

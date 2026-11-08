@@ -1,6 +1,7 @@
 import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, type SetInfo, type Settings, type Theme, type UpdateStatus } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { badgeLabel } from './lib/badge.js';
+import { readCollapsed, writeCollapsed } from './lib/collapse.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
 import type { SettingsTab } from './lib/settings-form.js';
@@ -159,6 +160,18 @@ async function start(): Promise<void> {
   let lastProfileKey = '';
   store.subscribe(s => { const k = JSON.stringify([s.settings.사용중, s.settings.프로필]); if (k !== lastProfileKey) { lastProfileKey = k; void renderBadge(); } });
   void renderBadge();
+
+  // 좁은 창(1024 등)에서 검토 그림 칸을 넓히려고 왼쪽 메뉴를 숨긴다. 단추는 늘 머리글 맨 앞에 두고, 접은 상태는 다음 실행에도 기억한다(기본은 펼침)
+  const NAV_PREF = 'geulnun.navCollapsed';
+  const navBtn = el('button', { class: 'nav-toggle', 'aria-controls': 'tabs', onclick: () => { const on = !root.classList.contains('nav-collapsed'); showNav(on); writeCollapsed(NAV_PREF, on); } });
+  function showNav(collapsed: boolean): void {
+    root.classList.toggle('nav-collapsed', collapsed);
+    navBtn.title = t(collapsed ? 'app.nav.expand' : 'app.nav.collapse');
+    navBtn.setAttribute('aria-label', navBtn.title);
+    navBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+  root.querySelector('#top')?.prepend(navBtn);
+  showNav(readCollapsed(NAV_PREF));
 
   const back = takeTabAfterReload();
   if (store.state.settings.학기폴더) {
