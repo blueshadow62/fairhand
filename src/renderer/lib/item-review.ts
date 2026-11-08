@@ -1,6 +1,11 @@
 import { normalizeAnswer } from '../../core/rejudge.js';
-import type { AnswerKey, Panjeong, Transcript } from '../../core/types.js';
+import type { AnswerKey, Panjeong, QtyUnit, Transcript } from '../../core/types.js';
 import { representative, unitChecked } from '../../core/unit-results.js';
+import { t } from './i18n.js';
+
+/** 정답·허용·핵심 한 줄. 답안지별 검토의 정량 표와 문항별 검토의 머리가 같은 글을 쓴다 */
+export const keyLine = (u: QtyUnit): string => t('review.keyLine', { answer: u.정답,
+  allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
 
 /** 정량 단위에서 같은 답(normalizeAnswer 기준)을 쓴 장의 묶음. 장 번호는 단추가 보낼 곳으로만 쓰고 화면에 보이지 않는다 */
 export interface AnswerGroup { 정규: string; 대표: string; 장: number[]; 판정: Record<Panjeong, number>; 갈림: boolean; 확인: number }

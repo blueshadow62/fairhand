@@ -273,6 +273,59 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 /* 좁은 창: 양옆 단을 줄이고 확대 안내 글은 숨겨 그림 자리를 지킨다 */
 @media (max-width: 1200px) { .review { --list-w: 190px; --editor-default: 392px; } .review .viewer-bar .muted { display: none; } }
 
+/* ── 검토 머리 줄: 검토 방식 탭 + 제목 + 단추. 검토 칸 높이가 고정이라 줄이 바뀌지 않게 긴 세트 이름은 말줄임 ── */
+.review-head { flex-wrap: nowrap; }
+.review-head h2 { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-head > button { flex: none; }
+.seg { display: inline-flex; flex: none; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); overflow: hidden; }
+.seg button { min-height: 34px; border: 0; border-radius: 0; background: transparent; color: var(--text-2); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+
+/* ── 문항별 검토: 단위 목록 | 답 묶음. 신원을 숨기는 화면이라 학생 정보 칸이 없다 ── */
+.item-review { --units-w: 240px; display: grid; grid-template-columns: var(--units-w) minmax(0, 1fr);
+  height: calc(100vh - var(--top-h) - 132px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); overflow: hidden; }
+.item-review .units { overflow: auto; border-right: 1px solid var(--line); }
+.item-review .units .filters { padding: 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-m); }
+.item-review .unit-empty { padding: 10px 12px; }
+.item-review .unit { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-height: 0; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0;
+  background: transparent; color: inherit; font-weight: 400; font-size: var(--fs-m); line-height: 1.4; text-align: left; white-space: normal; }
+.item-review .unit:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line-2); }
+.item-review .unit.active { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 3px 0 0 var(--accent); }
+.item-review .unit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.item-review .unit .line { display: flex; gap: 8px; min-width: 0; }
+.item-review .unit .desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-review .unit .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-s); color: var(--text-2); }
+.item-review .unit.done .meta { color: var(--ok); }
+.item-review .tag-warn { display: inline-block; padding: 0 6px; border: 1px solid var(--warn-line); border-radius: var(--r-s); background: var(--warn-soft); color: var(--warn-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
+.item-review .ok-text { color: var(--ok); font-weight: 600; }
+.item-review .groups { overflow: auto; padding: 10px 14px 20px; }
+.item-review .ir-head { padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.item-review .ir-head .row { margin: 6px 0 4px; }
+.item-review .ir-head .unit-id { font-size: var(--fs-l); }
+.item-review .ir-head label { font-size: var(--fs-m); }
+.item-review .ir-desc { font-weight: 600; }
+.item-review .answer { white-space: pre-wrap; overflow-wrap: anywhere; } /* 긴 답(논술형)도 줄을 바꿔 다 보인다 */
+.item-review .group { margin: 8px 0; border: 1px solid var(--line-2); border-radius: var(--r); }
+.item-review .group.mixed { border-color: var(--warn-line); box-shadow: inset 3px 0 0 var(--warn-line); } /* '.split'은 문항 설정의 두 칸 배치가 쓴다 */
+.item-review .group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px; }
+.item-review .group-head .answer { flex: 1 1 180px; min-width: 0; font-weight: 600; }
+.item-review .twisty { flex: none; width: 30px; min-height: 30px; padding: 0; border-color: transparent; background: transparent; color: var(--text-2); font-size: 11px; }
+.item-review .group-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-m); color: var(--text-2); }
+.item-review .verdicts { display: inline-flex; flex: none; gap: 4px; }
+.item-review .verdicts button { min-width: 44px; min-height: 30px; padding: 0 10px; border-radius: var(--r-s); font-size: var(--fs-m); }
+.item-review .verdicts button.on.v-O { background: var(--ok-soft); border-color: var(--ok); }
+.item-review .verdicts button.on.v-X { background: var(--bad-soft); border-color: var(--bad); }
+.item-review .verdicts button.on.v-빈칸 { background: var(--surface-3); border-color: var(--line-h); color: var(--text); }
+.item-review .group-rows { border-top: 1px solid var(--line-2); background: var(--surface-2); }
+.item-review .answer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 8px 6px 46px; border-top: 1px solid var(--line-2); }
+.item-review .answer-row:first-child { border-top: 0; }
+.item-review .answer-row .anon { flex: none; min-width: 64px; color: var(--text-2); font-size: var(--fs-m); font-weight: 600; }
+.item-review .answer-row .answer { flex: 1 1 160px; min-width: 0; }
+.item-review .qual-list { margin-top: 8px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.item-review .qual-list .answer-row { padding-left: 10px; }
+@media (max-width: 1200px) { .item-review { --units-w: 200px; } }
+
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
 .screen[data-tab="settings"] > section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--sp-4) 18px; margin-bottom: var(--sp-4); }
 .screen[data-tab="settings"] > section:has(.card) { background: transparent; border: none; padding: 0; }

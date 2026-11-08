@@ -5,8 +5,10 @@ import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
+import { keyLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
+import { createItemPane } from './item-review.js';
 
 const sid = (t: { 학년: number | null; 반: number | null; 번호: number | null }) => `${t.학년 ?? '?'}-${t.반 ?? '?'}-${t.번호 ?? '?'}`;
 const numOrNull = (v: string) => (v.trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -73,7 +75,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   const guard = makeGuard(showError);
 
-  const top = el('div', { class: 'row' });
+  const top = el('div', { class: 'row review-head' });
   const notice = el('div');
   const listItems = el('div');
   const filters = el('div', { class: 'filters' });
@@ -84,7 +86,39 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const editor = el('div', { class: 'editor' });
   const splitter = el('div', { class: 'splitter', role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': t('review.splitter'), title: t('review.splitterHelp') });
   const grid = el('div', { class: 'review' }, list, viewer, splitter, editor);
-  root.append(top, notice, grid);
+  const item = createItemPane(ctx, { notice, refresh: () => reload(), recordCases: () => recordCases, setRecordCases: on => { recordCases = on; remember(on); } });
+  root.append(top, notice, grid, item.root);
+
+  // ── 검토 방식: 문항별(기본, 신원 숨김)·답안지별. 같은 실행 안에서는 마지막에 고른 쪽을 유지한다(언어를 바꿔 다시 불러와도) ──
+  type Mode = 'item' | 'sheet';
+  const MODE_PREF = 'geulnun.review.mode';
+  let mode: Mode = (() => { try { return sessionStorage.getItem(MODE_PREF) === 'sheet' ? 'sheet' : 'item'; } catch { return 'item'; } })();
+  const modeButtons = new Map<Mode, HTMLButtonElement>();
+  const seg = el('div', { class: 'seg', role: 'tablist', 'aria-label': t('review.mode') }, ...(['item', 'sheet'] as Mode[]).map(m => {
+    const b = el('button', { role: 'tab', onclick: () => void setMode(m) }, t(`review.mode.${m}`));
+    modeButtons.set(m, b);
+    return b;
+  }));
+  function showPanes(has: boolean): void {
+    for (const [m, b] of modeButtons) { b.classList.toggle('active', m === mode); b.setAttribute('aria-selected', String(m === mode)); }
+    grid.classList.toggle('hidden', !has || mode !== 'sheet');
+    item.root.classList.toggle('hidden', !has || mode !== 'item');
+  }
+  async function setMode(m: Mode): Promise<void> {
+    if (m === mode) return;
+    if (mode === 'sheet' && !(await leaveOk())) return; // 답안지별에서 고치던 것은 저장하거나 버린 뒤에 바꾼다
+    mode = m;
+    try { sessionStorage.setItem(MODE_PREF, m); } catch { /* 이번 화면에서만 유지 */ }
+    showPanes(true);
+    await reload(); // 다른 쪽에서 바뀐 전사를 읽고, 버리기로 한 고침도 지운다
+  }
+  const title = el('h2');
+  const rebuildBtn = el('button', { onclick: () => guard(async () => { if (!data) return; const r = await api.buildResult(data.폴더); showInfo(t('review.excelRebuilt', { path: r.엑셀 })); }) }, t('review.rebuildExcel'));
+  const cumulativeBtn = el('button', { onclick: () => guard(async () => {
+    const r = await api.buildCumulative();
+    clear(notice);
+    notice.append(el('div', { class: 'band info' }, t('review.cumulativeMade'), ...r.파일.map(f => el('div', { class: 'row' }, el('span', { class: 'path' }, f), el('button', { onclick: () => api.revealPath(f).catch(e => showError(e.message)) }, t('common.reveal'))))));
+  }) }, t('review.makeCumulative'));
 
   // ── 그림 칸과 전사 칸 사이를 끌어 너비 바꾸기. 두 칸의 최소 너비는 CSS(minmax)가 지킨다 ──
   const EDITOR_PREF = 'geulnun.review.editorWidth';
@@ -132,24 +166,21 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function reload(keepPage?: number): Promise<void> {
     const 폴더 = store.state.current;
     shownFor = 폴더;
-    clear(top); clear(notice);
-    if (!폴더) { data = null; T = null; notice.append(el('div', { class: 'muted' }, t('common.chooseSet'))); grid.classList.add('hidden'); return; }
-    grid.classList.remove('hidden');
+    clear(notice);
+    if (!폴더) { data = null; T = null; clear(top); notice.append(el('div', { class: 'muted' }, t('common.chooseSet'))); showPanes(false); item.render(null); return; }
+    showPanes(true);
     let d: SetData;
-    try { d = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
+    try { d = await api.readSet(폴더); } catch (e) { clear(top); showError((e as Error).message); return; }
     if (shownFor !== 폴더) return; // 기다리는 사이 다른 세트로 바뀌었으면 늦게 온 응답은 버린다
     data = d;
-    put(top, el('h2', {}, t('review.title', { name: 폴더 })),
-      el('button', { onclick: () => guard(async () => { const r = await api.buildResult(폴더); showInfo(t('review.excelRebuilt', { path: r.엑셀 })); }) }, t('review.rebuildExcel')),
-      el('button', { onclick: () => guard(async () => {
-        const r = await api.buildCumulative();
-        clear(notice);
-        notice.append(el('div', { class: 'band info' }, t('review.cumulativeMade'), ...r.파일.map(f => el('div', { class: 'row' }, el('span', { class: 'path' }, f), el('button', { onclick: () => api.revealPath(f).catch(e => showError(e.message)) }, t('common.reveal'))))));
-      }) }, t('review.makeCumulative')));
+    // 머리 줄은 비우지 않고 제목만 바꾼다. 문항별 검토는 판정마다 다시 읽어서, 비웠다 채우면 화면이 위아래로 튄다
+    title.textContent = t('review.title', { name: 폴더 });
+    if (!top.firstChild) put(top, seg, title, rebuildBtn, cumulativeBtn);
     renderFilters();
     const pages = order();
     const target = keepPage !== undefined && pages.includes(keepPage) ? keepPage : T && pages.includes(T.page) ? T.page : pages[0];
     if (target !== undefined) openPage(target); else { T = null; renderEditor(); renderList(); }
+    item.render(d);
   }
 
   function renderFilters(): void {
@@ -329,8 +360,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const ans = growArea(v.답, s => { v.답 = s; touch(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
-      const keyLine = t('review.keyLine', { answer: u.정답, allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
-      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine)), el('td', {}, ans), el('td', {}, sel));
+      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine(u))), el('td', {}, ans), el('td', {}, sel));
     });
     const qualRows = key.정성.map(u => {
       const v = tr.정성[u.id] ??= { 응답: false, 답: '' };
@@ -356,7 +386,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   document.addEventListener('keydown', e => {
-    if (root.classList.contains('hidden') || !T) return;
+    // 문항별 검토에서는 숨은 답안지별 장을 저장하거나 넘기지 않는다
+    if (root.classList.contains('hidden') || !T || mode !== 'sheet') return;
     if ((e.ctrlKey || (MAC && e.metaKey)) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } // 맥은 ⌘S
     // 한글 조합 중의 Enter는 글자 확정이다. 그때 넘기면 마지막 글자가 빠진 채 저장된다
     else if ((e.ctrlKey || (MAC && e.metaKey)) && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); void saveAndNext(); } // 맥은 ⌘Enter
