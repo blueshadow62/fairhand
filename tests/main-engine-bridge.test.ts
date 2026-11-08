@@ -57,6 +57,13 @@ test('startRun: 장마다 진행을 알리고 전사를 저장하며, 두 번 �
     assert.deepEqual(r.ok, [1, 2, 3]); assert.deepEqual(seen, [1, 2, 3]);
     assert.equal((await readdir(path.join(set, 'transcripts'))).length, 3);
     assert.ok(r.엑셀);
+    // 다음 전사의 예상 시간에 쓸 기록: 기본 프로필(Claude Code, 노력 기본값)로 3장. 가짜 제공자는 토큰을 알려 주지 않는다
+    const settings = new SettingsStore(path.join(dir, 'settings.json'));
+    const rec = (await settings.load()).전사기록?.['cli||medium'];
+    assert.deepEqual([rec?.장, rec?.토큰장], [3, 0]);
+    assert.ok(rec!.초 >= 0);
+    await bridge.tryPage(set, JPEG); // 시험 한 장도 같은 기록에 더한다
+    assert.equal((await settings.load()).전사기록?.['cli||medium']?.장, 4);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

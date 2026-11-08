@@ -54,19 +54,22 @@ test('transcribePage_retries_invalid_once', async () => {
 test('transcribeSet: 장마다 저장하고 실패는 기록하고 계속', async () => {
   const d = sampleSet([4, 5, 6]);
   const p = provider(page => (page === 5 ? new EngineError('refusal', '거절') : { output: good(page), model: 'm' }));
-  const seen: number[] = [];
-  const r = await transcribeSet(p, d, key, rules, [4, 5, 6], new AbortController().signal, { onProgress: e => seen.push(e.page) });
+  const seen: number[] = [], errors: (string | undefined)[] = [];
+  const r = await transcribeSet(p, d, key, rules, [4, 5, 6], new AbortController().signal, { onProgress: e => { seen.push(e.page); errors.push(e.error); } });
   assert.deepEqual(r.ok, [4, 6]); assert.deepEqual(r.failed.map(f => f.page), [5]); assert.deepEqual(r.skipped, []);
   assert.ok(existsSync(path.join(d, 'transcripts', 'p04.json')) && !existsSync(path.join(d, 'transcripts', 'p05.json')));
   assert.deepEqual(seen, [4, 5, 6]);
+  assert.deepEqual(errors, [undefined, r.failed[0]!.error, undefined]); // 실패한 장의 알림에는 오류를 실어, 걸린 시간을 잴 때 뺀다
 });
 
 test('transcribe_set_skips_existing', async () => {
   const d = sampleSet([1, 4]); // p01.json은 픽스처(선생님 확인본)에 이미 있다
   const before = readFileSync(path.join(d, 'transcripts', 'p01.json'), 'utf-8');
   const p = provider(page => ({ output: good(page), model: 'm' }));
-  const r = await transcribeSet(p, d, key, rules, [1, 4], new AbortController().signal);
+  const skippedFlags: (boolean | undefined)[] = [];
+  const r = await transcribeSet(p, d, key, rules, [1, 4], new AbortController().signal, { onProgress: e => skippedFlags.push(e.skipped) });
   assert.deepEqual(r.skipped, [1]); assert.deepEqual(r.ok, [4]);
+  assert.deepEqual(skippedFlags, [true, undefined]); // 건너뛴 장은 알림에 표시해 걸린 시간을 재지 않는다
   assert.equal(readFileSync(path.join(d, 'transcripts', 'p01.json'), 'utf-8'), before);
   const r2 = await transcribeSet(p, d, key, rules, [1], new AbortController().signal, { force: true });
   assert.deepEqual(r2.ok, [1]);

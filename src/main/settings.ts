@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DataError } from '../core/types.js';
+import type { RunStat } from '../shared/estimate.js';
 import { EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
 
 export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
@@ -39,6 +40,20 @@ function parseProfile(v: unknown, platform: NodeJS.Platform): Profile | null {
   return p;
 }
 
+const MAX_STAT_KEYS = 50;
+/** 전사기록: 열쇠는 짧은 글자, 값은 0 이상의 유한한 수 다섯 개. 하나라도 틀린 항목은 버린다(예상에만 쓰므로 버려도 다시 쌓인다) */
+function parseStats(v: unknown): Record<string, RunStat> | undefined {
+  if (!isObj(v)) return undefined;
+  const out: Record<string, RunStat> = {};
+  for (const [k, s] of Object.entries(v).slice(0, MAX_STAT_KEYS)) {
+    if (!k || k.length > 100 || !isObj(s)) continue;
+    const nums = [s.장, s.초, s.토큰장, s.입력, s.출력];
+    if (!nums.every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) continue;
+    out[k] = { 장: s.장 as number, 초: s.초 as number, 토큰장: s.토큰장 as number, 입력: s.입력 as number, 출력: s.출력 as number };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** 기본 프로필을 보장하고, 사용중이 목록에 없으면 기본 프로필로 */
 function normalize(s: Settings): Settings {
   const 프로필 = s.프로필.some(p => p.id === DEFAULT_PROFILE.id) ? s.프로필 : [{ ...DEFAULT_PROFILE }, ...s.프로필];
@@ -51,6 +66,7 @@ export function parseSettings(raw: unknown, platform: NodeJS.Platform = process.
   if (!isObj(raw)) return d;
   const 프로필 = Array.isArray(raw.프로필) ? raw.프로필.map(v => parseProfile(v, platform)).filter((p): p is Profile => p !== null) : d.프로필;
   const seen = new Set<string>();
+  const 전사기록 = parseStats(raw.전사기록);
   return normalize({
     학기폴더: optAbs(raw.학기폴더, platform) ?? null,
     명단: optAbs(raw.명단, platform) ?? null,
@@ -61,6 +77,7 @@ export function parseSettings(raw: unknown, platform: NodeJS.Platform = process.
     자동업데이트: raw.자동업데이트 !== false,
     자동설치: raw.자동설치 === true, // 묻지 않고 받는 것은 사용자가 켰을 때만
     화면색: (THEMES as readonly unknown[]).includes(raw.화면색) ? (raw.화면색 as Theme) : THEMES[0],
+    ...(전사기록 ? { 전사기록 } : {}),
   });
 }
 

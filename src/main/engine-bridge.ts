@@ -22,6 +22,7 @@ import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type CaseResult, type CaseRevertResult, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type SaveKeyResult, type UnitResultsResult } from '../shared/ipc.js';
+import { addRun, runMeter, statKey, type RunStat } from '../shared/estimate.js';
 import { openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -161,11 +162,24 @@ export class EngineBridge {
     const { key } = await this.confirmedSet(setDir);
     const image = (await imageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
     return this.exclusive(async signal => {
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort();
+      const meter = runMeter(); // 시험 한 장도 같은 일이라 예상 기록에 더한다(전사 시작 전에 예상을 보이려고 먼저 해 보는 경우가 많다)
       // 저장하지 않는 시험이라 장 번호는 쓰이지 않지만, 전사 검사가 1 이상을 요구한다(0으로 물으면 모델이 0을 돌려줘 늘 실패했다)
-      const { transcript } = await transcribePage(await this.provider(), { imageJpegBase64: image, key, rules: await loadRules(), page: 1, effort: await this.effort() }, signal);
+      const { transcript, inputTokens, outputTokens } = await transcribePage(provider, { imageJpegBase64: image, key, rules, page: 1, effort }, signal);
+      meter.add({ inputTokens, outputTokens });
+      await this.recordRun(profile, meter.stat);
       const roster = await this.rosterOrNull();
       return roster ? matchRoster(transcript, key, roster).transcript : transcript;
     });
+  }
+
+  /** 다음 전사의 예상 시간·비용에 쓸 기록을 설정에 더한다(AI 설정마다). 예상에만 쓰므로 적지 못해도 전사 결과는 그대로 둔다 */
+  private async recordRun(profile: Profile, run: RunStat): Promise<void> {
+    if (run.장 <= 0) return;
+    try {
+      const k = statKey(profile), s = await this.deps.settings.load();
+      await this.deps.settings.save({ 전사기록: { ...s.전사기록, [k]: addRun(s.전사기록?.[k], run) } });
+    } catch { /* 예상 기록을 못 적은 것은 알리지 않는다 */ }
   }
 
   /** 세트 폴더의 엑셀을 다시 만든다. 실패는 메시지로만 */
@@ -378,7 +392,10 @@ export class EngineBridge {
       const { key } = await this.confirmedSet(setDir);
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
-      const r = await transcribeSet(await this.provider(), setDir, key, await loadRules(), pages, ac.signal, { force: opts.force, onProgress, effort: await this.effort(), maskJpeg: this.deps.maskJpeg, roster: await this.rosterOrNull() });
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), roster = await this.rosterOrNull();
+      const meter = runMeter(); // 장마다 걸린 시간·토큰(다음 전사의 예상 시간·비용에 쓴다)
+      const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster });
+      await this.recordRun(profile, meter.stat);
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }
       catch (e) { result.엑셀오류 = e instanceof Error ? e.message : String(e); }

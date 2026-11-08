@@ -28,7 +28,8 @@ export async function transcribePage(provider: TranscribeProvider, input: Omit<T
 
 export interface TranscribeOptions {
   effort?: Effort;
-  onProgress?: (e: { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number }) => void;
+  /** skipped: 이미 전사해 건너뛴 장, error: 실패한 장. 걸린 시간을 잴 때 둘을 뺀다 */
+  onProgress?: (e: { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string; skipped?: boolean }) => void;
   outDir?: string;
   force?: boolean;
   maskJpeg?: JpegMasker;
@@ -46,7 +47,7 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
   for (const page of pages) {
     if (signal.aborted) break;
     const name = transcriptFileName(page);
-    if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length }); continue; }
+    if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length, skipped: true }); continue; }
     try {
       const image = (await imageToSend(await readFile(path.join(setDir, 'pages', pageImageName(page))), key, opts.maskJpeg)).toString('base64');
       const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort }, signal);
@@ -56,8 +57,9 @@ export async function transcribeSet(provider: TranscribeProvider, setDir: string
       opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
     } catch (e) {
       if (e instanceof EngineError && e.kind === 'cancelled') break;
-      failed.push({ page, error: userFacingMessage(e) }); done++;
-      opts.onProgress?.({ page, done, total: pages.length });
+      const error = userFacingMessage(e);
+      failed.push({ page, error }); done++;
+      opts.onProgress?.({ page, done, total: pages.length, error });
       // 로그인·설치·버전 문제는 다음 장도 똑같이 실패하므로 멈춘다
       if (e instanceof EngineError && ['signed-out', 'not-installed', 'needs-update'].includes(e.kind)) break;
     }

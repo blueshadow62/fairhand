@@ -1,6 +1,7 @@
 import type { CaseChange, CaseRevertRequest } from '../core/cases.js';
 import type { AnswerKey, Case, MaskRect, Student, Transcript, UploadRecord } from '../core/types.js';
 import type { ChangedAnswerCase } from '../core/unit-map.js';
+import type { RunStat } from './estimate.js';
 import type { UnitResultsRequest } from '../core/unit-results.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
@@ -30,7 +31,8 @@ export type Language = 'ko' | 'en';
 /** 화면 색. 값은 styles.css의 :root[data-theme]와 짝이다. 맨 앞이 기본 */
 export const THEMES = ['sky', 'dawn', 'dark'] as const;
 export type Theme = typeof THEMES[number];
-export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 자동설치: boolean; 화면색: Theme }
+/** 전사기록: AI 설정(statKey)마다 최근 전사의 장당 시간·토큰. 채점 실행의 예상 시간·비용에 쓰고, 메인이 전사가 끝날 때 적는다 */
+export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 자동설치: boolean; 화면색: Theme; 전사기록?: Record<string, RunStat> }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string; minVersion?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
@@ -40,7 +42,8 @@ export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcri
 /** 정답표 저장 결과. 정리: 단위 id가 다시 매겨져 사례·답 칸을 같은 뜻의 새 id로 옮긴 수와, 같은 뜻의 단위가 없어 지운 수 */
 /** 정리: 단위 번호가 바뀌어 옮기거나 지운 사례·답 칸 수. 정답바뀐사례: 정답·허용이 바뀐 단위에 그대로 둔 사례(선생님이 확인할 것) */
 export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: number; 지움: number }; 답칸: { 옮김: number; 지움: number } }; 정답바뀐사례: ChangedAnswerCase[] }
-export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
+/** skipped: 이미 전사해 건너뛴 장(걸린 시간을 재지 않는다), error: 실패한 장 */
+export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string; skipped?: boolean }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
 /** 다시확인: 다시 판정(규칙·모델)이 이미 확인한 판정을 바꿔 확인을 푼 장. 다시 판정만 채운다 */

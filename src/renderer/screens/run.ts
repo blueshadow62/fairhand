@@ -9,6 +9,8 @@ import { canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, type Rotation, t
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
+import { runMeter } from '../../shared/estimate.js';
+import { estimateLine, liveEstimateText } from '../lib/run-estimate.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
 import { appendFiles, coversSaved, dropSlot, hasFile, moveBefore, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
@@ -652,7 +654,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const tr = await api.tryPage(폴더, await fileToJpeg(f, store.state.settings.기본회전));
       clear(tryBox); tryBox.append(transcriptTable(key, tr));
     } catch (e) { clear(tryBox); showError((e as Error).message); }
-    finally { trying = false; renderRun(); renderUpload(); }
+    finally { trying = false; await refreshEstimates(); renderRun(); renderUpload(); }
+  }
+
+  /** 메인은 전사·시험 한 장이 끝날 때 장당 시간·토큰을 설정에 적는다. 예상 줄이 새 기록을 쓰게 설정을 다시 읽는다 */
+  async function refreshEstimates(): Promise<void> {
+    try { store.update({ settings: await api.getSettings() }); } catch { /* 예상 줄만 옛 기록으로 남는다 */ }
   }
 
   // ── 전사 ──
@@ -667,17 +674,22 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const profile = store.state.settings.프로필.find(p => p.id === store.state.settings.사용중);
     const price = priceOf(profile); // 실제 청구와 다를 수 있는 추정. 구독과 단가를 모르는 API는 보이지 않는다
     if (coversSaved(justSaved, opts.pages)) justSaved = []; // 전사한 뒤에는 '새로 저장한 N장 전사하기'가 할 일이 없다
+    // 이번에 실제로 전사할 장(이미 전사한 장은 메인이 건너뛴다). 남은 시간은 이 수에서 처리한 장을 빼서 어림한다
+    const target = opts.pages ?? data.pages;
+    const toDo = opts.force ? target.length : pendingPages(target, data.transcripts).length;
     running = true; renderUpload(); renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
     const started = Date.now();
+    const meter = runMeter();
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
       const sec = Math.round((Date.now() - started) / 1000);
-      const cost = price ? t('run.costEstimate', { cost: costUsd(price, inTok, outTok).toFixed(2) }) : '';
-      progressText.textContent = t('run.progress', { done, total, sec, in: inTok, out: outTok, cost });
+      const spent = price ? costUsd(price, inTok, outTok) : 0;
+      const cost = price ? t('run.costEstimate', { cost: spent.toFixed(2) }) : '';
+      progressText.textContent = t('run.progress', { done, total, sec, in: inTok, out: outTok, cost }) + liveEstimateText(meter, toDo, price, spent);
       progressBar.max = Math.max(total, 1); progressBar.value = done;
     };
     const timer = setInterval(tick, 1000);
-    const off = api.onProgress((e: ProgressEvent) => { done = e.done; total = e.total; inTok += e.inputTokens ?? 0; outTok += e.outputTokens ?? 0; tick(); });
+    const off = api.onProgress((e: ProgressEvent) => { meter.add(e); done = e.done; total = e.total; inTok += e.inputTokens ?? 0; outTok += e.outputTokens ?? 0; tick(); });
     tick();
     // 메인은 창에 초점이 없을 때만 띄운다(다른 창을 보던 사람만 알림이 필요하다)
     const notify = (title: string, body: string) => void api.notify(title, body).catch(() => undefined);
@@ -688,8 +700,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     } catch (e) { showError((e as Error).message); notify(t('run.notify.failed', { name: 폴더 }), (e as Error).message); }
     finally {
       clearInterval(timer); off(); tick(); running = false;
-      // 전사할 장 수와 장 그림의 학생 표시가 이번 전사를 반영하게 새로 읽은 뒤 그린다
+      // 전사할 장 수와 장 그림의 학생 표시가 이번 전사를 반영하게 새로 읽은 뒤 그린다. 메인이 적은 예상 기록(설정)도 다시 읽는다
       if (store.state.current === 폴더) data = await api.readSet(폴더).catch(() => data);
+      await refreshEstimates();
       renderCounts(); renderUpload(); renderRun(); renderThumbs(); renderPrivacy();
       await store.refreshSets().catch(() => undefined);
     }
@@ -727,8 +740,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const confirmed = data.key.확인?.완료 === true;
     tryInput.disabled = running || trying || !confirmed;
     const pending = pendingPages(data.pages, data.transcripts).length;
+    const s = store.state.settings, estimate = running ? '' : estimateLine(s.프로필.find(p => p.id === s.사용중), s.전사기록, pending);
     put(runBox,
-      el('div', { class: 'run-ai' }, aiLine(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending }))),
+      el('div', { class: 'run-ai' }, aiLine(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending })),
+        estimate ? el('div', { class: 'muted' }, estimate) : null),
       el('div', { class: 'row' },
         el('button', { class: 'primary', disabled: running || trying || !confirmed || !data.pages.length, onclick: () => void run({ force: false }) }, t('run.start')),
         el('button', { class: 'danger', disabled: !running, onclick: () => api.cancelRun().catch(e => showError(e.message)) }, t('run.cancel')),

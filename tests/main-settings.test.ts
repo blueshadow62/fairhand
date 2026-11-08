@@ -83,6 +83,15 @@ test('SettingsStore: 없으면 기본값, 저장은 원자적이고 다시 읽�
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('parseSettings: 전사기록은 0 이상의 유한한 수 다섯 개인 항목만 두고, 없거나 다 틀리면 칸을 두지 않는다. 다른 칸 저장에도 그대로', () => {
+  const ok = { 장: 3, 초: 120.5, 토큰장: 3, 입력: 9000, 출력: 2400 };
+  const s = parseSettings({ 전사기록: { 'api|claude-opus-5-5|medium': ok, 'cli||medium': { ...ok, 초: -1 }, x: { ...ok, 장: '3' }, '': ok, y: null, z: { ...ok, 출력: Infinity } } });
+  assert.deepEqual(s.전사기록, { 'api|claude-opus-5-5|medium': ok });
+  assert.equal('전사기록' in parseSettings({ 전사기록: { a: { 장: Number.NaN } } }), false);
+  assert.equal('전사기록' in parseSettings({}), false);
+  assert.deepEqual(applyPatch(s, { 언어: 'en' }).전사기록, s.전사기록);
+});
+
 test('parseSettings: 프로필의 모델·노력은 허용 값만 남는다', () => {
   const s = parseSettings({ 프로필: [{ id: 'a', 이름: 'A', 종류: 'cli', 모델: 'claude-sonnet-5-5', 노력: 'low' }, { id: 'b', 이름: 'B', 종류: 'api', 모델: 'gpt', 노력: '최대' }] });
   const a = s.프로필.find(p => p.id === 'a')!, b = s.프로필.find(p => p.id === 'b')!;
