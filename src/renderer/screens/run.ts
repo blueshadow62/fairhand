@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
 import type { MaskRect, UploadRecord } from '../../core/types.js';
 import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
+import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 
 // API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
@@ -281,21 +282,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     dragRect = null; renderPrivacy();
   }
 
-  const canvasPoint = (e: PointerEvent) => {
-    const b = maskCanvas.getBoundingClientRect();
-    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
-  };
-  let dragFrom: { x: number; y: number } | null = null;
-  maskCanvas.addEventListener('pointerdown', e => { if (running || !data?.key.이름가림) return; dragFrom = canvasPoint(e); maskCanvas.setPointerCapture(e.pointerId); });
-  maskCanvas.addEventListener('pointermove', e => {
-    if (!dragFrom) return;
-    const p = canvasPoint(e);
-    dragRect = { x: Math.min(p.x, dragFrom.x), y: Math.min(p.y, dragFrom.y), w: Math.abs(p.x - dragFrom.x), h: Math.abs(p.y - dragFrom.y) };
-    drawMask();
-  });
-  maskCanvas.addEventListener('pointerup', () => {
-    const r = dragRect; dragFrom = null;
-    if (r && r.w > 0.01 && r.h > 0.005) void saveMask(r); else { dragRect = null; drawMask(); } // 그냥 누른 것은 영역으로 치지 않는다
+  attachRectDrag(maskCanvas, {
+    enabled: () => !running && !!data?.key.이름가림,
+    onMove: r => { dragRect = r; drawMask(); },
+    onDone: r => { if (r) void saveMask(r); else { dragRect = null; drawMask(); } },
   });
 
   async function matchWithRoster(): Promise<void> {
