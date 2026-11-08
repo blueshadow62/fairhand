@@ -50,6 +50,16 @@ test('withRetry: 재시도 가능한 오류만 정해진 횟수만큼 다시 한
   assert.equal(n, 3);
 });
 
+test('withRetry: 시간 초과는 한 번만 다시 묻는다(다른 재시도 오류와 섞여도 시간 초과 두 번이면 멈춤)', async () => {
+  let n = 0;
+  await assert.rejects(withRetry(async () => { n++; throw new EngineError('timeout', 'x'); }, new AbortController().signal, [1, 1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'timeout');
+  assert.equal(n, 2);
+  n = 0;
+  const kinds = ['timeout', 'network', 'timeout'] as const;
+  await assert.rejects(withRetry(async () => { throw new EngineError(kinds[n++]!, 'x'); }, new AbortController().signal, [1, 1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'timeout');
+  assert.equal(n, 3);
+});
+
 test('withRetry: 중단되면 바로 cancelled', async () => {
   const ac = new AbortController(); ac.abort();
   await assert.rejects(withRetry(async () => 1, ac.signal), (e: unknown) => e instanceof EngineError && e.kind === 'cancelled');

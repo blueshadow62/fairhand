@@ -11,6 +11,12 @@ import { locateClaude, type ClaudeProgram } from './status.js';
 export interface CliDeps { program?: ClaudeProgram | null; spawn?: typeof nodeSpawn; timeoutMs?: number; killTree?: (pid: number) => void; model?: string; env?: NodeJS.ProcessEnv }
 
 /**
+ * 한 번 부를 때의 시간 한도. 2026-11-08부터 손글씨 장 하나가 노력 '중간'에서 3~5분 걸려(11-06에는 30초 안팎) 5분 한도에서 실패했다.
+ * 다시 묻기는 시간 초과에 한 번뿐(withRetry)이라 한 장이 아무리 길어도 30분을 넘지 않는다
+ */
+export const CLI_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
  * 맥·리눅스에서 kill(-pid)로 손자 프로세스까지 한 번에 끄려면 자식이 새 프로세스 묶음(그룹)의 대표여야 한다.
  * 묶음 없이 띄우면 그 번호의 묶음이 없어 끄기가 조용히 실패하고 AI 도구가 계속 돈다. Windows는 taskkill /T가 트리를 끈다.
  */
@@ -35,7 +41,7 @@ export class CliProvider implements TranscribeProvider {
     this.model = deps.model ?? MODEL;
     this.program = deps.program === undefined ? locateClaude() : deps.program;
     this.spawn = deps.spawn ?? nodeSpawn;
-    this.timeoutMs = deps.timeoutMs ?? 300_000;
+    this.timeoutMs = deps.timeoutMs ?? CLI_TIMEOUT_MS;
     this.killTree = deps.killTree ?? killProcessTree;
     this.env = deps.env ?? childEnv(process.env);
   }

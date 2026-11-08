@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { ApiProvider, buildRequest, classifyApiError } from '../src/engine/api.js';
+import { ApiProvider, MAX_TOKENS, REQUEST_TIMEOUT_MS, buildRequest, classifyApiError } from '../src/engine/api.js';
 import { EngineError, transcribeRequest } from '../src/engine/provider.js';
 import { loadRules } from '../src/engine/rules.js';
 
@@ -18,7 +18,8 @@ const fakeClient = (reply: any) => {
 test('buildRequest: 모델·스키마·그림·effort·fallbacks', () => {
   const r = buildRequest(transcribeRequest(input)) as any;
   assert.equal(r.model, 'claude-opus-5-5');
-  assert.equal(r.max_tokens, 16000);
+  assert.equal(r.max_tokens, MAX_TOKENS);
+  assert.ok(MAX_TOKENS >= 32000); // 손글씨 장 하나가 생각을 포함해 3만 토큰 가까이 쓴다(2026-11-08)
   assert.equal(r.output_config.effort, 'high');
   assert.equal(r.output_config.format.type, 'json_schema');
   assert.deepEqual(r.output_config.format.schema.properties.quant.items.properties.id.enum, ['1-1', '3-1']);
@@ -41,6 +42,16 @@ test('ApiProvider: 거절·텍스트 없음·JSON 아님', async () => {
   await assert.rejects(new ApiProvider({ client: fakeClient({ stop_reason: 'refusal', content: [], usage: {} }).client }).transcribe(input, sig), (e: unknown) => e instanceof EngineError && e.kind === 'refusal');
   await assert.rejects(new ApiProvider({ client: fakeClient({ stop_reason: 'end_turn', content: [], usage: {} }).client }).transcribe(input, sig), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
   await assert.rejects(new ApiProvider({ client: fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{깨짐' }], usage: {} }).client }).transcribe(input, sig), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+});
+
+test('ApiProvider: 길이 한도에 걸려 잘린 답은 다시 묻지 않는 오류로, 요청마다 시간 한도를 준다(SDK의 긴 요청 막기를 피함)', async () => {
+  const cut = fakeClient({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"page": 2, "quant": [' }], usage: { output_tokens: MAX_TOKENS } });
+  await assert.rejects(new ApiProvider({ client: cut.client }).transcribe(input, new AbortController().signal),
+    (e: unknown) => e instanceof EngineError && e.kind === 'other' && /길이 한도/.test(e.message));
+  const opts: any[] = [];
+  const ok = { beta: { messages: { create: async (_p: any, o: any) => { opts.push(o); return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(out) }], usage: {} }; } } } };
+  await new ApiProvider({ client: ok }).transcribe(input, new AbortController().signal);
+  assert.equal(opts[0].timeout, REQUEST_TIMEOUT_MS);
 });
 
 test('classifyApiError: 상태 코드별 종류', () => {

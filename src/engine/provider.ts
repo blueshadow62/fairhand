@@ -58,12 +58,18 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((res, rej) 
 });
 
 /** 네트워크·과부하·한도·시간 초과는 2·4·8초 뒤 다시(최대 3회). 그 밖의 오류는 바로 던진다. */
+/**
+ * 재시도 가능한 오류는 waits만큼 기다렸다가 다시 한다. 시간 초과는 한 번만 다시 묻는다: 생각이 긴 장은 다시 물어도 또 넘기 쉬워,
+ * 네 번 기다리면 한 장에 한 시간 가까이 쓰고 실패한다(2026-11-08, 5분 한도에서 한 장이 약 20분 뒤 실패)
+ */
 export async function withRetry<T>(fn: () => Promise<T>, signal: AbortSignal, waits = [2000, 4000, 8000]): Promise<T> {
+  let timeouts = 0;
   for (let i = 0; ; i++) {
     if (signal.aborted) throw new EngineError('cancelled', '중단됨');
     try { return await fn(); }
     catch (e) {
       if (!(e instanceof EngineError) || !RETRYABLE.has(e.kind) || i >= waits.length) throw e;
+      if (e.kind === 'timeout' && ++timeouts > 1) throw e;
       await sleep(waits[i]!, signal);
     }
   }
