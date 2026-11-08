@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildAllCumulative, friendlyFsError, rebuildResult, saveAndRebuild } from '../src/main/results.js';
+import { buildAllCumulative, friendlyFsError, latestResult, rebuildResult, saveAndRebuild } from '../src/main/results.js';
 import { loadSet } from '../src/core/setio.js';
 import { DataError } from '../src/core/types.js';
 
@@ -23,6 +23,22 @@ test('rebuildResult: 세트 폴더에 채점결과 엑셀을 만든다', async (
     const r = await rebuildResult(path.join(dir, '세트A'), null, deps);
     assert.ok(r.엑셀.endsWith('_채점결과_2026-11-06.xlsx'));
     assert.ok((await readdir(path.join(dir, '세트A'))).some(n => n.endsWith('.xlsx')));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('latestResult: 가장 최근에 쓴 채점결과 엑셀, 잠금 파일·누가기록은 빼고, 없으면 null', async () => {
+  const dir = await semester();
+  try {
+    const set = path.join(dir, '세트A');
+    assert.equal(await latestResult(set), null);
+    const at = async (name: string, minutes: number) => { const f = path.join(set, name); await writeFile(f, ''); const t = new Date(2026, 10, 6, 10, minutes); await utimes(f, t, t); return f; };
+    await at('2026-2학기_1학년_1반_봄비_채점결과_2026-11-05.xlsx', 1);
+    // 정답표에서 반을 고쳐 이름이 달라져도 나중에 쓴 파일이 지금 결과다
+    const newest = await at('2026-2학기_1학년_1·2반_봄비_채점결과_2026-11-04.xlsx', 5);
+    await at('~$26-2학기_1학년_1·2반_봄비_채점결과_2026-11-04.xlsx', 9); // 엑셀이 열어 둔 동안의 잠금 파일
+    await at('2026-2학기_1학년_누가기록_2026-11-06.xlsx', 9);
+    assert.equal(await latestResult(set), newest);
+    assert.equal(await latestResult(path.join(dir, '없는 세트')), null);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

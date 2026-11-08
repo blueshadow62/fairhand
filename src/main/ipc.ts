@@ -13,7 +13,7 @@ import type { EngineBridge } from './engine-bridge.js';
 import { leaveChoice, leaveDialogOptions, pickFileOptions, type PickKind } from './dialogs.js';
 import { listSets, nextPageNumber, pageFile, pagesToDelete, resolveSetDir, uniqueFolderName } from './paths.js';
 import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
-import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
+import { buildAllCumulative, latestResult, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
@@ -170,6 +170,14 @@ export function registerIpc(d: IpcDeps): void {
 
   h(CHANNELS.saveTranscript, async (폴더: string, raw: unknown) => { const dir = await setDir(폴더); const t = parseTranscript(JSON.stringify(raw), '검토 화면'); return saveAndRebuild(dir, t, await roster(), { version: d.version }); });
   h(CHANNELS.buildResult, async (폴더: string) => rebuildResult(await setDir(폴더), await roster(), { version: d.version }));
+  // 렌더러는 세트 이름만 보내고, 열 파일은 메인이 그 세트 폴더 안에서 고른다(아무 경로나 열게 하지 않는다)
+  h(CHANNELS.openResult, async (폴더: string) => {
+    const dir = await setDir(폴더);
+    const file = (await latestResult(dir)) ?? (await rebuildResult(dir, await roster(), { version: d.version })).엑셀;
+    const error = await shell.openPath(file); // 못 열면 까닭을 글로 돌려준다(빈 글이면 열림)
+    if (error) throw new DataError(`엑셀 파일을 열지 못했습니다: ${error}`);
+    return file;
+  });
   h(CHANNELS.setUnitResults, async (폴더: string, req: unknown) => d.bridge.setUnitResults(await setDir(폴더), req)); // 요청 모양은 bridge가 검사한다
   h(CHANNELS.applyCase, async (폴더: string, c: unknown) => d.bridge.applyCase(await setDir(폴더), c)); // 요청 모양은 bridge가 검사한다
   h(CHANNELS.revertCase, async (폴더: string, req: unknown) => d.bridge.revertCase(await setDir(폴더), req));

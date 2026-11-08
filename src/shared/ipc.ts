@@ -63,7 +63,7 @@ export const CHANNELS = {
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
-  saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
+  saveTranscript: 'review:save', buildResult: 'review:build-result', openResult: 'review:open-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
   setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', matchRoster: 'roster:match',
   applyCase: 'case:apply', revertCase: 'case:revert', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
@@ -115,6 +115,8 @@ export interface GeulnunApi {
   /** 문항별 검토: 한 단위의 여러 장 판정(정량)·응답(정성)을 정하고 확인 표시. 다른 단위는 그대로 두고, 판정이 바뀌면 엑셀을 한 번만 다시 만든다 */
   setUnitResults(폴더: string, req: UnitResultsRequest): Promise<UnitResultsResult>;
   buildResult(폴더: string): Promise<{ 엑셀: string }>;
+  /** 세트의 가장 새 채점결과 엑셀을 PC에 깔린 프로그램(엑셀 등)으로 연다. 아직 없으면 만든 뒤 연다. 연 파일 경로를 돌려준다 */
+  openResult(폴더: string): Promise<string>;
   buildCumulative(): Promise<{ 파일: string[] }>;
   /** 사례를 기록하고 같은 단위에 같은 답을 쓴 장만 사례 판정으로 바꾼다(답안지별 검토, 사례로 기록이 켜져 있을 때) */
   applyCase(폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }): Promise<CaseResult>;
