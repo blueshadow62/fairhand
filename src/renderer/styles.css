@@ -68,6 +68,9 @@ html, body { margin: 0; height: 100%; }
 body { font-family: var(--font); font-size: var(--fs); line-height: 1.5; color: var(--text); background: var(--bg); word-break: keep-all; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .hidden { display: none !important; }
+/* 마우스를 올리면 뜨는 설명(lib/tip.ts). 글자색·바탕색을 뒤집어 어느 화면 색에서도 눈에 띈다 */
+.tip { position: fixed; z-index: 50; max-width: 400px; padding: 8px 11px; border-radius: var(--r); background: var(--text); color: var(--surface); font-size: var(--fs-s); font-weight: 400; line-height: 1.55; white-space: pre-line; word-break: keep-all; overflow-wrap: anywhere; box-shadow: 0 6px 18px var(--shadow); pointer-events: none; }
+th.has-tip, span.has-tip { cursor: help; text-decoration: underline dotted var(--text-3); text-underline-offset: 4px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 

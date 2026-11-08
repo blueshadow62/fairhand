@@ -5,6 +5,7 @@ import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { locale, t } from '../lib/i18n.js';
 import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-utils.js';
+import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
@@ -182,7 +183,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function renderTable(): void {
     clear(tableBox);
-    const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), t('key.col.points'), ''].map(h => el('th', {}, h)));
+    hideTip(); // 다시 그리면 설명을 띄운 칸이 사라져 mouseleave가 오지 않는다
+    // 칸 이름에 마우스를 올리면 그 칸에 무엇을 쓰는지(유형은 여섯 유형의 뜻) 보인다
+    const typeTip = [t('key.tip.type'), ...UNIT_TYPES.map(u => `${t(`unit.${u}`)}: ${t(`unit.tip.${u}`)}`)].join('\n');
+    const cols: [string, string][] = [[t('key.col.question'), t('key.tip.question')], [t('key.col.type'), typeTip], [t('key.col.desc'), t('key.tip.desc')],
+      [t('key.col.answer'), t('key.tip.answer')], [t('key.col.allow'), t('key.tip.allow')], [t('key.col.keywords'), t('key.tip.keywords')],
+      [t('key.col.elements'), t('key.tip.elements')], [t('key.col.points'), t('key.tip.points')], ['', '']];
+    const head = el('tr', {}, ...cols.map(([h, text]) => (text ? tip(el('th', {}, h), text) : el('th', {}, h))));
     const body = rows.flatMap((r, i) => {
       // 논술형은 요소에 인용할 문장, 핵심에 써야 할 용어를 담는다(정답·허용은 쓰지 않음)
       const essay = r.유형 === '논술형';
@@ -193,7 +200,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         ? el('div', { class: 'essay-points' }, el('label', {}, t('key.essay.quote'), pointsIn('배점', t('key.essay.quotePoints'))), el('label', {}, t('key.essay.term'), pointsIn('용어배점', t('key.essay.termPoints'))))
         : pointsIn('배점', t('key.col.points'));
       const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
-      const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
+      const type = tip(el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`)))),
+        () => `${t(`unit.${r.유형}`)}: ${t(`unit.tip.${r.유형}`)}`);
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
       const desc = el('td', essay ? { colspan: '5' } : {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
       const actions = el('td', {}, el('div', { class: 'row' },
@@ -203,8 +211,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       if (essay) return [
         el('tr', { class: 'essay-main' }, el('td', {}, num), el('td', {}, type), desc, el('td', {}, pointsCell), actions),
         el('tr', { class: 'essay-detail' }, el('td', { colspan: '2' }), el('td', { colspan: '7' }, el('div', { class: 'essay-fields' },
-          el('label', {}, t('key.essay.quotesHint'), bind(el('textarea', { rows: 3 }), '요소')),
-          el('label', {}, t('key.essay.termsHint'), bind(el('input', {}), '핵심'))))),
+          el('label', {}, tip(el('span', {}, t('key.essay.quotesHint')), t('key.tip.quotes')), bind(el('textarea', { rows: 3 }), '요소')),
+          el('label', {}, tip(el('span', {}, t('key.essay.termsHint')), t('key.tip.terms')), bind(el('input', {}), '핵심'))))),
       ];
       return [el('tr', {},
         el('td', {}, num), el('td', {}, type), desc,
