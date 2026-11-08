@@ -37,12 +37,12 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 1. **Settings**: choose the semester folder and an AI profile (Claude Code login or API key). A roster (xlsx/csv) is optional.
 2. **Questions**: create a set and enter the answer key (optionally get an AI draft from the questions and passage). Mark it confirmed before grading.
 3. **Run**: upload the answer-sheet PDF, fix rotation, split into pages, then start transcription. A result workbook is written to the set folder. Saved pages appear as thumbnails; delete one, or select several and delete them at once.
-4. **Review**: compare each page image with its transcription, fix and save (the workbook is rebuilt). Drag the divider to resize the two panels; click a student answer to expand it and read all of it. The semester cumulative record is built here too.
+4. **Review**: the **By question** tab opens first. It hides student details (grade, class, number, name) and shows one unit at a time, with the same answers grouped. Check or change the verdicts there. Each action saves at once, and the workbook is rebuilt when a verdict changes. If necessary, open a page image with the student details covered. The **By answer sheet** tab shows each page image next to its transcription, where you fix and save everything, including student details. Drag the divider to resize the two panels; click a student answer to expand it and read all of it. The semester cumulative record is built here too.
 
 ## Grading rules and precedents
 - Question types: Blank, Short, Sentence, Elements, Essay, and Response. Points are set per unit (default 1), and a score is the sum of points for correct units. Essay questions are graded item by item: whether each given sentence is quoted almost verbatim and whether each required term is used.
 - Each set has three grading rules (Questions screen): spelling variants with the same meaning, answers broader than the key, and sentence keywords (all / any).
-- Verdicts changed in Review are recorded as precedents (can be turned off) and applied right away to other pages with the same answer for the same unit, and to pages transcribed later.
+- Verdicts changed in Review are recorded as precedents (can be turned off) and applied right away to other pages with the same answer for the same unit, and to pages transcribed later. In By question, a precedent is recorded when you change the verdict of a whole group of the same answer.
 - After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
 - Every changed verdict is noted in the page's remarks; the student's answer text is never changed.
 
