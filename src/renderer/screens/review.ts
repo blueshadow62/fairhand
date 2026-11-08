@@ -1,5 +1,5 @@
 import { caseCandidates, needsCaseConfirm, previewCases, revertTranscript, type CaseRevertRequest } from '../../core/cases.js';
-import { roundScore, unitPoints } from '../../core/key.js';
+import { essayQuestions, roundScore, unitPoints } from '../../core/key.js';
 import { essayTextMarks } from '../../core/rejudge.js';
 import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
 import { setSheetDone } from '../../core/unit-results.js';
@@ -461,8 +461,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('summary', {}, t('review.essay.fullTitle', { n: q })), el('div', { class: 'muted essay-legend' }, t('review.essay.fullHelp')), body);
       return el('tr', { class: 'essay-row' }, el('td', { colspan: '4' }, box));
     }
-    // 글 전체 줄은 그 문항의 마지막 단위 바로 아래에 둔다(단위 행과 함께 보게)
-    const qtyBody = key.정량.flatMap((u, i) => (u.유형 === '논술형' && !key.정량.slice(i + 1).some(x => x.유형 === '논술형' && x.문항 === u.문항) ? [qtyRows[i]!, essayRow(u.문항)] : [qtyRows[i]!]));
+    // 글 전체 줄은 그 문항의 마지막 단위 바로 아래에 둔다(단위 행과 함께 보게). 문항 번호가 없는 논술형 단위는 글 전체를 받지 않는다
+    const essayQs = new Set(essayQuestions(key));
+    const qtyBody = key.정량.flatMap((u, i) => (essayQs.has(u.문항) && u.유형 === '논술형' && !key.정량.slice(i + 1).some(x => x.유형 === '논술형' && x.문항 === u.문항)
+      ? [qtyRows[i]!, essayRow(u.문항)] : [qtyRows[i]!]));
     const qtyTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.descKey')), el('th', {}, t('review.col.student')), el('th', {}, t('review.col.verdict'))), ...qtyBody);
     const qualTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.question')), el('th', {}, t('review.col.response')), el('th', {}, t('review.col.answer'))), ...qualRows);
     function markNotes(): void { for (const row of [...qtyRows, ...qualRows]) row.classList.toggle('note', mentions(tr.비고, row.dataset.unit!)); }

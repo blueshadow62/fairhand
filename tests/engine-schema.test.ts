@@ -93,6 +93,10 @@ test('transcriptSchema: 논술형 세트에만 essays(문항마다 글 전체)�
   assert.deepEqual(s.properties.essays.items.properties.question.enum, ['9', '10']); // 문항마다 한 번, 단위마다가 아니다
   assert.deepEqual(s.properties.essays.items.required, ['question', 'text']);
   assert.equal(s.properties.essays.items.additionalProperties, false);
+  // 손으로 만든 정답표에서 문항 번호가 빠진 논술형 단위는 글 전체를 받지 않는다('undefined' 문항을 묻지 않게)
+  const noNumber = { ...essayUnits[0]!, id: 'Z1', 문항: undefined as unknown as number };
+  assert.deepEqual((transcriptSchema({ ...key, 정량: [...key.정량, noNumber, essayUnits[2]!] }) as any).properties.essays.items.properties.question.enum, ['10']);
+  assert.ok(!('essays' in (transcriptSchema({ ...key, 정량: [...key.정량, noNumber] }) as any).properties));
 });
 
 test('fromModelOutput: essays는 문항 번호별 논술글로. 모양이 틀린 항목은 버리고 같은 문항은 앞의 것', () => {
@@ -111,6 +115,9 @@ test('systemPrompt: 논술형 세트는 글 전체를 essays로 받고, 단위�
   const section = p.slice(p.indexOf('# 논술형 문항'), p.indexOf('# 정답표'));
   assert.ok(section.includes('`essays`에는 논술형 문항마다 항목 하나 `{question, text}`를 한 번씩 넣는다'));
   assert.ok(section.includes('answer에는 그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로 옮긴다'));
+  // 문항 번호가 없어 양식에 essays가 없으면 지시문도 0.2.11의 논술형 절 그대로
+  const old = systemPrompt(r, { ...key, 정량: [...key.정량, { ...essayUnits[0]!, 문항: undefined as unknown as number }] });
+  assert.ok(!old.includes('essays') && old.includes('- answer에는 학생 글에서 그 요소에 해당하는 부분(문장이나 구절)을 그대로 옮긴다.'));
 });
 
 test('transcriptSchema: 답 위치를 켜면 quant 항목에 y(수 또는 null)를 붙이고, 끄면 그대로', () => {

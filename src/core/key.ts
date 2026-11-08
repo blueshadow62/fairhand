@@ -79,8 +79,12 @@ export function parseKey(text: string, where = '정답표.json'): AnswerKey {
 }
 
 export const isConfirmed = (k: AnswerKey): boolean => k.확인?.완료 === true;
-/** 논술형 문항 번호(정답표 순서, 한 번씩). 학생 글 전체는 이 문항마다 하나다 */
-export const essayQuestions = (k: Pick<AnswerKey, '정량'>): number[] => [...new Set(k.정량.filter(u => u.유형 === '논술형').map(u => u.문항))];
+/**
+ * 논술형 문항 번호(정답표 순서, 한 번씩). 학생 글 전체는 이 문항마다 하나다.
+ * 손으로 만든 정답표는 문항 번호가 없을 수 있다(keyProblems가 허용). 그런 단위는 글 전체를 받지 않는다
+ */
+export const essayQuestions = (k: Pick<AnswerKey, '정량'>): number[] =>
+  [...new Set(k.정량.filter(u => u.유형 === '논술형' && Number.isInteger(u.문항)).map(u => u.문항))];
 /** 단위 배점(없으면 1점) */
 export const unitPoints = (u: { 배점?: number }): number => u.배점 ?? 1;
 /** 0.1점 단위 배점을 더할 때 생기는 부동소수 찌꺼기(0.30000000000000004)를 없앤다 */

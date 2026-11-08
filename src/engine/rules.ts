@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { gradingRules } from '../core/key.js';
+import { essayQuestions, gradingRules } from '../core/key.js';
 import { DataError, type AnswerKey } from '../core/types.js';
 
 export interface Rules { 버전: string; 본문: string }
@@ -34,12 +34,13 @@ function rulesSection(key: AnswerKey): string[] {
  */
 function essaySection(key: AnswerKey): string[] {
   if (!key.정량.some(u => u.유형 === '논술형')) return [];
+  const full = essayQuestions(key).length > 0; // 양식에 essays가 있을 때만(문항 번호가 없는 손으로 만든 정답표는 0.2.11 절 그대로)
   return ['# 논술형 문항',
     '- 정답표 단위에 `유형: "논술형"`이 있는 문항은 학생이 한 편의 글로 답한다. 이 문항에는 전사 규칙의 빈칸형·요소형 옮기기 규칙을 쓰지 않는다. 그 문항의 단위마다 학생 글 전체에서 그 요소를 찾는다. 쓴 위치와 순서는 상관없다.',
-    '- `essays`에는 논술형 문항마다 항목 하나 `{question, text}`를 한 번씩 넣는다. question은 그 문항 번호(정답표의 `문항`)이고, text에는 학생이 그 문항에 쓴 글을 처음부터 끝까지 빠짐없이 쓴 그대로 옮긴다. 맞춤법을 고치지 않고, 문단이 바뀌는 곳은 줄바꿈으로 둔다. 지운 글·끼워 쓴 글·잘린 글자·못 읽은 글자는 전사 규칙의 표기를 따른다. 쓴 글이 없으면 빈 문자열.',
+    ...(full ? ['- `essays`에는 논술형 문항마다 항목 하나 `{question, text}`를 한 번씩 넣는다. question은 그 문항 번호(정답표의 `문항`)이고, text에는 학생이 그 문항에 쓴 글을 처음부터 끝까지 빠짐없이 쓴 그대로 옮긴다. 맞춤법을 고치지 않고, 문단이 바뀌는 곳은 줄바꿈으로 둔다. 지운 글·끼워 쓴 글·잘린 글자·못 읽은 글자는 전사 규칙의 표기를 따른다. 쓴 글이 없으면 빈 문자열.'] : []),
     '- `종류: "인용"` 단위: `정답` 문장을 학생이 거의 그대로 옮겨 썼으면 "O". 띄어쓰기·문장부호 차이는 상관없고 맞춤법 차이는 채점 규칙의 맞춤법 항목을 따른다. 뜻만 같게 바꿔 쓰거나 일부만 쓴 것은 "X".',
     '- `종류: "용어"` 단위: `정답`이나 `허용`의 용어를 그대로 썼으면 "O". 뜻이 같은 다른 말로 바꿔 쓴 것은 "X". 맞춤법 차이는 채점 규칙의 맞춤법 항목을 따른다.',
-    '- answer에는 그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로 옮긴다. 찾지 못하면 빈 문자열과 "X". 그 문항에 쓴 글이 전혀 없으면 그 문항의 모든 단위를 빈 문자열과 "빈칸"으로 한다.', ''];
+    `- answer에는 ${full ? '그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로' : '학생 글에서 그 요소에 해당하는 부분(문장이나 구절)을 그대로'} 옮긴다. 찾지 못하면 빈 문자열과 "X". 그 문항에 쓴 글이 전혀 없으면 그 문항의 모든 단위를 빈 문자열과 "빈칸"으로 한다.`, ''];
 }
 
 /** 위치: 정량 단위마다 답의 세로 위치도 받는다(설정 '답 위치 받기'). 양식(transcriptSchema)과 같은 값을 넘긴다 */
