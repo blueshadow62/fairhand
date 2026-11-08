@@ -140,7 +140,7 @@ button.active { background: var(--accent-soft); border-color: var(--accent-line)
 
 /* ── 토스트: 오른쪽 아래. 맨 위 가운데에 두었더니 검토 머리 줄의 단추를 가렸다.
    여러 줄은 그대로 줄을 바꾸고, 긴 경로는 낱말 중간에서도 끊으며, 창보다 길면 알림 안에서 스크롤한다 ── */
-#toast { position: fixed; right: var(--sp-5); bottom: var(--sp-5); max-width: min(480px, calc(100vw - 2 * var(--sp-5))); max-height: calc(100vh - var(--top-h) - 2 * var(--sp-5)); overflow: auto;
+#toast { position: fixed; right: var(--sp-5); bottom: var(--sp-5); max-width: min(400px, calc(100vw - 2 * var(--sp-5))); max-height: calc(100vh - var(--top-h) - 2 * var(--sp-5)); overflow: auto;
   padding: 12px 18px; border-radius: var(--r); z-index: 10; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; font-weight: 500; box-shadow: 0 6px 20px var(--shadow); }
 #toast.error { background: var(--bad-bg); color: #fff; }
 #toast.info { background: var(--accent); color: #fff; }
@@ -169,15 +169,31 @@ tr.note { background: var(--warn-soft); }
 .v-빈칸 { color: var(--text-3); }
 select.v-O { background: var(--ok-soft); } select.v-X { background: var(--bad-soft); } select.v-빈칸 { background: var(--surface-3); }
 
-/* ── 시작 화면: 머리글 + 두 칸 격자(순서·지금 상태) + 세트 목록 ── */
+/* ── 시작 화면: 머리글 + 학기 현황판(세트 목록) + 두 칸 격자(순서·지금 상태) ── */
 .home-head { margin: 4px 0 var(--sp-4); }
 .home-head h1 { margin-bottom: 2px; }
 .home-head .muted { font-size: var(--fs); }
+.home-board { margin: 0 0 var(--sp-4); }
 .home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
 .home-grid > .card { margin: 0; }
 .home-steps { display: flex; flex-direction: column; gap: var(--sp-2); }
 .home-steps button { justify-content: flex-start; text-align: left; min-height: 48px; font-size: 16px; white-space: normal; }
-.home-sets { max-width: 640px; }
+/* 현황판의 세트 한 칸: 왼쪽에 제목(누르면 문항 설정)·대상·단계 표시, 오른쪽에 다음 할 일 단추 하나.
+   목록 너비(640px)는 1280·1366 창에서 오른쪽 아래 알림(400px)이 단추를 가리지 않는 너비다 */
+.home-sets { display: flex; flex-direction: column; gap: var(--sp-2); max-width: 640px; }
+.home-set { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2) var(--sp-4); padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.home-set-main { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.home-set-main > .muted { font-size: var(--fs-s); }
+.home-set-title { min-height: 0; padding: 0; border: 0; background: transparent; font-size: var(--fs); font-weight: 600; text-align: left; white-space: normal; }
+.home-set-title:is(:hover, :active):not(:disabled) { background: transparent; color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.home-set > button.primary { min-width: 120px; }
+.home-stages { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+/* 단계 표시: 끝난 단계는 초록 체크, 다음 할 단계는 강조색, 남은 단계는 옅게. 초록은 체크 글자에만 쓰고 낱말은 본문 색이라
+   작은 글자도 대비가 넉넉하다(초록 글자를 옅은 초록 바탕에 두면 4.5:1에 조금 못 미친다) */
+.stage { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: var(--fs-s); white-space: nowrap; }
+.stage .mark { color: var(--ok); font-weight: 700; }
+.stage.done { background: var(--ok-soft); color: var(--text); }
+.stage.now { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--accent-line); }
 
 /* 세트 목록(시작·문항 설정): 제목 줄 + 보조 줄이 있는 세로 버튼 */
 .setlist { display: flex; flex-direction: column; gap: 6px; }

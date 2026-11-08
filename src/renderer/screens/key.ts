@@ -19,6 +19,18 @@ function defaultSemester(d = new Date()): string {
 const newMeta = (): KeyMeta => ({ 글: '', 학기: defaultSemester(), 학년: 1, 반: [], 인원: {} });
 
 /**
+ * 다른 화면이 세트를 열 때 보내는 window 사건. 세트를 읽어 store.current로 정하는 일은 문항 설정 화면이 한다.
+ * 그 화면이 그려진 뒤에만 들으므로 보낸 쪽은 heard로 들었는지 안다. then은 세트를 연 뒤에 부른다(시작 화면이 세트를 연 다음 채점 실행·검토로 간다)
+ */
+export const OPEN_SET_EVENT = 'geulnun:open-set';
+export interface OpenSetRequest { 폴더: string; then?: () => void; heard?: boolean }
+/** 문항 설정 화면이 들었으면 true. false면 아직 그려지지 않은 것이라 그 화면으로 가서 그린 뒤 다시 보낸다 */
+export function requestOpenSet(req: OpenSetRequest): boolean {
+  window.dispatchEvent(new CustomEvent(OPEN_SET_EVENT, { detail: req }));
+  return req.heard === true;
+}
+
+/**
  * 글 칸(설명·정답·허용·핵심)은 1280 창에서 80px 남짓이라 쓴 글이 잘린다. 누르고 있는 동안 글 길이만큼 오른쪽 칸 위로 넓혀 다 보이게 한다.
  * 오른쪽 칸도 입력란이라 글이 칸에 들면 넓히지 않는다(덮인 칸을 누르면 넓힌 입력란이 눌린다). 표는 고정 배치라 칸 너비는 그대로이고,
  * 표 오른쪽 끝은 넘지 않는다(넘으면 화면에 가로 막대가 생긴다)
@@ -497,6 +509,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   store.subscribe(() => renderList());
-  window.addEventListener('geulnun:open-set', e => { const name = (e as CustomEvent<string>).detail; if (name !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(name); }); });
+  window.addEventListener(OPEN_SET_EVENT, e => {
+    const req = (e as CustomEvent<OpenSetRequest>).detail;
+    req.heard = true;
+    if (req.폴더 === 폴더 && store.state.current === 폴더) { req.then?.(); return; }
+    void leaveOk().then(async ok => { if (!ok) return; await openSet(req.폴더); if (폴더 === req.폴더) req.then?.(); }); // 못 열었으면(오류는 알림으로) 다른 화면으로 가지 않는다
+  });
   renderEditor();
 }
