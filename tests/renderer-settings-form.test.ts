@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { advancedOpenAtStart, serialSaver } from '../src/renderer/lib/settings-form.js';
+import { advancedOpenAtStart, isSettingsTab, serialSaver, SETTINGS_TABS } from '../src/renderer/lib/settings-form.js';
 
 const settle = () => new Promise(r => setImmediate(r)); // 밀린 약속(마이크로태스크)이 다 돈 뒤
 
@@ -67,4 +67,10 @@ test('serialSaver.idle: 돌거나 밀린 저장이 다 끝날 때까지 기다�
   assert.equal(idle, false); // 밀린 저장이 아직 돈다
   f.ends[1]!.ok(); await b; await waiting;
   assert.equal(idle, true);
+});
+
+test('isSettingsTab: window 사건으로 온 탭 이름은 세 가지만 받는다', () => {
+  assert.deepEqual([...SETTINGS_TABS], ['basic', 'ai', 'about']); // 화면에 놓이는 탭 순서
+  for (const tab of SETTINGS_TABS) assert.equal(isSettingsTab(tab), true);
+  for (const v of ['update', 'AI', '', null, undefined, 1, {}]) assert.equal(isSettingsTab(v), false);
 });

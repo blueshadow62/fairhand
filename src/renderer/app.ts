@@ -3,6 +3,7 @@ import { api } from './lib/api.js';
 import { badgeLabel } from './lib/badge.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
+import type { SettingsTab } from './lib/settings-form.js';
 import * as homeScreen from './screens/home.js';
 import * as keyScreen from './screens/key.js';
 import * as reviewScreen from './screens/review.js';
@@ -64,7 +65,7 @@ const TABS: { id: Tab; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
 ];
 
 /**
- * 설정의 업데이트 칸을 화면 가운데로. 설정 화면은 프로필·AI 상태를 늦게 그려 높이가 바뀌므로
+ * 설정의 업데이트 칸을 화면 가운데로(정보·업데이트 탭을 연 뒤에 부른다). 업데이트 칸은 상태를 받은 뒤에 그려 높이가 바뀌므로
  * 잠깐(1.5초) 동안은 바뀔 때마다 다시 맞춘다. 떠나기 확인에서 머무르기를 골랐으면 아무것도 하지 않는다
  */
 function revealUpdateBox(): void {
@@ -89,8 +90,8 @@ async function start(): Promise<void> {
   const main = el('main', { id: 'main' });
   const version = el('span', { class: 'version' });
   void api.version().then(v => { version.textContent = `v${v}`; }).catch(() => undefined);
-  // 버전 옆 알림: 설정 화면에 가지 않아도 새 버전이 있는 줄 알게. 누르면 설정의 업데이트 칸으로
-  const updatePill = el('button', { class: 'update-pill hidden', onclick: () => void goToAsync('settings').then(revealUpdateBox) });
+  // 버전 옆 알림: 설정 화면에 가지 않아도 새 버전이 있는 줄 알게. 누르면 설정의 정보·업데이트 탭을 열고 업데이트 칸으로
+  const updatePill = el('button', { class: 'update-pill hidden', onclick: () => void openSettings('about').then(shown => { if (shown) revealUpdateBox(); }) });
   const renderUpdatePill = (s: UpdateStatus) => {
     const text = s.kind === 'available' ? t('app.update.available') : s.kind === 'downloading' ? t('app.update.downloading', { percent: s.percent })
       : s.kind === 'downloaded' ? t('app.update.ready') : '';
@@ -126,11 +127,18 @@ async function start(): Promise<void> {
       TABS.find(t => t.id === tab)!.mod.mount(node, { ...ctx, setLeaveGuard: fn => guards.set(tab, fn) });
     }
   }
+  /** 설정 화면을 열고 그 안의 탭을 고른다. 떠나기 확인에서 머무르기를 골라 설정이 보이지 않으면 false */
+  async function openSettings(tab: SettingsTab): Promise<boolean> {
+    await goToAsync('settings');
+    if (currentTab !== 'settings') return false;
+    settingsScreen.showSettingsTab(tab);
+    return true;
+  }
   for (const tab of TABS) { const b = el('button', { onclick: () => goTo(tab.id) }, t(`app.tab.${tab.id}`)); buttons.set(tab.id, b); tabs.append(b); }
 
-  // 왼쪽 메뉴 맨 아래: 지금 쓰는 AI 프로필과 상태(이음오피스의 'Claude · 연결됨' 표시처럼). 누르면 설정으로
+  // 왼쪽 메뉴 맨 아래: 지금 쓰는 AI 프로필과 상태(이음오피스의 'Claude · 연결됨' 표시처럼). 누르면 설정의 AI 프로필 탭으로
   const badgeName = el('div', { class: 'name' }), badgeStatus = el('div', { class: 'status' });
-  tabs.append(el('button', { class: 'badge', title: t('app.badge.hint'), onclick: () => goTo('settings') }, el('span', { class: 'dot' }), el('div', {}, badgeName, badgeStatus)));
+  tabs.append(el('button', { class: 'badge', title: t('app.badge.hint'), onclick: () => void openSettings('ai') }, el('span', { class: 'dot' }), el('div', {}, badgeName, badgeStatus)));
   let badgeSeq = 0;
   async function renderBadge(): Promise<void> {
     const seq = ++badgeSeq;

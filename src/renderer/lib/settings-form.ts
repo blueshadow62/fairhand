@@ -8,6 +8,12 @@ export function advancedOpenAtStart(p: Pick<Profile, 'cliPath' | 'configDir'>): 
   return Boolean(p.cliPath?.trim() || p.configDir?.trim());
 }
 
+/** 설정 화면의 탭. 처음 실행은 basic(학기 폴더), 왼쪽 아래 AI 표시는 ai, 맨 위 업데이트 알림은 about으로 연다 */
+export const SETTINGS_TABS = ['basic', 'ai', 'about'] as const;
+export type SettingsTab = typeof SETTINGS_TABS[number];
+/** 탭 이름은 window 사건(CustomEvent)의 detail로 오가 형이 보장되지 않으므로 검사한다 */
+export const isSettingsTab = (v: unknown): v is SettingsTab => (SETTINGS_TABS as readonly unknown[]).includes(v);
+
 export interface SerialSaver {
   /** 저장을 청한다. 도는 저장이 없으면 바로, 있으면 그것이 끝난 뒤 한 번 더 돈다. 돌려받는 약속은 이 청을 담은 저장의 결과 */
   run(): Promise<void>;

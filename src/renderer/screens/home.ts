@@ -4,7 +4,7 @@ import { clear, el } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { makeGuard } from '../lib/screen-utils.js';
 import { sameAsKind } from '../lib/badge.js';
-import { cliStatusText, createDefaultSemester } from './settings.js';
+import { cliStatusText, createDefaultSemester, showSettingsTab } from './settings.js';
 
 /** 시작 화면: 무엇을 하는 프로그램인지, 지금 상태, 순서, 세트 목록. 세트를 누르면 문항 설정으로. */
 export function mount(root: HTMLElement, ctx: Ctx): void {
@@ -42,7 +42,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     }) }, t('settings.makeDefault'));
     statusBox.append(el('h3', {}, t('home.status')),
       el('div', {}, s.학기폴더 ? t('home.semester', { path: s.학기폴더 }) : t('home.semesterNone')),
-      ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, makeBtn, el('button', { onclick: () => goTo('settings') }, t('home.openSettings')))]),
+      // 시작 화면에는 떠나기 확인이 없어 goTo가 설정 화면을 바로(동기) 그린다. 그다음 학기 폴더를 고르는 기본 탭을 고른다
+      ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, makeBtn, el('button', { onclick: () => { goTo('settings'); showSettingsTab('basic'); } }, t('home.openSettings')))]),
       profileLine, detail);
     if (!profile) return;
     try {

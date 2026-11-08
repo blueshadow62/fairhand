@@ -367,6 +367,11 @@ dialog.region-editor .preview figcaption { font-size: var(--fs-s); color: var(--
 dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
+/* 머리 줄: 제목 옆에 세 탭(기본·AI 프로필·정보·업데이트). 한 화면이 1,500px에 이르러 나눴다. 탭 모양은 검토 화면의 .seg */
+.settings-head { column-gap: var(--sp-4); margin: 0 0 var(--sp-4); }
+.settings-head h2 { margin: 0; }
+/* 정보·업데이트 탭: 탭 이름이 제목을 대신해 버전 줄과 업데이트 칸이 붙어 보이지 않게 가는 선으로 나눈다 */
+.screen[data-tab="settings"] [data-section="update"] { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-2); }
 .screen[data-tab="settings"] > section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--sp-4) 18px; margin-bottom: var(--sp-4); }
 .screen[data-tab="settings"] > section:has(.card) { background: transparent; border: none; padding: 0; }
 .screen[data-tab="settings"] > section > .row:first-child { margin-top: 0; }

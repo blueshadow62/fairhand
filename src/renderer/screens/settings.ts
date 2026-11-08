@@ -4,7 +4,11 @@ import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
 import { t, type Key } from '../lib/i18n.js';
 import { makeGuard, makeLeaveGuard } from '../lib/screen-utils.js';
-import { advancedOpenAtStart, serialSaver } from '../lib/settings-form.js';
+import { advancedOpenAtStart, isSettingsTab, serialSaver, SETTINGS_TABS, type SettingsTab } from '../lib/settings-form.js';
+
+/** 다른 화면이나 맨 위 알림이 설정 화면 안의 탭을 고를 때 보내는 window 사건. 설정 화면이 그려진 뒤에 보내야 듣는다 */
+export const SETTINGS_TAB_EVENT = 'geulnun:settings-tab';
+export function showSettingsTab(tab: SettingsTab): void { window.dispatchEvent(new CustomEvent(SETTINGS_TAB_EVENT, { detail: tab })); }
 
 function updateText(s: UpdateStatus): string {
   if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : s.reason === 'manual' ? t('settings.update.manual') : t('settings.update.status.off');
@@ -323,15 +327,30 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     } }, t('settings.addProfile'))),
     el('div', { class: 'band info' }, t('settings.cliNotice')));
 
-  root.append(el('h2', {}, t('settings.title')),
-    el('section', {}, semesterBox, rosterBox, rotationBox),
-    el('section', {}, el('h2', {}, t('settings.profiles')), el('div', { class: 'band info' }, t('settings.aiNotice')),
-      el('div', { class: 'muted' }, t('settings.autoSaveNote')), failBand, profileBox),
-    el('section', {}, el('h2', {}, t('settings.about')),
+  // 한 화면이 1,500px에 이르러 세 탭으로 나눈다. 처음은 기본(학기 폴더를 고르는 곳). 다른 화면은 SETTINGS_TAB_EVENT로 탭을 고른다
+  const panel = (tab: SettingsTab, ...children: HTMLElement[]) => el('section', { id: `settings-panel-${tab}`, role: 'tabpanel', 'aria-labelledby': `settings-tab-${tab}` }, ...children);
+  const panels: Record<SettingsTab, HTMLElement> = {
+    basic: panel('basic', semesterBox, rosterBox, rotationBox),
+    ai: panel('ai', el('div', { class: 'band info' }, t('settings.aiNotice')), el('div', { class: 'muted' }, t('settings.autoSaveNote')), failBand, profileBox),
+    about: panel('about',
       el('div', { class: 'row' }, t('settings.version'), versionText,
         el('button', { onclick: () => guard(() => api.openExternal('guide')) }, t('settings.guide')),
         el('button', { onclick: () => guard(() => api.openExternal('privacy')) }, t('settings.privacy'))),
-      updateBox));
+      updateBox),
+  };
+  const TAB_LABEL: Record<SettingsTab, Key> = { basic: 'settings.basic', ai: 'settings.profiles', about: 'settings.about' };
+  const tabButtons = new Map(SETTINGS_TABS.map(tab => [tab, el('button', { id: `settings-tab-${tab}`, role: 'tab', 'aria-controls': `settings-panel-${tab}`, onclick: () => showTab(tab) }, t(TAB_LABEL[tab]))] as const));
+  function showTab(tab: SettingsTab): void {
+    for (const id of SETTINGS_TABS) {
+      const on = id === tab;
+      tabButtons.get(id)!.classList.toggle('active', on); tabButtons.get(id)!.setAttribute('aria-selected', String(on));
+      panels[id].classList.toggle('hidden', !on);
+    }
+  }
+  window.addEventListener(SETTINGS_TAB_EVENT, e => { const tab = (e as CustomEvent<unknown>).detail; if (isSettingsTab(tab)) showTab(tab); });
+  root.append(el('div', { class: 'row settings-head' }, el('h2', {}, t('settings.title')), el('div', { class: 'seg', role: 'tablist', 'aria-label': t('settings.tabs') }, ...tabButtons.values())),
+    panels.basic, panels.ai, panels.about);
+  showTab('basic');
   renderBasics();
   // 학기 폴더는 시작 화면의 '기본 폴더 만들기'로도 바뀐다. 이미 그려 둔 이 화면이 '고르지 않음'으로 남지 않게
   store.subscribe(s => { if (s.settings.학기폴더 !== shownSemester) renderBasics(); });
