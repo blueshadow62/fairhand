@@ -26,12 +26,20 @@ export function cliStatusText(s: CliStatusView): string {
   return t('settings.cli.loginNeeded', { v });
 }
 
-/** 문서\글눈 아래 학기 폴더를 만들어 학기 폴더로 정하고 세트 목록을 다시 읽는다. 시작 화면의 '지금 상태'도 이것을 쓴다 */
+/** 문서\글눈 아래 학기 폴더를 만들어 학기 폴더로 정하고 세트 목록을 다시 읽는다. 시작 화면의 '지금 상태'와 처음 실행 안내도 이것을 쓴다 */
 export async function createDefaultSemester(store: Ctx['store']): Promise<string> {
   const p = await api.makeDefaultSemester();
   store.update({ settings: await api.getSettings(), current: null });
   await store.refreshSets();
   return p;
+}
+
+/** 폴더 고르기 창에서 고른 폴더를 학기 폴더로 정하고 세트 목록을 다시 읽는다. 창을 닫으면 false. 처음 실행 안내도 이것을 쓴다 */
+export async function chooseSemester(store: Ctx['store']): Promise<boolean> {
+  const p = await api.pickFolder(); if (!p) return false;
+  store.update({ settings: await api.saveSettings({ 학기폴더: p }), current: null });
+  await store.refreshSets();
+  return true;
 }
 
 function secretText(v: SecretView): string {
@@ -135,11 +143,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     shownSemester = s.학기폴더;
     clear(semesterBox);
     semesterBox.append(el('div', { class: 'row' }, t('settings.semester'), s.학기폴더 ? el('span', { class: 'path' }, s.학기폴더) : el('span', { class: 'muted' }, t('settings.notChosen')),
-      el('button', { onclick: () => guard(async () => {
-        const p = await api.pickFolder(); if (!p) return;
-        store.update({ settings: await api.saveSettings({ 학기폴더: p }), current: null });
-        await store.refreshSets(); showInfo(t('settings.semesterChanged'));
-      }) }, t('settings.choose'))),
+      el('button', { onclick: () => guard(async () => { if (await chooseSemester(store)) showInfo(t('settings.semesterChanged')); }) }, t('settings.choose'))),
       ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, el('button', { class: 'primary', onclick: () => guard(async () => {
         showInfo(t('settings.defaultMade', { path: await createDefaultSemester(store) }));
       }) }, t('settings.makeDefault')))]),

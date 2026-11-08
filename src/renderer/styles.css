@@ -174,6 +174,20 @@ select.v-O { background: var(--ok-soft); } select.v-X { background: var(--bad-so
 .home-head h1 { margin-bottom: 2px; }
 .home-head .muted { font-size: var(--fs); }
 .home-board { margin: 0 0 var(--sp-4); }
+/* 처음 실행 안내: 새 세트의 시작 방법 칸처럼 강조색 띠를 두고 세 단계를 한 줄씩. 지금 할 단계는 강조색 바탕과 번호,
+   끝난 단계는 초록 체크와 '완료'(초록은 체크 글자에만, 낱말은 본문 색이라 작은 글자도 대비가 넉넉하다) */
+.card.home-guide { margin: 0 0 var(--sp-4); border-color: var(--accent-line); box-shadow: inset 4px 0 0 var(--accent); }
+.guide-steps { display: flex; flex-direction: column; gap: var(--sp-2); max-width: 720px; margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+.guide-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.guide-step.now { border-color: var(--accent-line); background: var(--accent-soft); }
+.guide-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); color: var(--text-2); font-size: var(--fs-m); font-weight: 700; }
+.guide-step.now .guide-mark { background: var(--accent); color: #fff; }
+.guide-step.done .guide-mark { background: var(--ok-soft); color: var(--ok); }
+.guide-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.guide-body > .row { margin: 6px 0 0; }
+.guide-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; }
+.guide-done { padding: 0 8px; border-radius: 999px; background: var(--ok-soft); color: var(--text); font-size: var(--fs-s); }
+.guide-tag { color: var(--accent-text); font-size: var(--fs-s); font-weight: 600; }
 .home-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
 .home-grid > .card { margin: 0; }
 .home-steps { display: flex; flex-direction: column; gap: var(--sp-2); }

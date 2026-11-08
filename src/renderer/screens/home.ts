@@ -5,9 +5,18 @@ import { clear, el } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { makeGuard } from '../lib/screen-utils.js';
 import { sameAsKind } from '../lib/badge.js';
+import { cliReady, guideVisible, keyReady } from '../lib/first-run.js';
 import { nextStep, stages, type NextStep, type Stage } from '../lib/set-progress.js';
 import { requestOpenSet } from './key.js';
-import { cliStatusText, createDefaultSemester, showSettingsTab } from './settings.js';
+import { chooseSemester, cliStatusText, createDefaultSemester, showSettingsTab } from './settings.js';
+
+/** 처음 실행 안내를 보이는지 적어 두는 로컬 저장소 키. 값의 뜻은 lib/first-run.ts guideVisible */
+const GUIDE_PREF = 'geulnun.firstRunGuide';
+const readGuidePref = (): string | null => { try { return localStorage.getItem(GUIDE_PREF); } catch { return null; } };
+const writeGuidePref = (v: 'open' | 'closed'): void => { try { localStorage.setItem(GUIDE_PREF, v); } catch { /* 못 적으면 학기 폴더가 생길 때까지만 보인다 */ } };
+
+/** 지금 쓰는 AI 도구의 상태. 지금 상태 칸과 처음 실행 안내가 함께 쓴다. ready가 null이면 확인 중 */
+interface AiState { line: string; detail: string; ready: boolean | null }
 
 /** 다음 할 일 단추가 갈 화면(엑셀은 화면 대신 파일을 연다) */
 const NEXT_TAB: Record<Exclude<NextStep, 'excel'>, Tab> = { key: 'key', upload: 'run', transcribe: 'run', review: 'review' };
@@ -21,10 +30,11 @@ function stageText(x: Stage): string {
   }
 }
 
-/** 시작 화면: 무엇을 하는 프로그램인지, 학기 현황판(세트마다 진행과 다음 할 일), 순서, 지금 상태 */
+/** 시작 화면: 무엇을 하는 프로그램인지, 처음 실행 안내, 학기 현황판(세트마다 진행과 다음 할 일), 순서, 지금 상태 */
 export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, goTo, showError, showInfo } = ctx;
   const guard = makeGuard(showError);
+  const guideBox = el('section', { class: 'card home-guide hidden', 'aria-labelledby': 'home-guide-title' });
   const statusBox = el('div', { class: 'card' });
   const setsList = el('div');
   // 누가기록은 세트 하나가 아닌 학기 전체의 일이라 세트 현황 머리에 둔다. 만든 파일은 바로 아래 띠에 보인다
@@ -39,6 +49,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }) }, t('home.makeCumulative'));
   root.append(
     el('div', { class: 'home-head' }, el('h1', {}, t('home.title')), el('div', { class: 'muted' }, t('home.tagline'))),
+    guideBox,
     el('div', { class: 'card home-board' }, el('div', { class: 'row' }, el('h3', {}, t('home.board')), cumulativeBtn), cumulativeBox, setsList),
     el('div', { class: 'home-grid' },
       el('div', { class: 'card' }, el('h3', {}, t('home.steps')),
@@ -49,32 +60,85 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           el('button', { onclick: () => goTo('settings') }, t('home.step.settings')))),
       statusBox));
 
-  let statusSeq = 0;
-  async function renderStatus(): Promise<void> {
-    const seq = ++statusSeq;
-    clear(statusBox);
+  // ── 지금 쓰는 AI 도구의 상태: CLI 점검은 외부 프로그램을 띄우므로 한 번 점검해 지금 상태 칸과 처음 실행 안내가 같이 쓴다 ──
+  let ai: AiState = { line: '', detail: '', ready: null };
+  let aiSeq = 0;
+  async function checkAi(): Promise<void> {
+    const seq = ++aiSeq;
     const s = store.state.settings;
     const profile = s.프로필.find(p => p.id === s.사용중);
     const kind = !profile ? '' : profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : profile.종류 === 'gemini' ? 'Gemini API' : profile.종류 === 'openai' ? 'OpenAI API' : 'API';
-    const profileLine = el('div', {}, !profile ? t('home.profileNone')
-      : sameAsKind(profile.이름, kind) ? t('home.profileKind', { kind }) : t('home.profile', { name: profile.이름.trim(), kind }));
-    const detail = el('div', { class: 'muted' }, profile ? t('home.checking') : '');
-    // 처음 쓰는 사람이 설정 화면을 찾아가지 않아도 되게. 만들면 학기 폴더가 바뀌어 상태를 다시 그리므로 단추는 저절로 사라진다
-    const makeBtn = el('button', { class: 'primary', onclick: () => guard(async () => {
-      makeBtn.disabled = true;
-      try { showInfo(t('settings.defaultMade', { path: await createDefaultSemester(store) })); } finally { makeBtn.disabled = false; }
+    const line = !profile ? t('home.profileNone')
+      : sameAsKind(profile.이름, kind) ? t('home.profileKind', { kind }) : t('home.profile', { name: profile.이름.trim(), kind });
+    // 같은 프로필을 다시 점검할 때(설정에서 돌아옴)는 결과가 올 때까지 앞 결과를 그대로 둔다. '확인 중'으로 깜박이지 않게
+    if (line !== ai.line || ai.ready === null || !profile) { ai = { line, detail: profile ? t('home.checking') : '', ready: profile ? null : false }; renderStatus(); renderGuide(); }
+    if (!profile) return;
+    let next: AiState;
+    try {
+      if (profile.종류 === 'cli' || profile.종류 === 'codex') { const st = await api.cliStatus(profile.id); next = { line, detail: cliStatusText(st), ready: cliReady(st) }; }
+      else {
+        const v = await api.secretView(profile.id);
+        next = { line, detail: !v.저장됨 ? t('home.apiKeyNone') : v.열림 === false ? t('settings.secret.locked') : t('home.apiKeySaved'), ready: keyReady(v) };
+      }
+    } catch (e) { next = { line, detail: (e as Error).message, ready: false }; }
+    if (seq !== aiSeq) return;
+    ai = next; renderStatus(); renderGuide();
+  }
+
+  /** 기본 학기 폴더(문서\글눈) 만들기. 만들면 학기 폴더가 바뀌어 다시 그리므로 단추는 저절로 사라진다 */
+  function makeDefaultButton(): HTMLButtonElement {
+    const b = el('button', { class: 'primary', onclick: () => guard(async () => {
+      b.disabled = true;
+      try { showInfo(t('settings.defaultMade', { path: await createDefaultSemester(store) })); } finally { b.disabled = false; }
     }) }, t('settings.makeDefault'));
+    return b;
+  }
+
+  function renderStatus(): void {
+    clear(statusBox);
+    const s = store.state.settings;
     statusBox.append(el('h3', {}, t('home.status')),
       el('div', {}, s.학기폴더 ? t('home.semester', { path: s.학기폴더 }) : t('home.semesterNone')),
+      // 처음 쓰는 사람이 설정 화면을 찾아가지 않아도 되게. 처음 실행 안내가 떠 있으면 같은 단추가 안내에 있어 뺀다.
       // 시작 화면에는 떠나기 확인이 없어 goTo가 설정 화면을 바로(동기) 그린다. 그다음 학기 폴더를 고르는 기본 탭을 고른다
-      ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, makeBtn, el('button', { onclick: () => { goTo('settings'); showSettingsTab('basic'); } }, t('home.openSettings')))]),
-      profileLine, detail);
-    if (!profile) return;
-    try {
-      const text = profile.종류 === 'cli' || profile.종류 === 'codex' ? cliStatusText(await api.cliStatus(profile.id))
-        : (await api.secretView(profile.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');
-      if (seq === statusSeq) detail.textContent = text;
-    } catch (e) { if (seq === statusSeq) detail.textContent = (e as Error).message; }
+      ...(s.학기폴더 || guideOn() ? [] : [el('div', { class: 'row' }, makeDefaultButton(), el('button', { onclick: () => { goTo('settings'); showSettingsTab('basic'); } }, t('home.openSettings')))]),
+      el('div', {}, ai.line), el('div', { class: 'muted' }, ai.detail));
+  }
+
+  // ── 처음 실행 안내: 학기 폴더 → AI 도구 확인 → 샘플로 둘러보기. 단계마다 끝났는지는 지금 상태에서 읽는다 ──
+  const guideOn = (): boolean => guideVisible(readGuidePref(), !!store.state.settings.학기폴더);
+  function closeGuide(): void { writeGuidePref('closed'); renderGuide(); renderStatus(); renderSets(); }
+  function renderGuide(): void {
+    clear(guideBox);
+    const on = guideOn();
+    guideBox.classList.toggle('hidden', !on);
+    if (!on) return;
+    const s = store.state.settings;
+    const done = [!!s.학기폴더, ai.ready === true, store.state.sets.length > 0];
+    const now = done.indexOf(false);
+    const step = (i: number, title: string, ...body: (HTMLElement | null)[]): HTMLElement => el('li', { class: `guide-step${done[i] ? ' done' : i === now ? ' now' : ''}` },
+      el('span', { class: 'guide-mark', 'aria-hidden': 'true' }, done[i] ? '✓' : String(i + 1)),
+      el('div', { class: 'guide-body' }, el('div', { class: 'guide-title' }, title, done[i] ? el('span', { class: 'guide-done' }, t('home.guide.done')) : null), ...body));
+    // 샘플을 넣으면 바로 그 세트의 검토 화면으로 간다(세트가 생겨 3단계는 끝난다)
+    const tourBtn = el('button', { class: now === 2 ? 'primary' : '', disabled: !s.학기폴더, onclick: () => guard(async () => {
+      tourBtn.disabled = true;
+      try { const { 폴더 } = await api.createSampleSet(); await store.refreshSets(); openSet(폴더, 'review'); } finally { tourBtn.disabled = false; }
+    }) }, t('home.sample'));
+    guideBox.append(
+      el('div', { class: 'row' }, el('h3', { id: 'home-guide-title' }, t('home.guide.title')),
+        el('button', { class: 'small', onclick: closeGuide }, t(now < 0 ? 'home.guide.close' : 'home.guide.skip'))),
+      el('div', { class: 'muted' }, t(now < 0 ? 'home.guide.allDone' : 'home.guide.lead')),
+      el('ol', { class: 'guide-steps' },
+        step(0, t('home.guide.semester'), ...(done[0] ? [el('div', { class: 'muted' }, t('home.semester', { path: s.학기폴더 ?? '' }))] : [
+          el('div', { class: 'muted' }, t('home.guide.semesterHelp')),
+          el('div', { class: 'row' }, makeDefaultButton(), el('span', { class: 'guide-tag' }, t('home.guide.recommended')),
+            el('button', { onclick: () => guard(async () => { if (await chooseSemester(store)) showInfo(t('settings.semesterChanged')); }) }, t('home.guide.pickOther')))])),
+        step(1, t('home.guide.ai'), el('div', {}, ai.line), ai.detail ? el('div', { class: 'muted' }, ai.detail) : null,
+          ...(done[1] ? [] : [el('div', { class: 'muted' }, t('home.guide.aiHelp')),
+            el('div', { class: 'row' }, el('button', { class: now === 1 ? 'primary' : '', onclick: () => { goTo('settings'); showSettingsTab('ai'); } }, t('home.guide.aiSettings')))])),
+        step(2, t('home.guide.tour'), ...(done[2] ? [el('div', { class: 'muted' }, t('home.guide.tourDone'))] : [
+          el('div', { class: 'muted' }, t('home.sampleHelp')),
+          el('div', { class: 'row' }, tourBtn, s.학기폴더 ? null : el('span', { class: 'muted' }, t('home.guide.tourNeedsSemester')))]))));
   }
 
   /**
@@ -114,7 +178,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const sets = store.state.sets;
     cumulativeBtn.classList.toggle('hidden', !sets.length);
     if (!sets.length) {
-      setsList.append(el('div', { class: 'muted' }, t('home.noSets')),
+      // 샘플은 학기 폴더에 넣으므로 학기 폴더가 없으면 단추를 두지 않는다
+      if (!store.state.settings.학기폴더) { setsList.append(el('div', { class: 'muted' }, t('home.noSemesterSets'))); return; }
+      setsList.append(el('div', { class: 'muted' }, t('home.noSets')));
+      if (guideOn()) return; // 처음 실행 안내의 3단계에 같은 단추가 있다
+      setsList.append(
         el('div', { class: 'row' }, el('button', { onclick: async () => {
           try { const { 폴더 } = await api.createSampleSet(); await store.refreshSets(); showInfo(t('home.sampleAdded', { name: 폴더 })); }
           catch (e) { showError((e as Error).message); }
@@ -125,12 +193,18 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     setsList.append(el('div', { class: 'home-sets' }, ...sets.map(setRow)));
   }
 
-  // CLI 상태 점검은 외부 프로그램을 띄우므로 프로필·학기 폴더가 바뀔 때만(세트 목록·저장마다 돌지 않게)
-  const statusKey = () => JSON.stringify([store.state.settings.사용중, store.state.settings.프로필, store.state.settings.학기폴더]);
+  // CLI 상태 점검은 외부 프로그램을 띄우므로 프로필이 바뀔 때만(세트 목록·저장마다 돌지 않게)
+  const statusKey = () => JSON.stringify([store.state.settings.사용중, store.state.settings.프로필]);
   let lastStatusKey = statusKey();
-  store.subscribe(() => { renderSets(); const k = statusKey(); if (k !== lastStatusKey) { lastStatusKey = k; void renderStatus(); } });
-  // 검토·채점 실행에서 전사와 확인이 바뀌어도 세트 목록은 다시 읽지 않는다. 이 화면이 다시 보일 때 새로 읽어 현황을 맞춘다
-  new MutationObserver(() => { if (!root.classList.contains('hidden') && store.state.settings.학기폴더) void store.refreshSets().catch(() => undefined); })
-    .observe(root, { attributes: true, attributeFilter: ['class'] });
-  renderSets(); void renderStatus();
+  store.subscribe(() => { renderSets(); renderGuide(); renderStatus(); const k = statusKey(); if (k !== lastStatusKey) { lastStatusKey = k; void checkAi(); } });
+  new MutationObserver(() => {
+    if (root.classList.contains('hidden')) return;
+    // 검토·채점 실행에서 전사와 확인이 바뀌어도 세트 목록은 다시 읽지 않는다. 이 화면이 다시 보일 때 새로 읽어 현황을 맞춘다
+    if (store.state.settings.학기폴더) void store.refreshSets().catch(() => undefined);
+    // 안내를 보고 설정에서 로그인하거나 키를 넣고 돌아오면 2단계를 다시 본다(아직 준비되지 않았을 때만)
+    if (guideOn() && ai.ready === false) void checkAi();
+  }).observe(root, { attributes: true, attributeFilter: ['class'] });
+  // 처음 실행에서 보이기 시작한 안내는 학기 폴더를 정한 뒤에도 닫기 전까지 남은 단계를 보인다(lib/first-run.ts)
+  if (guideOn() && readGuidePref() === null) writeGuidePref('open');
+  renderSets(); void checkAi();
 }

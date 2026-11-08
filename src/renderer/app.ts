@@ -172,11 +172,10 @@ async function start(): Promise<void> {
   const back = takeTabAfterReload();
   if (store.state.settings.학기폴더) {
     try { await store.refreshSets(); } catch (e) { showError(errText(e)); }
-    goTo(back ?? 'home');
-  } else {
-    goTo('settings');
-    showInfo(t('app.firstRun'));
   }
+  // 처음 실행(학기 폴더 없음)도 시작 화면으로 간다. 전에는 설정 화면으로 바로 가서 낯선 낱말이 한꺼번에 보였다.
+  // 시작 화면의 처음 실행 안내가 학기 폴더 → AI 도구 → 샘플 차례로 안내한다
+  goTo(back ?? 'home');
 }
 
 start().catch(e => showError(errText(e)));
