@@ -1,5 +1,6 @@
 import { roundScore, unitPoints } from '../../core/key.js';
 import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
+import { setSheetDone } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
@@ -264,7 +265,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const tr = T;
     updateScore();
     unsavedTag.classList.toggle('hidden', !dirty);
-    const done = el('input', { type: 'checkbox', checked: tr.확인완료 === true, onchange: () => { tr.확인완료 = done.checked; touch(); } });
+    const done = el('input', { type: 'checkbox', checked: tr.확인완료 === true, onchange: () => { setSheetDone(tr, done.checked); touch(); } });
     doneBox = done;
     // 저장하지 않은 변경 표시는 사례 기록 앞에 둔다. 뒤에 두면 고치기 시작할 때 줄이 하나 늘어 아래가 밀린다
     put(headerBox, el('div', { class: 'row' },

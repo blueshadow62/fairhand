@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { parseTranscript } from '../src/core/transcript.js';
 import { DataError, type AnswerKey, type Panjeong, type Transcript } from '../src/core/types.js';
-import { planUnitResults, representative, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
+import { planUnitResults, representative, setSheetDone, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
 
 // 픽스처 정답표: 정량 1-1·3-1, 정성 E1
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
@@ -121,4 +121,15 @@ test('representative·unitChecked', () => {
   assert.equal(unitChecked(tr(1, '', '빈칸', { 확인단위: ['1-1'] }), '1-1'), true);
   assert.equal(unitChecked(tr(1, '', '빈칸', { 확인단위: ['1-1'] }), '3-1'), false);
   assert.equal(unitChecked(tr(1, '', '빈칸', { 확인완료: true }), '3-1'), true);
+});
+
+test('setSheetDone: 답안지별에서 확인 완료를 풀면 확인단위도 비워 문항별에서 다시 미확인, 켜면 그대로', () => {
+  const t = tr(1, '가나', 'O', { 확인완료: true, 확인단위: ['1-1', '3-1', 'E1'] });
+  setSheetDone(t, false);
+  assert.equal(t.확인완료, false);
+  assert.equal(t.확인단위, undefined);
+  assert.equal(unitChecked(t, '1-1'), false);
+  const u = tr(2, '가나', 'O', { 확인단위: ['1-1'] });
+  setSheetDone(u, true);
+  assert.deepEqual([u.확인완료, u.확인단위], [true, ['1-1']]);
 });

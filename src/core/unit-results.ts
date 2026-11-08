@@ -14,6 +14,12 @@ const VERDICTS: readonly unknown[] = ['O', 'X', '빈칸'];
 /** 이 장에서 이 단위를 확인했는지. 답안지별 검토에서 장 전체를 확인 완료한 것도 친다 */
 export const unitChecked = (t: Transcript, 단위: string): boolean => t.확인완료 === true || (t.확인단위 ?? []).includes(단위);
 
+/** 답안지별 검토의 '확인 완료' 체크. 사람이 풀면 문항별에서 확인한 단위도 지워, 그 장을 문항별에서 다시 미확인으로 센다 */
+export function setSheetDone(t: Transcript, on: boolean): void {
+  t.확인완료 = on;
+  if (!on) delete t.확인단위;
+}
+
 /** 가장 많이 쓴 원래 글(앞뒤 공백만 정리). 수가 같으면 가나다순으로 골라 장 순서가 드러나지 않게 한다 */
 export function representative(answers: string[]): string {
   const count = new Map<string, number>();
