@@ -34,6 +34,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let saving = false; // 장 저장 중에는 회전·포함 체크·저장 버튼을 잠근다(같은 파일 이중 저장, 각도 섞임 방지)
   let selected = new Set<number>(); // 한꺼번에 지우려고 고른 장
   let lastPick: number | null = null; // Shift+클릭 범위의 시작 장
+  let deleting = false;
 
   const body = el('div');
   root.append(el('h2', {}, t('run.title')), el('div', { class: 'band info' }, t('run.notice')), body);
@@ -214,8 +215,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     pickAll.checked = n > 0 && n === pages.length;
     pickAll.indeterminate = n > 0 && n < pages.length;
     pickCount.textContent = n ? t('run.pickedCount', { n }) : '';
-    deleteSel.textContent = t('run.deleteSelected', { n });
-    deleteSel.disabled = running || !n;
+    deleteSel.textContent = deleting ? t('run.deleting') : t('run.deleteSelected', { n });
+    deleteSel.disabled = running || deleting || !n;
   }
 
   function pick(p: number, on: boolean, range: boolean): void {
@@ -232,13 +233,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!data || running || !selected.size) return;
     const pages = data.pages.filter(p => selected.has(p));
     if (!confirm(t('run.deleteManyConfirm', { n: pages.length }))) return;
-    deleteSel.disabled = true;
+    deleting = true; syncPicks(); // 엑셀을 다시 만드는 몇 초 동안 두 번 누르지 않게
     try {
       const r = await api.deletePages(data.폴더, pages);
       selected = new Set(); lastPick = null;
       if (r.엑셀오류) showError(t('common.excelFailed', { error: r.엑셀오류 })); else showInfo(t('run.deletedMany', { n: r.삭제 }));
     } catch (e) { showError((e as Error).message); }
-    try { await refresh(); } catch (e) { showError((e as Error).message); }
+    deleting = false;
+    try { await refresh(); } catch (e) { showError((e as Error).message); syncPicks(); }
   }
 
   async function deletePage(p: number): Promise<void> {
