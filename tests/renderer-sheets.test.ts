@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, withFile } from '../src/renderer/lib/sheets.js';
+import { appendFiles, coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../src/renderer/lib/sheets.js';
 
 test('saveRanges: 목록 차례로 장 번호를 이어 받고, 저장하지 않는 파일은 순번 없이 건너뛴다', () => {
   assert.deepEqual(saveRanges([{ 포함: true, 쪽수: 3 }, { 포함: false, 쪽수: 2 }, { 포함: true, 쪽수: 1 }], 4), [
@@ -15,18 +15,19 @@ test('naturalCompare: 숫자는 수로(2 < 10, 001 < 010), 대소문자는 가�
   assert.equal(naturalCompare('A반.pdf', 'a반.pdf'), 0);
 });
 
-test('hasFile·withFile: 나눠 고른 파일을 목록에 더하면 목록 전체가 이름 순서, 같은 지문은 더하지 않는다', () => {
+test('appendFiles·sortByName·hasFile: 새 묶음은 그 안에서만 이름 순으로 맨 뒤에, 기존 순서는 그대로, 같은 지문은 같은 파일', () => {
   const f = (이름: string, 지문: string) => ({ 이름, 지문 });
-  let list = [f('3반.pdf', 'c')];
-  list = withFile(list, f('1반.pdf', 'a')); // 나중에 골라도 이름 순서로 앞에
-  list = withFile(list, f('10반.pdf', 'd'));
-  list = withFile(list, f('2반.pdf', 'b'));
-  assert.deepEqual(list.map(x => x.이름), ['1반.pdf', '2반.pdf', '3반.pdf', '10반.pdf']);
+  let list = appendFiles([], [f('3반.pdf', 'c'), f('10반.pdf', 'd')]);
+  assert.deepEqual(list.map(x => x.이름), ['3반.pdf', '10반.pdf']); // 한 묶음 안은 이름 자연 순서
+  list = [list[1]!, list[0]!]; // 손으로 바꾼 순서
+  list = appendFiles(list, [f('2반.pdf', 'b'), f('1반.pdf', 'a')]);
+  assert.deepEqual(list.map(x => x.이름), ['10반.pdf', '3반.pdf', '1반.pdf', '2반.pdf']); // 기존 순서 그대로, 새 파일은 뒤에
+  assert.deepEqual(sortByName(list).map(x => x.이름), ['1반.pdf', '2반.pdf', '3반.pdf', '10반.pdf']);
+  assert.deepEqual(list.map(x => x.이름), ['10반.pdf', '3반.pdf', '1반.pdf', '2반.pdf']); // 정렬은 새 목록을 돌려준다
+  assert.deepEqual(sortByName([f('scan.pdf', 'x'), f('scan.pdf', 'y')]).map(x => x.지문), ['x', 'y']); // 이름이 같으면 원래 차례
   assert.equal(hasFile(list, 'b'), true); // 이름이 달라도 같은 지문이면 같은 파일
   assert.equal(hasFile(list, 'z'), false);
   assert.equal(hasFile([], 'a'), false);
-  const same = withFile([f('scan.pdf', 'x')], f('scan.pdf', 'y')); // 이름이 같은 다른 파일은 먼저 고른 것이 앞
-  assert.deepEqual(same.map(x => x.지문), ['x', 'y']);
 });
 
 test('sheetKind: 끌어다 놓은 파일도 고르기 창과 같은 기준(PDF·사진), 이름이나 형식 하나로 알아본다', () => {

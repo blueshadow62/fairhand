@@ -18,11 +18,14 @@ export const naturalCompare = (a: string, b: string): number => a.localeCompare(
 /** 고른 목록에 같은 파일(같은 지문)이 있는지. 있으면 열지 않고 건너뛴다(같은 쪽이 두 번 저장되지 않게) */
 export const hasFile = (list: readonly { 지문: string }[], 지문: string): boolean => list.some(x => x.지문 === 지문);
 
+/** 이름 자연 순서로 정렬한 새 목록('이름 순으로 정렬' 단추). 정렬이 안정적이라 이름이 같으면 원래 차례를 지킨다 */
+export const sortByName = <T extends { 이름: string }>(list: readonly T[]): T[] => [...list].sort((a, b) => naturalCompare(a.이름, b.이름));
+
 /**
- * 고른 목록에 파일 하나를 더한 새 목록. 여러 번 나눠 고르거나 끌어다 놓아도 목록 전체를 파일 이름 자연 순서로 두어,
- * 목록 차례대로 쪽이 저장된다. 이름이 같으면 먼저 고른 파일이 앞이다(정렬이 안정적이다)
+ * 새로 고른 파일 묶음을 그 안에서만 이름 순으로 정렬해 목록 맨 뒤에 붙인다. 목록 전체를 다시 정렬하면
+ * 손으로 바꾼 순서가 더할 때마다 풀렸다. 목록 차례대로 쪽이 저장된다
  */
-export const withFile = <T extends { 이름: string }>(list: readonly T[], item: T): T[] => [...list, item].sort((a, b) => naturalCompare(a.이름, b.이름));
+export const appendFiles = <T extends { 이름: string }>(list: readonly T[], add: readonly T[]): T[] => [...list, ...sortByName(add)];
 
 /**
  * 목록의 파일마다 저장할 때 받을 장 번호(next부터 목록 차례로 이어서). 저장하지 않는 파일(체크하지 않은 이미 올린 파일)은 null이고

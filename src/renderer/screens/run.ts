@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { coversSaved, hasFile, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, withFile } from '../lib/sheets.js';
+import { appendFiles, coversSaved, hasFile, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -137,24 +137,26 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (saving) { showError(t('run.busySaving')); return; } // 저장 중에는 고르기 단추도 잠근다
     const gen = listGen;
     uploadStatus.textContent = ''; justSaved = []; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
-    const dup: string[] = [];
+    const dup: string[] = [], fresh: Picked[] = [];
+    const stop = () => fresh.forEach(closePicked); // 그사이 목록을 비웠으면 이번에 연 파일도 닫는다
     for (const f of files) {
       try {
         const bytes = await f.arrayBuffer(); // 지문과 열기가 같은 버퍼를 쓴다(큰 스캔을 두 번 읽지 않게)
         const 지문 = await sha256(bytes);
-        if (gen !== listGen) return;
-        if (hasFile(picked, 지문)) { dup.push(f.name); continue; }
+        if (gen !== listGen) { stop(); return; }
+        if (hasFile(picked, 지문) || hasFile(fresh, 지문)) { dup.push(f.name); continue; }
         const src = await openSheetSource(f, bytes);
-        if (gen !== listGen) { src.close(); return; }
+        if (gen !== listGen) { src.close(); stop(); return; }
         const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
         const pk: Picked = { src, 이름: f.name, 지문, 크기: f.size, 이전, 포함: !이전, 회전: Array<Rotation>(src.pageCount).fill(rotation), tiles: [], closed: false };
         pk.tiles = Array.from({ length: src.pageCount }, (_, i) => makeTile(pk, i + 1));
-        picked = withFile(picked, pk);
+        fresh.push(pk);
       } catch (e) {
-        if (gen !== listGen) return;
+        if (gen !== listGen) { stop(); return; }
         showError(t('run.openFailed', { name: f.name, error: (e as Error).message }));
       }
     }
+    picked = appendFiles(picked, fresh); // 손으로 바꾼 순서가 풀리지 않게 새 파일은 맨 뒤에
     if (dup.length) showInfo(t('run.dupPicked', { names: dup.join(', ') }));
     renderUpload();
   }
@@ -335,9 +337,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     for (const x of tiles) if (x.state === 'idle' || x.state === 'queued') io.observe(x.fig);
     renderRotationNote();
     const ranges = saveRanges(picked.map(p => ({ 포함: p.포함, 쪽수: p.src.pageCount })), next);
+    const byName = sortByName(picked);
     put(uploadBox,
       el('div', { class: 'file-chips' }, ...picked.map((p, i) => fileChip(p, ranges[i] ?? null))),
       el('div', { class: 'row' }, el('span', { class: 'muted' }, t('run.chipsHelp')),
+        // 손으로 바꾼 순서를 처음처럼 파일 이름 순서로 되돌린다. 이미 이름 순이면 할 일이 없다
+        picked.length > 1 ? el('button', { class: 'small', disabled: saving || byName.every((p, i) => p === picked[i]), onclick: () => { if (saving) return; picked = sortByName(picked); renderUpload(); } }, t('run.sortByName')) : null,
         el('button', { class: 'small', disabled: saving, onclick: () => { if (saving) return; dropPicked(); renderUpload(); } }, t('run.removeAll'))),
       el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
         el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; turnAll(r); } }, `${r}°`)),
