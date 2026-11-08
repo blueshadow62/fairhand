@@ -35,6 +35,8 @@ export interface CliStatusView { installed: boolean; version?: string; tooOld?: 
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
 export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 올린파일: UploadRecord[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
+/** 정답표 저장 결과. 정리: 단위 id가 다시 매겨져 사례·답 칸을 같은 뜻의 새 id로 옮긴 수와, 같은 뜻의 단위가 없어 지운 수 */
+export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: number; 지움: number }; 답칸: { 옮김: number; 지움: number } } }
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
@@ -90,7 +92,7 @@ export interface GeulnunApi {
   restoreSet(id: string): Promise<string>;           // 되살린 폴더 이름
   purgeSet(id: string): Promise<void>;               // 영구 삭제
   readSet(폴더: string): Promise<SetData>;
-  saveKey(폴더: string, key: AnswerKey): Promise<AnswerKey>;
+  saveKey(폴더: string, key: AnswerKey): Promise<SaveKeyResult>;
   importKey(): Promise<AnswerKey | null>;
   exportKey(폴더: string): Promise<string | null>;
   attachSource(폴더: string): Promise<string | null>;       // PDF를 세트/원본/에 복사, 파일 이름 반환

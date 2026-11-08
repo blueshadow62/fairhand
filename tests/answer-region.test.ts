@@ -5,8 +5,9 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { keptRegions, keyProblems, parseKey } from '../src/core/key.js';
+import { keyProblems, parseKey } from '../src/core/key.js';
 import { DataError } from '../src/core/types.js';
+import { mapUnits, remapRegions } from '../src/core/unit-map.js';
 import { loadRules, systemPrompt } from '../src/engine/rules.js';
 import { EngineBridge } from '../src/main/engine-bridge.js';
 import { SecretStore } from '../src/main/secrets.js';
@@ -25,11 +26,11 @@ test('답영역: 단위 id → 이름가림과 같은 사각형 규칙, 정답�
     assert.ok(keyProblems({ ...key, 답영역: { '1-1': m } }).some(p => p.includes('답영역 1-1')), JSON.stringify(m));
 });
 
-test('keptRegions: 정답표에 남은 단위의 영역만, 남는 것이 없으면 undefined', () => {
+test('remapRegions: 정답표에 남은 단위의 영역만, 남는 것이 없으면 답영역 없음', () => {
   const regions = { '1-1': r1, '3-1': r1, E1: rE };
-  assert.deepEqual(keptRegions(regions, { 정량: key.정량.filter(u => u.id !== '3-1'), 정성: key.정성 }), { '1-1': r1, E1: rE });
-  assert.equal(keptRegions(regions, { 정량: [], 정성: [] }), undefined);
-  assert.equal(keptRegions(undefined, key), undefined);
+  assert.deepEqual(remapRegions(regions, mapUnits(key, { 정량: key.정량.filter(u => u.id !== '3-1'), 정성: key.정성 })), { 옮김: 0, 지움: 1, 답영역: { '1-1': r1, E1: rE } });
+  assert.deepEqual(remapRegions(regions, mapUnits(key, { 정량: [], 정성: [] })), { 옮김: 0, 지움: 3 });
+  assert.deepEqual(remapRegions(undefined, mapUnits(key, key)), { 옮김: 0, 지움: 0 });
 });
 
 test('답영역은 AI 지시문에 들어가지 않는다', async () => {
@@ -66,11 +67,11 @@ test('saveKey: 문항 설정 저장은 답영역을 되살리고(확인 표시�
     await bridge.setAnswerRegion(set, '1-1', r1);
     await bridge.setAnswerRegion(set, '3-1', r1);
     const screen = { ...key, 확인: { 완료: true } }; // 문항 설정 화면이 조립한 정답표(답영역 칸 없음)
-    const saved = await bridge.saveKey(set, screen);
+    const saved = (await bridge.saveKey(set, screen)).key;
     assert.deepEqual(saved.답영역, { '1-1': r1, '3-1': r1 });
     assert.equal(saved.확인?.완료, true); // 최상위 칸이라 채점 내용 비교에 들지 않는다
-    assert.deepEqual((await bridge.saveKey(set, { ...screen, 답영역: { '1-1': rE } })).답영역?.['1-1'], r1); // 화면이 보낸 값은 받지 않는다
-    const fewer = await bridge.saveKey(set, { ...screen, 정량: key.정량.filter(u => u.id !== '3-1') });
+    assert.deepEqual((await bridge.saveKey(set, { ...screen, 답영역: { '1-1': rE } })).key.답영역?.['1-1'], r1); // 화면이 보낸 값은 받지 않는다
+    const fewer = (await bridge.saveKey(set, { ...screen, 정량: key.정량.filter(u => u.id !== '3-1') })).key;
     assert.deepEqual(fewer.답영역, { '1-1': r1 });
     assert.deepEqual(JSON.parse(await readFile(keyPath, 'utf-8')).답영역, { '1-1': r1 });
   } finally { await rm(dir, { recursive: true, force: true }); }

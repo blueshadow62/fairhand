@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { caseRequest, caseRevertRequest, planApplyCase, planCaseRevert } from '../core/cases.js';
-import { isConfirmed, keptRegions, parseKey } from '../core/key.js';
-import { addCase, mergeCases, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
+import { isConfirmed, parseKey } from '../core/key.js';
+import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
+import { mapUnits, remapCases, remapRegions } from '../core/unit-map.js';
 import { planUnitResults, unitResultsRequest } from '../core/unit-results.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
@@ -20,7 +21,7 @@ import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } 
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
-import { DEFAULT_EFFORT, DEFAULT_MODEL, type CaseResult, type CaseRevertResult, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type UnitResultsResult } from '../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type CaseResult, type CaseRevertResult, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type SaveKeyResult, type UnitResultsResult } from '../shared/ipc.js';
 import { openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -173,7 +174,7 @@ export class EngineBridge {
   }
 
   /** 정답표 저장. 채점 내용이 바뀌었으면 확인을 지운다(화면만 믿지 않는다). 채점규칙·사례만 바뀐 저장은 확인 유지 */
-  async saveKey(setDir: string, raw: unknown): Promise<AnswerKey> {
+  async saveKey(setDir: string, raw: unknown): Promise<SaveKeyResult> {
     // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
     // 문항별 검토의 신원 영역·답 칸도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask·setAnswerRegion으로만 바꾼다. 그래서 이 칸들은 받지 않는다.
     // 정답표에서 지운 단위를 가리키는 사례는 검사 전에 버린다(그대로 두면 단위를 지운 저장이 막힌다)
@@ -186,13 +187,15 @@ export class EngineBridge {
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
     if (old?.이름가림) key.이름가림 = old.이름가림;
     if (old?.신원가림) key.신원가림 = old.신원가림;
-    const 답영역 = keptRegions(old?.답영역, key); // 지운 단위의 답 칸은 버린다
-    if (답영역) key.답영역 = 답영역;
+    // 문항 설정은 단위 id를 행 순서로 다시 매긴다. 옛 id로 적힌 답 칸·사례는 같은 뜻의 새 id로 옮기고, 옮길 곳이 없으면 지운다.
     // 화면은 세트를 열 때 읽은 사례를 보낸다. 그사이 검토에서 쌓인 사례가 지워지지 않게 파일의 사례를 기준으로 합친다
-    const 사례 = mergeCases(old?.사례, key.사례, key);
-    if (사례.length) key.사례 = 사례; else delete key.사례;
+    const map = mapUnits(old ?? { 정량: [], 정성: [] }, key);
+    const regions = remapRegions(old?.답영역, map);
+    if (regions.답영역) key.답영역 = regions.답영역;
+    const cases = remapCases(old?.사례, key.사례, map, key);
+    if (cases.사례.length) key.사례 = cases.사례; else delete key.사례;
     await saveKeyFile(setDir, key);
-    return key;
+    return { key, 정리: { 사례: { 옮김: cases.옮김, 지움: cases.지움 }, 답칸: { 옮김: regions.옮김, 지움: regions.지움 } } };
   }
 
   /** 문항별 검토 그림 보기의 신원 영역. null이면 기본 영역으로. 화면에 칠하는 데만 쓰고 AI에는 보내지 않아 전사 중에도 바꾼다 */

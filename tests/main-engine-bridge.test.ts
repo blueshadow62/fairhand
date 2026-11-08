@@ -83,10 +83,10 @@ test('saveKey는 이름 가림을 바꾸지 못한다(문항 설정 저장으로
     const on = await bridge.setNameMask(set, rect);
     assert.deepEqual(on.이름가림, rect);
     const { 이름가림: _dropped, ...rebuilt } = on; // 문항 설정 화면이 조립한 정답표에는 이 칸이 없다
-    assert.deepEqual((await bridge.saveKey(set, rebuilt)).이름가림, rect);
-    assert.deepEqual((await bridge.saveKey(set, { ...on, 이름가림: { ...rect, w: 0.1 } })).이름가림, rect);
+    assert.deepEqual((await bridge.saveKey(set, rebuilt)).key.이름가림, rect);
+    assert.deepEqual((await bridge.saveKey(set, { ...on, 이름가림: { ...rect, w: 0.1 } })).key.이름가림, rect);
     assert.equal((await bridge.setNameMask(set, null)).이름가림, undefined);
-    assert.equal((await bridge.saveKey(set, { ...rebuilt, 이름가림: rect })).이름가림, undefined);
+    assert.equal((await bridge.saveKey(set, { ...rebuilt, 이름가림: rect })).key.이름가림, undefined);
     await assert.rejects(bridge.setNameMask(set, { ...rect, x: 0.9 }), /이름가림/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

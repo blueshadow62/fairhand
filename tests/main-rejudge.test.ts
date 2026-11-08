@@ -112,9 +112,9 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
 test('saveKey: 사례·채점규칙만 바꾸면 확인 유지, 정답을 바꾸면 확인을 지운다', async () => {
   const { dir, set, bridge, key } = await setup();
   try {
-    const k1 = await bridge.saveKey(set, { ...key, 채점규칙: { 넓은말: '인정' }, 사례: [{ 단위: '1-1', 답: '가', 판정: 'O', 일시: '', 출처: '' }], 정량: key.정량.map((u: any) => ({ ...u, 유형: '단답형' })) });
+    const k1 = (await bridge.saveKey(set, { ...key, 채점규칙: { 넓은말: '인정' }, 사례: [{ 단위: '1-1', 답: '가', 판정: 'O', 일시: '', 출처: '' }], 정량: key.정량.map((u: any) => ({ ...u, 유형: '단답형' })) })).key;
     assert.equal(k1.확인?.완료, true);
-    const k2 = await bridge.saveKey(set, { ...k1, 정량: k1.정량.map(u => u.id === '1-1' ? { ...u, 정답: '다른 답' } : u) });
+    const k2 = (await bridge.saveKey(set, { ...k1, 정량: k1.정량.map(u => u.id === '1-1' ? { ...u, 정답: '다른 답' } : u) })).key;
     assert.equal(k2.확인?.완료, false);
     assert.equal((await loadSet(set)).key.확인?.완료, false);
   } finally { await rm(dir, { recursive: true, force: true }); }

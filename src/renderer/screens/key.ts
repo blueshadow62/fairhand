@@ -405,7 +405,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!폴더 || dirty) { confirmBox.checked = !on; showError(t('common.saveKeyFirst')); return; }
     await guard(async () => {
       const next = on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false };
-      확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).확인; await store.refreshSets();
+      확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).key.확인; await store.refreshSets();
       showInfo(on ? t('key.confirmedOn') : t('key.confirmedOff'));
     });
     renderStatus();
@@ -423,7 +423,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         return;
       }
       // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
-      const saved = await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례));
+      const saved = (await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례))).key;
       확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
       showInfo(확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'));

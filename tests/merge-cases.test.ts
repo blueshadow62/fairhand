@@ -43,7 +43,7 @@ test('saveKey: 화면이 열 때 읽은 사례 목록으로 저장해도 그사�
     const screen: AnswerKey = structuredClone((await loadSet(set)).key); // 문항 설정 화면이 세트를 연 때(사례 없음)
     await bridge.setUnitResults(set, { 단위: '1-1', 항목: [{ page: 1, 판정: 'X' }, { page: 2, 판정: 'X' }], 사례기록: true }); // 문항별 검토
     await bridge.applyCase(set, { 단위: '3-1', 답: '열심히', 판정: 'O', page: 1 }); // 답안지별 검토
-    const saved = await bridge.saveKey(set, { ...screen, 채점규칙: { 맞춤법: '불인정' } });
+    const saved = (await bridge.saveKey(set, { ...screen, 채점규칙: { 맞춤법: '불인정' } })).key;
     assert.deepEqual(saved.사례?.map(x => [x.단위, x.답, x.판정]), [['1-1', '가나', 'X'], ['3-1', '열심히', 'O']]);
     assert.deepEqual((await loadSet(set)).key.사례, saved.사례);
     assert.equal((await loadSet(set)).key.채점규칙?.맞춤법, '불인정');
@@ -55,7 +55,7 @@ test('saveKey: 가져온 정답표의 사례는 파일에 없으면 더하고, �
   try {
     await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 });
     const imported = [c('1-1', '가나', 'O', '다른 세트'), c('1-1', '마바', 'O', '다른 세트')];
-    const saved = await bridge.saveKey(set, { ...key, 사례: imported });
+    const saved = (await bridge.saveKey(set, { ...key, 사례: imported })).key;
     assert.deepEqual(saved.사례?.map(x => [x.단위, x.답, x.판정, x.출처]), [['1-1', '가나', 'X', '검토 p01'], ['1-1', '마바', 'O', '다른 세트']]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -66,9 +66,9 @@ test('saveKey: 단위를 지운 정답표는 그 단위의 사례(파일·화면
     await bridge.applyCase(set, { 단위: '3-1', 답: '열심히', 판정: 'O', page: 1 });
     await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 });
     const screen = { ...key, 정량: key.정량.filter(u => u.id !== '3-1'), 사례: [c('3-1', '열심히', 'O')] }; // 화면이 들고 있던 옛 사례
-    const saved = await bridge.saveKey(set, screen);
+    const saved = (await bridge.saveKey(set, screen)).key;
     assert.deepEqual(saved.사례?.map(x => x.단위), ['1-1']);
-    const all = await bridge.saveKey(set, { ...key, 정량: key.정량.filter(u => u.id === '3-1') });
+    const all = (await bridge.saveKey(set, { ...key, 정량: key.정량.filter(u => u.id === '3-1') })).key;
     assert.equal(all.사례, undefined); // 남는 사례가 없으면 칸을 두지 않는다
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

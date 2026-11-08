@@ -58,14 +58,6 @@ export function keyProblems(k: unknown): string[] {
   return p;
 }
 
-/** 정답표에 남은 단위의 답 칸만 고른다. 문항 설정 저장으로 단위가 빠지면 그 영역도 버린다. 남는 것이 없으면 undefined */
-export function keptRegions(regions: Record<string, MaskRect> | undefined, key: Pick<AnswerKey, '정량' | '정성'>): Record<string, MaskRect> | undefined {
-  if (!regions) return undefined;
-  const ids = new Set([...key.정량, ...key.정성].map(u => u.id));
-  const kept = Object.fromEntries(Object.entries(regions).filter(([id]) => ids.has(id)));
-  return Object.keys(kept).length ? kept : undefined;
-}
-
 /** 문항별 검토의 그림 보기에서 칠하는 기본 영역: 쪽 위 15%(머리 줄의 학년·반·번호·이름이 드는 자리) */
 export const DEFAULT_IDENTITY_MASK: Readonly<MaskRect> = Object.freeze({ x: 0, y: 0, w: 1, h: 0.15 });
 export const identityMask = (k: AnswerKey): MaskRect => k.신원가림 ?? DEFAULT_IDENTITY_MASK;

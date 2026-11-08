@@ -53,10 +53,10 @@ test('setIdentityMask: 켜고 끄기, 쪽 밖은 거절, 전사 중에도 된다
     assert.deepEqual(JSON.parse(await readFile(path.join(set, '정답표.json'), 'utf-8')).신원가림, rect);
     (bridge as any).current = null;
     const { 신원가림: _dropped, ...rebuilt } = on; // 문항 설정 화면이 조립한 정답표에는 이 칸이 없다
-    assert.deepEqual((await bridge.saveKey(set, rebuilt)).신원가림, rect);
-    assert.deepEqual((await bridge.saveKey(set, { ...on, 신원가림: { ...rect, h: 0.5 } })).신원가림, rect);
+    assert.deepEqual((await bridge.saveKey(set, rebuilt)).key.신원가림, rect);
+    assert.deepEqual((await bridge.saveKey(set, { ...on, 신원가림: { ...rect, h: 0.5 } })).key.신원가림, rect);
     await assert.rejects(bridge.setIdentityMask(set, { ...rect, y: 0.95 }), /신원가림/);
     assert.equal((await bridge.setIdentityMask(set, null)).신원가림, undefined);
-    assert.equal((await bridge.saveKey(set, { ...rebuilt, 신원가림: rect })).신원가림, undefined);
+    assert.equal((await bridge.saveKey(set, { ...rebuilt, 신원가림: rect })).key.신원가림, undefined);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

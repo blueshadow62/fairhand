@@ -8,7 +8,7 @@ import { appendUpload, loadSet, loadUploads, listPages, removePage } from '../co
 import { parseTranscript } from '../core/transcript.js';
 import { DataError, type AnswerKey, type MaskRect, type UploadRecord } from '../core/types.js';
 import { EngineError, userFacingMessage } from '../engine/provider.js';
-import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
+import { CHANNELS, type ExternalLink, type IpcResult, type SaveKeyResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
 import { leaveChoice, leaveDialogOptions, pickFileOptions, type PickKind } from './dialogs.js';
 import { listSets, nextPageNumber, pageFile, pagesToDelete, resolveSetDir, uniqueFolderName } from './paths.js';
@@ -81,7 +81,7 @@ export function registerIpc(d: IpcDeps): void {
     const 명단 = all ? all.filter(x => x.학년 === key.대상.학년 && key.대상.반.includes(x.반)) : null; // 검토 화면의 미제출 목록용
     return { 폴더, key, transcripts, pages: await listPages(dir), 올린파일: await loadUploads(dir), 명단있음: !!all, 명단 };
   });
-  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => d.bridge.saveKey(await setDir(폴더), raw));
+  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<SaveKeyResult> => d.bridge.saveKey(await setDir(폴더), raw));
   h(CHANNELS.setNameMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setNameMask(await setDir(폴더), rect as MaskRect | null));
   h(CHANNELS.setIdentityMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setIdentityMask(await setDir(폴더), maskRectArg(rect)));
   h(CHANNELS.setAnswerRegion, async (폴더: string, 단위: unknown, rect: unknown): Promise<AnswerKey> => d.bridge.setAnswerRegion(await setDir(폴더), 단위, maskRectArg(rect)));
