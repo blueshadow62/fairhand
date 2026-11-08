@@ -178,10 +178,16 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 .keytable { table-layout: fixed; }
 .keytable th, .keytable td { padding: 6px; }
 .keytable th { white-space: normal; }
-.keytable td:nth-child(1), .keytable th:nth-child(1) { width: 60px; }
-.keytable td:nth-child(2), .keytable th:nth-child(2) { width: 92px; }
-.keytable td:last-child, .keytable th:last-child { width: 150px; }
-.keytable td:nth-last-child(2), .keytable th:nth-last-child(2) { width: 96px; } /* 배점(논술형은 인용·용어 둘) */
+/* 고정 표 배치라 칸 너비는 머리 줄(th)이 정한다. 남는 너비는 설명·정답·허용·핵심·요소가 나눈다 */
+.keytable th:nth-child(1) { width: 56px; }
+.keytable th:nth-child(2) { width: 100px; } /* '단답형'이 잘리지 않게 */
+.keytable th:last-child { width: 140px; }
+.keytable th:nth-last-child(2) { width: 84px; } /* 배점(논술형은 인용·용어 둘) */
+.keytable tr.essay-main td { border-bottom: 0; }
+.keytable tr.essay-detail td { border-top: 0; padding-top: 0; }
+.keytable .essay-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; }
+.keytable .essay-fields label { display: flex; flex-direction: column; align-items: stretch; gap: 3px; font-size: var(--fs-s); color: var(--text-2); }
+.keytable .essay-fields :is(textarea, input) { width: 100%; font-size: var(--fs-m); color: var(--text); }
 .keytable input.points { width: 100%; min-width: 0; }
 .keytable .essay-points { display: flex; flex-direction: column; gap: 4px; }
 .keytable .essay-points label { display: flex; align-items: center; gap: 4px; font-size: var(--fs-s); white-space: nowrap; }

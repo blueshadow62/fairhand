@@ -183,10 +183,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   function renderTable(): void {
     clear(tableBox);
     const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), t('key.col.points'), ''].map(h => el('th', {}, h)));
-    const body = rows.map((r, i) => {
-      // 논술형은 요소 칸에 인용할 문장, 핵심 칸에 써야 할 용어를 쓴다(정답·허용 칸은 쓰지 않음)
+    const body = rows.flatMap((r, i) => {
+      // 논술형은 요소에 인용할 문장, 핵심에 써야 할 용어를 담는다(정답·허용은 쓰지 않음)
       const essay = r.유형 === '논술형';
-      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형' || essay, allow: r.유형 === '요소형' || r.유형 === '응답형' || essay, kw: r.유형 !== '문장형' && !essay, el: r.유형 !== '요소형' && !essay };
+      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형', allow: r.유형 === '요소형' || r.유형 === '응답형', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
       const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소' | '배점' | '용어배점') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
       const pointsIn = (key: '배점' | '용어배점', label: string) => bind(el('input', { type: 'number', min: '0.5', step: '0.5', class: 'points', 'aria-label': label }), key);
       const pointsCell = essay
@@ -201,18 +201,25 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         if (!confirm(t('key.deleteQuestionConfirm', { n: r.문항, rows: sameQuestion }))) return;
         const q = r.문항; rows = rows.filter(x => x.문항 !== q); touch(); renderTable();
       };
-      return el('tr', {},
-        el('td', {}, num), el('td', {}, type),
-        el('td', {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')),
+      const desc = el('td', essay ? { colspan: '5' } : {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
+      const actions = el('td', {}, el('div', { class: 'row' },
+        el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
+        el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow')),
+        sameQuestion > 1 ? el('button', { class: 'danger', onclick: deleteQuestion }, t('key.deleteQuestion')) : null));
+      // 논술형의 인용 문장·용어는 길어서 표 칸(좁으면 70px 남짓)에 넣으면 한두 글자씩 끊긴다. 바로 아래 줄을 넓게 쓴다
+      if (essay) return [
+        el('tr', { class: 'essay-main' }, el('td', {}, num), el('td', {}, type), desc, el('td', {}, pointsCell), actions),
+        el('tr', { class: 'essay-detail' }, el('td', { colspan: '2' }), el('td', { colspan: '7' }, el('div', { class: 'essay-fields' },
+          el('label', {}, t('key.essay.quotesHint'), bind(el('textarea', { rows: 3 }), '요소')),
+          el('label', {}, t('key.essay.termsHint'), bind(el('input', {}), '핵심'))))),
+      ];
+      return [el('tr', {},
+        el('td', {}, num), el('td', {}, type), desc,
         el('td', {}, bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답')),
         el('td', {}, bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용')),
-        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords'), placeholder: essay ? t('key.essay.termsHint') : '' }), '핵심')),
-        el('td', {}, bind(el('textarea', { rows: essay ? 3 : 2, disabled: off.el, 'aria-label': t('key.col.elements'), placeholder: essay ? t('key.essay.quotesHint') : '' }), '요소')),
-        el('td', {}, pointsCell),
-        el('td', {}, el('div', { class: 'row' },
-          el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
-          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow')),
-          sameQuestion > 1 ? el('button', { class: 'danger', onclick: deleteQuestion }, t('key.deleteQuestion')) : null)));
+        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심')),
+        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
+        el('td', {}, pointsCell), actions)];
     });
     const clearAll = () => { if (!confirm(t('key.clearAllConfirm'))) return; rows = [emptyRow()]; touch(); renderTable(); };
     const addRow = () => {
