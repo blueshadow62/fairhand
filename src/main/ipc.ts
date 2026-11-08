@@ -86,7 +86,7 @@ export function registerIpc(d: IpcDeps): void {
     const dir = path.join(sem, 폴더);
     await mkdir(path.join(dir, 'pages'), { recursive: true }); await mkdir(path.join(dir, 'transcripts'), { recursive: true }); await mkdir(path.join(dir, '원본'), { recursive: true });
     await writeFile(path.join(dir, '정답표.json'), JSON.stringify(key, null, 1), 'utf-8');
-    return { 폴더, key, 쪽수: 0, 전사수: 0 };
+    return { 폴더, key, 쪽수: 0, 전사수: 0, 확인수: 0, 미전사수: 0 };
   });
   h(CHANNELS.readSet, async (폴더: string) => {
     const dir = await setDir(폴더); const { key, transcripts } = await loadSet(dir);

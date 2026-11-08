@@ -33,7 +33,8 @@ export interface Settings { 학기폴더: string | null; 명단: string | null; 
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string; minVersion?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
-export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number }
+/** 세트 목록 한 칸. 전사수: 전사 파일 수, 확인수: 그중 검토에서 확인 완료한 것, 미전사수: 그림은 있는데 전사 파일이 없는 장 */
+export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number; 확인수: number; 미전사수: number }
 export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 올린파일: UploadRecord[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
 /** 정답표 저장 결과. 정리: 단위 id가 다시 매겨져 사례·답 칸을 같은 뜻의 새 id로 옮긴 수와, 같은 뜻의 단위가 없어 지운 수 */
 export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: number; 지움: number }; 답칸: { 옮김: number; 지움: number } } }
