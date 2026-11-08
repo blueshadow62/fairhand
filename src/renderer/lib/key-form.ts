@@ -1,6 +1,6 @@
 import { DEFAULT_RULES, gradingRules } from '../../core/key.js';
 import type { AnswerKey, Case, GradingRules, QtyUnit, QualUnit } from '../../core/types.js';
-import type { KeyDraftResult } from '../../shared/ipc.js';
+import type { KeyDraftResult, SaveKeyResult } from '../../shared/ipc.js';
 import { t } from './i18n.js';
 
 export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '논술형' | '응답형';
@@ -102,6 +102,14 @@ export function keyToRows(key: AnswerKey): { meta: KeyMeta; rows: UnitRow[] } {
 }
 
 export const draftToRows = (d: KeyDraftResult): UnitRow[] => unitsToRows(d.정량, d.정성);
+
+/** 저장으로 사례·답 칸을 새 단위로 옮기거나 지웠으면 알릴 글(줄마다 하나). 없으면 빈 글 */
+export function cleanupNotice(r: SaveKeyResult['정리']): string {
+  const list = (cases: number, regions: number) =>
+    [cases ? t('key.cleanup.cases', { n: cases }) : '', regions ? t('key.cleanup.regions', { n: regions }) : ''].filter(Boolean).join(', ');
+  const moved = list(r.사례.옮김, r.답칸.옮김), dropped = list(r.사례.지움, r.답칸.지움);
+  return [moved ? t('key.cleanup.moved', { list: moved }) : '', dropped ? t('key.cleanup.dropped', { list: dropped }) : ''].filter(Boolean).join('\n');
+}
 
 export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
   const e: string[] = [];

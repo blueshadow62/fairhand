@@ -8,7 +8,8 @@ import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-uti
 import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
-import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { changedUnitIds } from '../../core/unit-map.js';
 
 function defaultSemester(d = new Date()): string {
   const m = d.getMonth() + 1;
@@ -89,10 +90,22 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let 확인: AnswerKey['확인'] | undefined;
   let 사례: Case[] = [];          // 정답표에서 그대로 보존(폼으로 고치지 않음)
   let dirty = false;
-  let editing = false;
-  let 전사수 = 0;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
+  let editing = false;           // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
+  let 전사수 = 0;
+  let savedKey: AnswerKey | null = null; // 파일에 있는 정답표. 저장 전에 단위 id의 뜻이 바뀌는지 견준다
 
   const guard = makeGuard(showError);
+  // 채점 실행에서 전사한 뒤 돌아왔을 수 있어, 전사 뒤 새로 읽는 세트 목록의 수를 먼저 본다
+  const transcribed = (): number => store.state.sets.find(s => s.폴더 === 폴더)?.전사수 ?? 전사수;
+  /**
+   * 행을 끼우거나 지우면 단위 id가 다시 매겨진다. 전사는 단위 id로 답을 적어 두었고 저장해도 옮기지 않으므로,
+   * 이미 전사한 장이 있는데 같은 id의 뜻이 바뀌면 저장 전에 묻는다. 그만두면 false
+   */
+  function unitChangesOk(next: AnswerKey): boolean {
+    const changed = savedKey ? changedUnitIds(savedKey, next) : [];
+    const n = transcribed();
+    return !changed.length || !n || confirm(t('key.unitMeaningConfirm', { units: changed.join(', '), n }));
+  }
   const touch = () => { if (!dirty) { dirty = true; renderStatus(); } renderStart(); };
 
   const listBox = el('div', { class: 'setlist' });
@@ -140,7 +153,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function openNew(): void {
     resetDraft();
-    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true; startPicked = false;
+    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; savedKey = null; dirty = false; editing = true; startPicked = false;
     store.update({ current: null });
     renderEditor();
   }
@@ -150,7 +163,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const d = await api.readSet(name);
       const r = keyToRows(d.key);
       resetDraft();
-      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; dirty = false; editing = true;
+      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; savedKey = d.key; dirty = false; editing = true;
       store.update({ current: name });
       renderEditor();
       sourceArea.value = await api.readSourceText(name).catch(() => '');
@@ -404,9 +417,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function setConfirmed(on: boolean): Promise<void> {
     if (!폴더 || dirty) { confirmBox.checked = !on; showError(t('common.saveKeyFirst')); return; }
     await guard(async () => {
-      const next = on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false };
-      확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).key.확인; await store.refreshSets();
-      showInfo(on ? t('key.confirmedOn') : t('key.confirmedOff'));
+      const next = rowsToKey(meta, rows, on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false }, 사례);
+      if (!unitChangesOk(next)) return;
+      const r = await api.saveKey(폴더!, next);
+      savedKey = r.key; 확인 = r.key.확인; await store.refreshSets();
+      showInfo([on ? t('key.confirmedOn') : t('key.confirmedOff'), cleanupNotice(r.정리)].filter(Boolean).join('\n'));
     });
     renderStatus();
   }
@@ -423,11 +438,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         return;
       }
       // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
-      const saved = (await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례))).key;
-      확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
+      const next = rowsToKey(meta, rows, 확인, 사례);
+      if (!unitChangesOk(next)) return;
+      const r = await api.saveKey(폴더, next);
+      savedKey = r.key; 확인 = r.key.확인; 사례 = r.key.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
-      showInfo(확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'));
-      if (전사수 > 0 && opts.askRejudge !== false && confirm(t('key.rejudgeConfirm', { n: 전사수 }))) {
+      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리)].filter(Boolean).join('\n'));
+      const n = transcribed();
+      if (n > 0 && opts.askRejudge !== false && confirm(t('key.rejudgeConfirm', { n }))) {
         showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
     });

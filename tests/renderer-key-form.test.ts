@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { draftToRows, emptyRow, keyToRows, parseClasses, rowsHaveContent, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
+import { cleanupNotice, draftToRows, emptyRow, keyToRows, parseClasses, rowsHaveContent, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const meta = { 글: '알바생 자르기(장강명)', 학기: '2026 2학기', 학년: 3, 반: [1, 3], 인원: {} };
@@ -103,4 +103,12 @@ test('논술형: 인용할 문장(줄마다)·써야 할 용어(쉼표, 다른 �
   assert.ok(validateRows(meta, [{ ...essay, 요소: '', 핵심: '' }]).some(e => e.includes('논술형')));
   assert.ok(validateRows(meta, [{ ...essay, 용어배점: '0' }]).some(e => e.includes('배점')));
   assert.deepEqual(validateRows(meta, [essay]), []);
+});
+
+test('cleanupNotice: 옮긴 것과 지운 것을 줄마다, 0인 칸은 빼고, 아무것도 없으면 빈 글', () => {
+  const none = { 옮김: 0, 지움: 0 };
+  assert.equal(cleanupNotice({ 사례: none, 답칸: none }), '');
+  assert.equal(cleanupNotice({ 사례: { 옮김: 2, 지움: 0 }, 답칸: { 옮김: 1, 지움: 1 } }),
+    '단위 번호가 바뀌어 같은 내용의 새 단위로 옮겼습니다: 판정 사례 2건, 답 칸 1개\n같은 내용의 단위가 없어 지웠습니다: 답 칸 1개');
+  assert.equal(cleanupNotice({ 사례: { 옮김: 0, 지움: 3 }, 답칸: none }), '같은 내용의 단위가 없어 지웠습니다: 판정 사례 3건');
 });
