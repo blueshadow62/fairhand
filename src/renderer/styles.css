@@ -378,6 +378,9 @@ dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 .card details.advanced > summary { width: fit-content; padding: 4px 2px; cursor: pointer; font-weight: 600; color: var(--text-2); }
 .card details.advanced > summary:hover, .card details.advanced[open] > summary { color: var(--text); }
 .card details.advanced > summary .muted { margin-left: var(--sp-2); font-weight: 400; }
+/* 프로필은 바로 저장한다. 검사에 걸려 저장하지 않은 까닭은 그 칸 바로 아래에, 바로 저장하지 않는 API 키는 적어 둔 동안 칸 옆에 표시 */
+.screen[data-tab="settings"] .field-note { margin: 0 0 var(--sp-2); color: var(--bad); font-size: var(--fs-m); }
+.screen[data-tab="settings"] .unsaved { padding: 2px 8px; border: 1px solid var(--warn-line); border-radius: var(--r-s); background: var(--warn-soft); color: var(--warn-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
 
 /* 초안 수정 채팅 */
 .chat-log { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
