@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { APP_USER_MODEL_ID, notifyArgs } from '../src/main/notify.js';
+import { APP_USER_MODEL_ID, appUserModelId, notifyArgs } from '../src/main/notify.js';
 import { DataError } from '../src/core/types.js';
 
 const read = (f: string) => readFileSync(new URL(`../../${f}`, import.meta.url), 'utf-8');
 
-test('앱 사용자 모델 ID는 설치판 바로 가기의 appId와 같고, Windows에서 시작할 때 정한다', () => {
+test('앱 사용자 모델 ID는 설치판 바로 가기의 appId와 같고, 개발판은 다른 ID다. Windows에서 시작할 때 정한다', () => {
   assert.equal(APP_USER_MODEL_ID, JSON.parse(read('package.json')).build.appId);
+  assert.equal(appUserModelId(true), APP_USER_MODEL_ID);
+  assert.notEqual(appUserModelId(false), APP_USER_MODEL_ID); // 개발판 창·시험용 바로 가기가 설치판의 작업 표시줄 아이콘을 가져가지 않게
   // 없으면 Windows가 알림을 띄우지 않는다. 맥·리눅스에는 없는 개념이다
-  assert.match(read('src/main/index.ts'), /if \(process\.platform === 'win32'\) app\.setAppUserModelId\(APP_USER_MODEL_ID\)/);
+  assert.match(read('src/main/index.ts'), /if \(process\.platform === 'win32'\) app\.setAppUserModelId\(appUserModelId\(app\.isPackaged\)\)/);
 });
 
 test('notifyArgs: 글자만 받고, 제목은 한 줄로, 길면 줄이고, 빈 제목은 거절', () => {

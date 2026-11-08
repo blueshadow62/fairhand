@@ -6,6 +6,12 @@ import { DataError } from '../core/types.js';
  */
 export const APP_USER_MODEL_ID = 'kr.geulnun.app';
 
+/**
+ * 실행에 쓸 앱 사용자 모델 ID. 개발판(electron 실행 파일로 연 것)은 다른 ID를 쓴다: 같은 ID면 개발판 창과 개발판 알림을 시험하려고 만든
+ * 시작 메뉴 바로 가기가 설치판의 작업 표시줄 아이콘·알림 이름을 가져간다(2026-11-08, 설치판이 Electron 원자 아이콘으로 보였다)
+ */
+export const appUserModelId = (packaged: boolean): string => (packaged ? APP_USER_MODEL_ID : `${APP_USER_MODEL_ID}.dev`);
+
 const TITLE_MAX = 80, BODY_MAX = 240;
 
 /** 렌더러가 보낸 알림 글. 글자만 받고, 제목은 한 줄로, 운영체제 알림에 맞게 길이를 줄인다. 제목이 비면 띄울 수 없다 */
