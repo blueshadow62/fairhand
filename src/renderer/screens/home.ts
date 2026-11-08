@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { makeGuard } from '../lib/screen-utils.js';
+import { sameAsKind } from '../lib/badge.js';
 import { cliStatusText, createDefaultSemester } from './settings.js';
 
 /** 시작 화면: 무엇을 하는 프로그램인지, 지금 상태, 순서, 세트 목록. 세트를 누르면 문항 설정으로. */
@@ -30,7 +31,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(statusBox);
     const s = store.state.settings;
     const profile = s.프로필.find(p => p.id === s.사용중);
-    const profileLine = el('div', {}, profile ? t('home.profile', { name: profile.이름, kind: profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : profile.종류 === 'gemini' ? 'Gemini API' : profile.종류 === 'openai' ? 'OpenAI API' : 'API' }) : t('home.profileNone'));
+    const kind = !profile ? '' : profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : profile.종류 === 'gemini' ? 'Gemini API' : profile.종류 === 'openai' ? 'OpenAI API' : 'API';
+    const profileLine = el('div', {}, !profile ? t('home.profileNone')
+      : sameAsKind(profile.이름, kind) ? t('home.profileKind', { kind }) : t('home.profile', { name: profile.이름.trim(), kind }));
     const detail = el('div', { class: 'muted' }, profile ? t('home.checking') : '');
     // 처음 쓰는 사람이 설정 화면을 찾아가지 않아도 되게. 만들면 학기 폴더가 바뀌어 상태를 다시 그리므로 단추는 저절로 사라진다
     const makeBtn = el('button', { class: 'primary', onclick: () => guard(async () => {

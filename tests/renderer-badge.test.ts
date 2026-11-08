@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { badgeLabel } from '../src/renderer/lib/badge.js';
+import { badgeLabel, sameAsKind } from '../src/renderer/lib/badge.js';
+
+test('sameAsKind: 시작 화면 AI 프로필 줄도 같은 기준(비었거나 종류와 같으면 겹침)', () => {
+  assert.equal(sameAsKind('Claude Code', 'Claude Code'), true);
+  assert.equal(sameAsKind(' codex ', 'Codex'), true);
+  assert.equal(sameAsKind('', 'API'), true);
+  assert.equal(sameAsKind('학교 계정', 'Claude Code'), false);
+});
 
 test('badgeLabel: 프로필 이름이 종류 이름과 같으면 한 번만', () => {
   assert.equal(badgeLabel('Claude Code', 'Claude Code', 'Opus 5.5'), 'Claude Code · Opus 5.5'); // 기본 프로필
