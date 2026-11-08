@@ -14,7 +14,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const setsBox = el('div', { class: 'card' });
   root.append(
     el('div', { class: 'home-head' }, el('h1', {}, t('home.title')), el('div', { class: 'muted' }, t('home.tagline'))),
-    el('div', { class: 'band info' }, t('home.notice')),
     el('div', { class: 'home-grid' },
       el('div', { class: 'card' }, el('h3', {}, t('home.steps')),
         el('div', { class: 'home-steps' },
