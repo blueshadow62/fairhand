@@ -29,6 +29,58 @@ export function transcriptTable(key: AnswerKey, tr: Transcript): HTMLElement {
   return box;
 }
 
+/**
+ * 글 칸(설명·정답·허용·핵심)은 1280 창에서 80px 남짓이라 쓴 글이 잘린다. 누르고 있는 동안 글 길이만큼 오른쪽 칸 위로 넓혀 다 보이게 한다.
+ * 오른쪽 칸도 입력란이라 글이 칸에 들면 넓히지 않는다(덮인 칸을 누르면 넓힌 입력란이 눌린다). 표는 고정 배치라 칸 너비는 그대로이고,
+ * 표 오른쪽 끝은 넘지 않는다(넘으면 화면에 가로 막대가 생긴다)
+ */
+function widen(input: HTMLInputElement): HTMLInputElement {
+  const fit = () => {
+    input.style.removeProperty('width');
+    const table = input.closest('table');
+    const wide = !!table && document.activeElement === input && input.scrollWidth > input.clientWidth;
+    input.classList.toggle('wide', wide);
+    if (!wide) return;
+    const room = table.getBoundingClientRect().right - input.getBoundingClientRect().left - 6;
+    input.style.width = `${Math.min(input.scrollWidth + 14, room)}px`; // scrollWidth에는 오른쪽 안쪽 여백·테두리와 커서 자리가 들지 않는다
+  };
+  for (const type of ['focus', 'input', 'blur']) input.addEventListener(type, fit);
+  return input;
+}
+
+/**
+ * 요소 칸(줄마다 하나)은 누르면 쓴 줄이 다 보이게 길어진다. 요소 칸을 쓰는 요소형에서는 정답·허용·핵심이 꺼져 있으므로
+ * 그 위로 넓혀 요소 하나가 한 줄에 들게 한다. 띄워서(absolute) 늘리므로 아래 행이 밀리지 않아, 칸을 떠나며 누른 단추가 자리를 옮기지 않는다
+ */
+function growElements(area: HTMLTextAreaElement): HTMLElement {
+  const wrap = el('div', { class: 'grow-elements' }, area);
+  let base = 0;
+  const size = () => {
+    const scroll = area.scrollTop;
+    area.style.height = `${base}px`; // 지운 줄만큼 줄어들게 접힌 높이에서 다시 잰다
+    const cs = getComputedStyle(area), border = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    area.style.height = `${Math.max(base, Math.min(Math.ceil(area.scrollHeight + border), Math.round(innerHeight * 0.45)))}px`;
+    area.scrollTop = scroll;
+  };
+  area.addEventListener('focus', () => {
+    const box = area.getBoundingClientRect();
+    const answer = area.closest('tr')?.children[3]?.querySelector('input'); // 정답 칸
+    base = box.height;
+    wrap.style.height = `${base}px`;
+    wrap.classList.add('open');
+    area.style.width = `${Math.round(box.right - Math.min(box.left, answer?.getBoundingClientRect().left ?? box.left))}px`;
+    size();
+    area.scrollIntoView({ block: 'nearest' }); // 창 아래쪽 칸이면 늘어난 부분이 저장 막대에 가리지 않게
+  });
+  area.addEventListener('input', () => { if (wrap.classList.contains('open')) size(); });
+  area.addEventListener('blur', () => {
+    wrap.classList.remove('open'); wrap.style.removeProperty('height');
+    for (const p of ['width', 'height']) area.style.removeProperty(p);
+    area.scrollTop = 0;
+  });
+  return wrap;
+}
+
 export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
   let 폴더: string | null = null;   // null이면 새 세트
@@ -203,7 +255,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const type = tip(el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`)))),
         () => `${t(`unit.${r.유형}`)}: ${t(`unit.tip.${r.유형}`)}`);
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
-      const desc = el('td', essay ? { colspan: '5' } : {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
+      const desc = el('td', essay ? { colspan: '5' } : {}, widen(bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')));
       const actions = el('td', {}, el('div', { class: 'row' },
         el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
         el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow'))));
@@ -216,10 +268,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       ];
       return [el('tr', {},
         el('td', {}, num), el('td', {}, type), desc,
-        el('td', {}, bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답')),
-        el('td', {}, bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용')),
-        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심')),
-        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
+        el('td', {}, widen(bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답'))),
+        el('td', {}, widen(bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용'))),
+        el('td', {}, widen(bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심'))),
+        el('td', {}, growElements(bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소'))),
         el('td', {}, pointsCell), actions)];
     });
     const clearAll = () => { if (!confirm(t('key.clearAllConfirm'))) return; rows = [emptyRow()]; touch(); renderTable(); };

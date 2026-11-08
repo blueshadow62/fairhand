@@ -203,6 +203,11 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 .keytable td select { padding-right: 22px; }
 .keytable td .row { flex-wrap: nowrap; margin: 0; gap: 4px; }
 .keytable td .row button { min-height: 32px; padding: 0 7px; min-width: 0; border-radius: var(--r-s); font-size: var(--fs-m); }
+/* 누르면 넓어지는 글 칸(key.ts widen·growElements): 옆·아래 칸 위에 겹쳐 그리고, 그림자로 떠 있는 줄 알게 한다 */
+.keytable td input.wide { position: relative; z-index: 3; box-shadow: var(--focus), 0 6px 16px var(--shadow); }
+.keytable .grow-elements { position: relative; }
+.keytable .grow-elements textarea { display: block; resize: none; } /* 누르면 길어지므로 손잡이로 늘릴 일이 없다 */
+.keytable .grow-elements.open textarea { position: absolute; top: 0; right: 0; z-index: 3; box-shadow: var(--focus), 0 6px 16px var(--shadow); }
 /* 세트 정보 줄: 이름표+입력란 묶음 사이를 묶음 안(6px)보다 넓게 띄워 어느 이름표가 어느 칸 것인지 보이게 하고, 묶음 안에서는 줄을 바꾸지 않는다 */
 .key-meta { column-gap: 16px; }
 .key-meta > label { white-space: nowrap; }
