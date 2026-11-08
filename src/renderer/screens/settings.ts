@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
 import { t, type Key } from '../lib/i18n.js';
 import { makeGuard } from '../lib/screen-utils.js';
+import { advancedOpenAtStart } from '../lib/settings-form.js';
 
 function updateText(s: UpdateStatus): string {
   if (s.kind === 'disabled') return s.reason === 'dev' ? t('settings.update.dev') : s.reason === 'manual' ? t('settings.update.manual') : t('settings.update.status.off');
@@ -46,6 +47,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const markInUse = (): void => {
     for (const [id, m] of useMarks) { const on = id === 사용중; m.text.textContent = t(on ? 'settings.inUse' : 'settings.useThis'); m.card.classList.toggle('in-use', on); }
   };
+  // 카드를 다시 그려도 사용자가 열거나 닫은 '고급'은 그대로 둔다(프로필 id별)
+  const advancedOpen = new Map<string, boolean>();
 
   const guard = makeGuard(showError);
   const persist = async () => {
@@ -172,16 +175,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           if (!p.cliPath) autoFound.textContent = s.command ? t('settings.autoFound', { path: s.command }) : t('settings.autoFind');
         } catch (e) { status.textContent = (e as Error).message; }
       });
-      card.append(
-        el('div', { class: 'band info' }, t(codex ? 'settings.codex.howto' : 'settings.cli.howto')),
-        ...(codex ? [el('div', { class: 'band warn' }, t('settings.codex.privacy'))] : []),
+      // 실행 파일·설정 폴더는 처음 쓰는 사람에게 필요 없어 '고급'으로 접는다. 직접 고른 경로가 있으면 무엇을 쓰는지 보이게 펼친 채로
+      const advanced = el('details', { class: 'advanced', open: advancedOpen.get(p.id) ?? advancedOpenAtStart(p), ontoggle: () => advancedOpen.set(p.id, advanced.open) },
+        el('summary', {}, t('settings.advanced'), el('span', { class: 'muted' }, t('settings.advancedHint'))),
         el('div', { class: 'row' }, t(codex ? 'settings.codex.file' : 'settings.cliFile'), p.cliPath ? el('span', { class: 'path' }, p.cliPath) : autoFound,
           el('button', { onclick: () => guard(async () => { const f = await api.pickFile('exe'); if (!f) return; p.cliPath = f; dirty = true; renderProfiles(); }) }, t('settings.pickCliFile')),
           el('button', { disabled: !p.cliPath, onclick: () => { delete p.cliPath; dirty = true; renderProfiles(); } }, t('settings.toAutoFind'))),
         el('div', { class: 'row' }, t('settings.configDir'), p.configDir ? el('span', { class: 'path' }, p.configDir) : el('span', { class: 'muted' }, t('settings.defaultDir')),
           el('button', { onclick: () => guard(async () => { const f = await api.pickFolder(); if (!f) return; p.configDir = f; dirty = true; renderProfiles(); }) }, t('settings.pickConfigDir')),
           el('button', { disabled: !p.configDir, onclick: () => { delete p.configDir; dirty = true; renderProfiles(); } }, t('settings.toDefaultDir'))),
-        el('div', { class: 'muted' }, t(codex ? 'settings.codex.configDirHelp' : 'settings.configDirHelp')),
+        el('div', { class: 'muted' }, t(codex ? 'settings.codex.configDirHelp' : 'settings.configDirHelp')));
+      card.append(
+        el('div', { class: 'band info' }, t(codex ? 'settings.codex.howto' : 'settings.cli.howto')),
+        ...(codex ? [el('div', { class: 'band warn' }, t('settings.codex.privacy'))] : []),
         el('div', { class: 'row' },
           el('button', { onclick: () => guard(async () => {
             if (dirty) await persist();
@@ -189,7 +195,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
             if (r.ok) showInfo(t('settings.loginOpened')); else showError(r.message ?? t('settings.loginFailed'));
           }) }, t('settings.openLogin')),
           el('button', { onclick: check }, t('settings.checkAgain')),
-          el('button', { onclick: () => guard(() => api.openExternal(codex ? 'codexInstall' : 'install')) }, t('settings.installGuide'))));
+          el('button', { onclick: () => guard(() => api.openExternal(codex ? 'codexInstall' : 'install')) }, t('settings.installGuide'))),
+        advanced);
       if (store.state.settings.프로필.some(x => x.id === p.id)) void check(); else status.textContent = t('settings.unsavedProfile');
     } else {
       const showSecret = () => guard(async () => { status.textContent = secretText(await api.secretView(p.id)); });
