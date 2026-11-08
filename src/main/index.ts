@@ -12,10 +12,12 @@ import { SettingsStore } from './settings.js';
 import { fixPath } from './shell-path.js';
 import { startUpdater } from './update.js';
 import { SAMPLE_DIR } from './sample.js';
+import { APP_USER_MODEL_ID } from './notify.js';
 import { CHANNELS } from '../shared/ipc.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url)); // dist/src/main → 저장소 루트
 if (process.env.GEULNUN_USER_DATA) app.setPath('userData', path.resolve(process.env.GEULNUN_USER_DATA)); // 개발용: 설정을 local/에
+if (process.platform === 'win32') app.setAppUserModelId(APP_USER_MODEL_ID); // 없으면 Windows가 전사 완료 알림을 띄우지 않는다
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },

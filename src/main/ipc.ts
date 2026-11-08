@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
 import { copySampleSet, makeDefaultSemester } from './sample.js';
+import { notifyArgs } from './notify.js';
 
 const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', codexInstall: 'https://developers.openai.com/codex/cli', geminiKey: 'https://aistudio.google.com/apikey', openaiKey: 'https://platform.openai.com/api-keys', privacy: 'https://github.com/blueshadow62/fairhand/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/fairhand#readme', releases: 'https://github.com/blueshadow62/fairhand/releases/latest' };
 
@@ -49,6 +50,18 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
   h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
   h(CHANNELS.revealPath, async (p: string) => { const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
+  // 오래 걸리는 전사 중 다른 창을 보고 있으면 끝난 줄 모른다. 창에 초점이 있으면 띄우지 않고, 알림을 누르면 창을 앞으로 가져온다
+  let lastNote: Notification | null = null; // 붙잡아 두지 않으면 알림을 누르기 전에 사라져 click이 오지 않는다
+  h(CHANNELS.notify, async (title: unknown, body: unknown) => {
+    const n = notifyArgs(title, body);
+    const w = d.window();
+    if (!w || w.isDestroyed() || w.isFocused() || !Notification.isSupported()) return false;
+    const note = new Notification(n);
+    note.on('click', () => { if (w.isDestroyed()) return; if (w.isMinimized()) w.restore(); w.show(); w.focus(); });
+    lastNote = note;
+    lastNote.show();
+    return true;
+  });
 
   h(CHANNELS.secretView, (id: string) => d.secrets.view(id));
   h(CHANNELS.secretSet, (id: string, key: string) => d.secrets.set(id, key));

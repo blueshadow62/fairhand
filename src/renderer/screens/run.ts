@@ -390,9 +390,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const timer = setInterval(tick, 1000);
     const off = api.onProgress((e: ProgressEvent) => { done = e.done; total = e.total; inTok += e.inputTokens ?? 0; outTok += e.outputTokens ?? 0; tick(); });
     tick();
+    // 메인은 창에 초점이 없을 때만 띄운다(다른 창을 보던 사람만 알림이 필요하다)
+    const notify = (title: string, body: string) => void api.notify(title, body).catch(() => undefined);
     try {
-      showResult(await api.startRun(폴더, opts));
-    } catch (e) { showError((e as Error).message); }
+      const r = await api.startRun(폴더, opts);
+      showResult(r);
+      notify(t('run.notify.done', { name: 폴더 }), t('run.summary', { ok: r.ok.length, failed: r.failed.length, skipped: r.skipped.length }));
+    } catch (e) { showError((e as Error).message); notify(t('run.notify.failed', { name: 폴더 }), (e as Error).message); }
     finally {
       clearInterval(timer); off(); tick(); running = false;
       // 전사할 장 수와 장 그림의 학생 표시가 이번 전사를 반영하게 새로 읽은 뒤 그린다

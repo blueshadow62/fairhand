@@ -3,7 +3,7 @@ import type { GeulnunApi, IpcResult, ProgressEvent, UpdateStatus } from '../shar
 
 // sandbox preload는 CommonJS 한 파일이어야 해서 런타임 값을 가져오지 않고 복제한다. main-protocols 검사가 shared/ipc.ts와 같은지 본다.
 const CHANNELS = {
-  getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version',
+  getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version', notify: 'app:notify',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
@@ -30,6 +30,7 @@ const api: GeulnunApi = {
   askLeave: () => call(CHANNELS.askLeave),
   openExternal: (link) => call(CHANNELS.openExternal, link),
   revealPath: (p) => call(CHANNELS.revealPath, p),
+  notify: (title, body) => call(CHANNELS.notify, title, body),
   secretView: (id) => call(CHANNELS.secretView, id),
   secretSet: (id, key) => call(CHANNELS.secretSet, id, key),   // 키는 들어가기만 한다. 돌아오는 것은 SecretView
   secretClear: (id) => call(CHANNELS.secretClear, id),

@@ -57,7 +57,7 @@ export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'openaiKey
 export type LeaveChoice = 'save' | 'discard' | 'stay';
 
 export const CHANNELS = {
-  getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version',
+  getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version', notify: 'app:notify',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
@@ -79,6 +79,8 @@ export interface GeulnunApi {
   askLeave(): Promise<LeaveChoice>;                 // 저장하지 않은 변경이 있을 때: 저장 후 나가기/저장하지 않고 나가기/나가지 않기
   openExternal(link: ExternalLink): Promise<void>;
   revealPath(p: string): Promise<void>;
+  /** 창에 초점이 없을 때만 운영체제 알림을 띄운다(누르면 창을 앞으로). 띄웠으면 true */
+  notify(title: string, body: string): Promise<boolean>;
   secretView(profileId: string): Promise<SecretView>;
   secretSet(profileId: string, key: string): Promise<SecretView>;
   secretClear(profileId: string): Promise<void>;
