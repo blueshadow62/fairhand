@@ -9,11 +9,24 @@ export interface ResultInfo { 채점일시: string; 프로그램버전: string; 
 const WHO = ['학년', '반', '번호', '이름'] as const;
 const PERCENT = '0.0%';
 
-function finish(ws: ExcelJS.Worksheet, widths: Record<number, number> = {}, wrapCol?: number): void {
+interface Look { widths?: Record<number, number>; wrapCol?: number; students?: boolean }
+
+function finish(ws: ExcelJS.Worksheet, { widths = {}, wrapCol, students = false }: Look = {}): void {
   ws.getRow(1).font = { bold: true };
-  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  // 학생 행 시트는 오른쪽 단위 열로 넘겨도 누구의 행인지 보이게 이름 열까지 고정한다.
+  // 필터 범위는 엑셀이 직접 저장할 때처럼 마지막 행까지 잡는다
+  ws.views = [{ state: 'frozen', ySplit: 1, ...(students ? { xSplit: WHO.length } : {}) }];
+  if (students) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: ws.rowCount, column: ws.columnCount } };
   for (const [i, w] of Object.entries(widths)) ws.getColumn(Number(i)).width = w;
   if (wrapCol) ws.getColumn(wrapCol).alignment = { wrapText: true, vertical: 'top' };
+}
+
+const solid = (argb: string): ExcelJS.Fill => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+/** 결과를 훑을 때 틀린 칸과 빈칸이 눈에 띄게 */
+function mark(cell: ExcelJS.Cell, v: Panjeong | undefined): void {
+  if (v === 'X') { cell.fill = solid('FFFDEAE7'); cell.font = { color: { argb: 'FFB42318' } }; }
+  else if (v === '빈칸') cell.fill = solid('FFFFF4CC');
 }
 
 /**
@@ -58,7 +71,7 @@ function addAnalysis(wb: ExcelJS.Workbook, key: AnswerKey, rows: Row[], unmatche
     const row = add([반, s.length, avg, s.length ? Math.max(...s) : null, s.length ? Math.min(...s) : null, avg !== null && full ? avg / full : null], [6]);
     row.getCell(3).numFmt = '0.00';
   }
-  finish(ws, { 1: 14, 2: 7, 3: 10, 4: 30, 5: 7, 6: 18, 7: 8, 8: 10, 9: 10, 10: 10, 11: 13 }, 4);
+  finish(ws, { widths: { 1: 14, 2: 7, 3: 10, 4: 30, 5: 7, 6: 18, 7: 8, 8: 10, 9: 10, 10: 10, 11: 13 }, wrapCol: 4 });
 }
 
 export async function writeResultXlsx(key: AnswerKey, rows: Row[], unmatched: Row[], out: string, info: ResultInfo): Promise<void> {
@@ -68,22 +81,26 @@ export async function writeResultXlsx(key: AnswerKey, rows: Row[], unmatched: Ro
   const wb = new (await loadExcel()).Workbook();
 
   let ws = wb.addWorksheet('결과');
-  ws.addRow([...WHO, '합계', '정량', '정성', '비고', ...qty, ...qual]);
-  for (const r of all) ws.addRow([...WHO.map(k => r[k]), r.합계, r.정량, r.정성, r.비고 || null,
-    ...qty.map(i => r.판정[i] ?? null), ...qual.map(i => (r.응답[i] ? 'O' : null))]);
-  finish(ws, { 4: 20, 8: 50 }, 8);
+  const lead = [...WHO, '합계', '정량', '정성', '비고'];
+  ws.addRow([...lead, ...qty, ...qual]);
+  for (const r of all) {
+    const row = ws.addRow([...WHO.map(k => r[k]), r.합계, r.정량, r.정성, r.비고 || null,
+      ...qty.map(i => r.판정[i] ?? null), ...qual.map(i => (r.응답[i] ? 'O' : null))]);
+    qty.forEach((id, i) => mark(row.getCell(lead.length + 1 + i), r.판정[id]));
+  }
+  finish(ws, { widths: { 4: 20, 8: 50 }, wrapCol: 8, students: true });
   addAnalysis(wb, key, rows, unmatched);
 
   ws = wb.addWorksheet('답안');
   ws.addRow([...WHO, ...qty, ...qual]);
   for (const r of all) ws.addRow([...WHO.map(k => r[k]), ...[...qty, ...qual].map(i => r.답[i] ?? null)]);
-  finish(ws, { 4: 20 });
+  finish(ws, { widths: { 4: 20 }, students: true });
 
   ws = wb.addWorksheet('정답표');
   ws.addRow(['id', '문항', '설명', '정답', '허용', '핵심', '배점']);
   for (const u of key.정량) ws.addRow([u.id, u.문항, u.설명, u.정답, (u.허용 ?? []).join(', '), (u.핵심 ?? []).join(', '), unitPoints(u)]);
   for (const u of key.정성) ws.addRow([u.id, u.문항, u.설명, null, null, null, unitPoints(u)]);
-  finish(ws, { 3: 30, 4: 34, 5: 20 });
+  finish(ws, { widths: { 3: 30, 4: 34, 5: 20 } });
 
   ws = wb.addWorksheet('정보');
   for (const [k, v] of [
