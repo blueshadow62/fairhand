@@ -5,12 +5,12 @@ import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
 import type { AnswerKey, MaskRect, Transcript, UploadRecord } from '../../core/types.js';
-import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, type Rotation, type SheetSource } from '../pdf-pages.js';
+import { canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, type Rotation, type SheetSource } from '../pdf-pages.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { coversSaved, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../lib/sheets.js';
+import { coversSaved, hasFile, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind, withFile } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -49,8 +49,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   /** 저장 전 미리보기의 한 쪽. 그림은 화면에 들어올 때 한 번만 작게 그려 두고, 돌린 각도는 CSS로 보인다(다시 그리지 않음) */
   interface SheetTile { pk: Picked; page: number; fig: HTMLElement; img: HTMLImageElement; tag: HTMLElement; angle: HTMLElement; btn: HTMLButtonElement; url: string | null; state: 'idle' | 'queued' | 'drawn' | 'failed'; visible: boolean }
   /** 회전: 쪽마다(0부터) 저장할 때 돌릴 각도. closed: 닫은 파일(그리던 그림은 버린다) */
-  interface Picked { src: SheetSource; 지문: string; 크기: number; 이전: UploadRecord | null; 포함: boolean; 회전: Rotation[]; tiles: SheetTile[]; closed: boolean }
-  let picked: Picked[] = []; // 올린 파일들(이름순). 한 번에 이어서 쪽으로 나눈다. 이미 올린 파일은 기본으로 빼 둔다
+  interface Picked { src: SheetSource; 이름: string; 지문: string; 크기: number; 이전: UploadRecord | null; 포함: boolean; 회전: Rotation[]; tiles: SheetTile[]; closed: boolean }
+  let picked: Picked[] = []; // 고른 파일들(이름순). 이 차례로 이어서 쪽으로 나눈다. 이미 올린 파일은 기본으로 빼 둔다
   const included = () => picked.filter(p => p.포함);
   const totalPages = () => included().reduce((n, p) => n + p.src.pageCount, 0);
   let rotation: Rotation = store.state.settings.기본회전; // 모든 쪽에 마지막으로 적용한 각도. 이와 다른 쪽은 따로 돌린 쪽이다
@@ -111,39 +111,50 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       dups.length ? el('button', { onclick: () => ctx.goTo('review') }, t('run.goReview')) : null);
   }
 
-  // ── PDF 올리기 ──
+  // ── PDF 올리기: 고른 파일은 목록에 더한다(여러 번 나눠 고르거나 끌어다 놓아도). 목록은 파일 이름 순서이고 그 차례로 쪽이 저장된다 ──
   const fileInput = el('input', { type: 'file', accept: SHEET_ACCEPT, multiple: true });
-  fileInput.addEventListener('change', () => void pickFiles());
+  fileInput.addEventListener('change', () => {
+    const files = [...(fileInput.files ?? [])];
+    fileInput.value = ''; // 뺀 파일을 다시 골라도 change가 오게
+    void addFiles(files);
+  });
   const uploadStatus = el('div', { class: 'muted' });
   const uploadCard = el('div', { class: 'card upload-card' }, el('h3', {}, t('run.upload')), uploadBox);
   const runCard = el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox);
-  let pickSeq = 0; // 고르는 동안 다시 고르거나 끌어다 놓으면 앞의 고르기는 그만둔다
   let justSaved: number[] = []; // 마지막으로 저장한 장. 저장한 자리에서 바로 전사하게 한다
+  let listGen = 0; // 목록을 비우면(모두 빼기·저장·세트 바뀜) 늘린다. 그 전에 시작한 더하기는 목록에 넣지 않는다
+  let adding: Promise<void> = Promise.resolve(); // 앞의 파일을 여는 동안 또 고르거나 놓아도 차례로 더한다
 
-  async function pickFiles(): Promise<void> {
-    const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
-    if (!files.length) return;
-    if (saving) return; // 저장하는 파일을 닫으면 저장이 중간에 멈춘다(저장 중에는 고르기 칸도 잠근다)
-    const seq = ++pickSeq;
+  function addFiles(files: File[]): Promise<void> {
+    adding = adding.then(() => addNow(files), () => addNow(files));
+    return adding;
+  }
+
+  async function addNow(files: File[]): Promise<void> {
+    if (!files.length || !data) return;
+    if (saving) { showError(t('run.busySaving')); return; } // 저장 중에는 고르기 단추도 잠근다
+    const gen = listGen;
     uploadStatus.textContent = ''; justSaved = []; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
-    dropPicked();
-    rotation = store.state.settings.기본회전;
+    const dup: string[] = [];
     for (const f of files) {
       try {
         const bytes = await f.arrayBuffer(); // 지문과 열기가 같은 버퍼를 쓴다(큰 스캔을 두 번 읽지 않게)
         const 지문 = await sha256(bytes);
+        if (gen !== listGen) return;
+        if (hasFile(picked, 지문)) { dup.push(f.name); continue; }
         const src = await openSheetSource(f, bytes);
-        if (seq !== pickSeq) { src.close(); return; }
+        if (gen !== listGen) { src.close(); return; }
         const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
-        const pk: Picked = { src, 지문, 크기: f.size, 이전, 포함: !이전, 회전: Array<Rotation>(src.pageCount).fill(rotation), tiles: [], closed: false };
+        const pk: Picked = { src, 이름: f.name, 지문, 크기: f.size, 이전, 포함: !이전, 회전: Array<Rotation>(src.pageCount).fill(rotation), tiles: [], closed: false };
         pk.tiles = Array.from({ length: src.pageCount }, (_, i) => makeTile(pk, i + 1));
-        picked.push(pk);
+        picked = withFile(picked, pk);
       } catch (e) {
-        if (seq !== pickSeq) return;
+        if (gen !== listGen) return;
         showError(t('run.openFailed', { name: f.name, error: (e as Error).message }));
       }
     }
-    if (seq === pickSeq) renderUpload();
+    if (dup.length) showInfo(t('run.dupPicked', { names: dup.join(', ') }));
+    renderUpload();
   }
 
   // ── 끌어다 놓기: 탐색기에서 PDF·사진을 이 화면 어디에 놓아도 '파일 선택'과 같게. 놓을 수 있는 동안 올리기 칸을 강조한다 ──
@@ -164,12 +175,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const skipped = all.filter(f => !sheetKind(f.name, f.type)).map(f => f.name);
     if (skipped.length) showError(t(sheets.length ? 'run.dropSkipped' : 'run.dropNone', { names: skipped.join(', ') }));
     if (!sheets.length) return;
-    // 고르기 칸에도 놓은 파일을 넣어 '파일 선택'으로 고른 것과 똑같이 보이고 다룬다
-    const dt = new DataTransfer();
-    for (const f of sheets) dt.items.add(f);
-    fileInput.files = dt.files;
     uploadCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    void pickFiles();
+    void addFiles(sheets); // '파일 선택'으로 고른 것과 똑같이 목록에 더한다
   });
 
   async function sha256(bytes: ArrayBuffer): Promise<string> {
@@ -246,12 +253,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   /** 닫은 파일의 미리보기는 그리지 않고, 만든 그림 주소를 돌려준다 */
+  function closePicked(pk: Picked): void {
+    pk.closed = true; pk.src.close();
+    for (const x of pk.tiles) { io.unobserve(x.fig); if (x.url) URL.revokeObjectURL(x.url); }
+  }
+
+  /** 목록을 비운다. 다음에 고르는 파일은 처음처럼 기본 회전으로 시작한다 */
   function dropPicked(): void {
-    for (const pk of picked) {
-      pk.closed = true; pk.src.close();
-      for (const x of pk.tiles) { io.unobserve(x.fig); if (x.url) URL.revokeObjectURL(x.url); }
-    }
+    listGen++;
+    picked.forEach(closePicked);
     picked = []; queue.length = 0; clear(sheetGrid);
+    rotation = store.state.settings.기본회전;
   }
 
   const rotationNote = el('span', { class: 'band warn' });
@@ -314,6 +326,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, disabled: saving, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
           : el('span', { class: 'muted' }, t('run.fileLine', { name: p.src.name, n: p.src.pageCount })),
         p.이전 ? el('span', { class: 'band warn' }, t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null))),
+      el('div', { class: 'row' }, el('button', { class: 'small', disabled: saving, onclick: () => { if (saving) return; dropPicked(); renderUpload(); } }, t('run.removeAll'))),
       el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
         el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; turnAll(r); } }, `${r}°`)),
         el('span', { class: 'muted' }, t('run.rotationHelp')), rotationNote),

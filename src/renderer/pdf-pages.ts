@@ -85,5 +85,3 @@ export async function openSheetSource(file: File, bytes?: ArrayBuffer): Promise<
   }
   throw new Error(t('pdf.onlyPdfOrImage'));
 }
-
-export const byNaturalName = <T extends { name: string }>(a: T, b: T): number => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });

@@ -1,6 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coversSaved, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../src/renderer/lib/sheets.js';
+import { coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind, withFile } from '../src/renderer/lib/sheets.js';
+
+test('naturalCompare: 숫자는 수로(2 < 10, 001 < 010), 대소문자는 가리지 않는다', () => {
+  assert.deepEqual(['scan10.pdf', 'scan2.pdf', 'Scan1.pdf'].sort(naturalCompare), ['Scan1.pdf', 'scan2.pdf', 'scan10.pdf']);
+  assert.deepEqual(['010.jpg', '002.jpg', '001.jpg'].sort(naturalCompare), ['001.jpg', '002.jpg', '010.jpg']);
+  assert.equal(naturalCompare('A반.pdf', 'a반.pdf'), 0);
+});
+
+test('hasFile·withFile: 나눠 고른 파일을 목록에 더하면 목록 전체가 이름 순서, 같은 지문은 더하지 않는다', () => {
+  const f = (이름: string, 지문: string) => ({ 이름, 지문 });
+  let list = [f('3반.pdf', 'c')];
+  list = withFile(list, f('1반.pdf', 'a')); // 나중에 골라도 이름 순서로 앞에
+  list = withFile(list, f('10반.pdf', 'd'));
+  list = withFile(list, f('2반.pdf', 'b'));
+  assert.deepEqual(list.map(x => x.이름), ['1반.pdf', '2반.pdf', '3반.pdf', '10반.pdf']);
+  assert.equal(hasFile(list, 'b'), true); // 이름이 달라도 같은 지문이면 같은 파일
+  assert.equal(hasFile(list, 'z'), false);
+  assert.equal(hasFile([], 'a'), false);
+  const same = withFile([f('scan.pdf', 'x')], f('scan.pdf', 'y')); // 이름이 같은 다른 파일은 먼저 고른 것이 앞
+  assert.deepEqual(same.map(x => x.지문), ['x', 'y']);
+});
 
 test('sheetKind: 끌어다 놓은 파일도 고르기 창과 같은 기준(PDF·사진), 이름이나 형식 하나로 알아본다', () => {
   assert.equal(sheetKind('3반.PDF', ''), 'pdf');

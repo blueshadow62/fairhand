@@ -12,6 +12,18 @@ export function sheetKind(name: string, type: string): 'pdf' | 'image' | null {
   return null;
 }
 
+/** 파일 이름 자연 순서: 스캐너 파일명 001, 002, 010…과 2, 10을 숫자로 견주고 대소문자는 가리지 않는다 */
+export const naturalCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+/** 고른 목록에 같은 파일(같은 지문)이 있는지. 있으면 열지 않고 건너뛴다(같은 쪽이 두 번 저장되지 않게) */
+export const hasFile = (list: readonly { 지문: string }[], 지문: string): boolean => list.some(x => x.지문 === 지문);
+
+/**
+ * 고른 목록에 파일 하나를 더한 새 목록. 여러 번 나눠 고르거나 끌어다 놓아도 목록 전체를 파일 이름 자연 순서로 두어,
+ * 목록 차례대로 쪽이 저장된다. 이름이 같으면 먼저 고른 파일이 앞이다(정렬이 안정적이다)
+ */
+export const withFile = <T extends { 이름: string }>(list: readonly T[], item: T): T[] => [...list, item].sort((a, b) => naturalCompare(a.이름, b.이름));
+
 /** 쪽마다 돌리기 단추: 시계 방향으로 90°씩, 270° 다음은 0° */
 export const nextRotation = (r: Rotation): Rotation => ((r + 90) % 360) as Rotation;
 
