@@ -1,4 +1,5 @@
 import { identityMask, unitPoints } from '../../core/key.js';
+import { essayMarks } from '../../core/rejudge.js';
 import type { MaskRect, Panjeong, QtyUnit, QualUnit, Transcript } from '../../core/types.js';
 import { unitChecked, type UnitResultItem } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
@@ -238,8 +239,14 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
           t(allOpen ? 'item.grid.collapseAll' : 'item.grid.showAll')) : null),
       el('div', { class: 'ir-desc' }, u.설명),
       isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null,
+      유형 === '논술형' ? el('div', { class: 'muted essay-help' }, el('mark', { class: 'key-hit' }, t('item.essay.markKey')),
+        (u as QtyUnit).허용?.length ? el('mark', { class: 'key-hit allow' }, t('item.essay.markAllow')) : null, el('span', {}, t('item.essay.help'))) : null,
       isQty ? el('label', { class: 'cases', title: t('item.recordCasesTitle') }, cases, t('item.recordCases')) : null);
   }
+
+  /** 논술형 답은 정답·허용 표기가 그대로 들어 있는 곳에 색을 입힌다(decide와 같은 기준). 다른 유형은 글 그대로 */
+  const answerText = (u: QtyUnit, text: string): (string | HTMLElement)[] => essayMarks(u, text).map(p => p.근거
+    ? el('mark', { class: `key-hit${p.근거 === '허용' ? ' allow' : ''}`, title: t(p.근거 === '허용' ? 'item.essay.markAllow' : 'item.essay.markKey') }, p.text) : p.text);
 
   /** 잘라 볼 영역(답 칸에 사방 2% 여유), 그 안에서 신원 영역과 겹쳐 칠할 곳, 칸 모양 */
   interface Grid { crop: MaskRect; hide: MaskRect | null; aspect: number }
@@ -292,7 +299,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       el('div', { class: 'group-head' },
         el('button', { class: 'twisty', 'data-focus': `tw:${g.정규}`, 'aria-expanded': String(isOpen), title: t(isOpen ? 'item.collapse' : 'item.expand'), 'aria-label': t(isOpen ? 'item.collapse' : 'item.expand'),
           onclick: () => { if (isOpen) open.delete(k); else open.add(k); renderGroups(); } }, isOpen ? '▼' : '▶'),
-        el('div', { class: 'answer' }, g.정규 ? g.대표 : el('span', { class: 'muted' }, t('item.emptyAnswer'))),
+        el('div', { class: 'answer' }, g.정규 ? answerText(u, g.대표) : el('span', { class: 'muted' }, t('item.emptyAnswer'))),
         el('div', { class: 'group-meta' }, el('span', {}, t('item.sheets', { n: g.장.length })),
           el('span', {}, VERDICTS.filter(v => g.판정[v]).map(v => `${t(`verdict.${v}`)} ${g.판정[v]}`).join(' · ')),
           g.갈림 ? el('span', { class: 'tag-warn', title: t('item.splitTitle') }, t('item.split')) : null, status),
@@ -305,7 +312,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       const tr = byPage.get(page)!, v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), n = labels.get(page)!;
       return el('div', { class: `answer-row${view?.page === page ? ' viewing' : ''}` },
         el('span', { class: 'anon' }, t('item.answerN', { n })),
-        el('div', { class: 'answer' }, own === g.대표 ? '' : own), // 대표 답과 글자가 다를 때만 원래 글을 보인다
+        el('div', { class: 'answer' }, own === g.대표 ? '' : answerText(u, own)), // 대표 답과 글자가 다를 때만 원래 글을 보인다
         checkMark(tr, u.id),
         verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')));
@@ -318,7 +325,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     const v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim();
     return el('div', { class: `hw-cell${view?.page === page ? ' viewing' : ''}` }, hwCanvas(page, n, grid),
       el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
-      own === g.대표 ? null : el('div', { class: 'answer' }, own),
+      own === g.대표 ? null : el('div', { class: 'answer' }, answerText(u, own)),
       el('div', { class: 'hw-actions' }, verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage'))));
   }

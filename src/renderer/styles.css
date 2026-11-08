@@ -409,6 +409,15 @@ dialog.case-confirm .actions { justify-content: flex-end; margin: 4px 0 0; }
 .item-review .hw-cell .answer { font-size: var(--fs-m); }
 .item-review .hw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 
+/* ── 논술형 답: 정답·허용 표기가 글자 그대로 들어 있는 곳(문항별은 글 속에 색, 답안지별은 답 칸 아래 작은 표시) ── */
+mark.key-hit { padding: 0 2px; border-radius: 3px; background: color-mix(in srgb, var(--ok) 24%, transparent); color: inherit; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+mark.key-hit.allow { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.item-review .essay-help { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 2px; font-size: var(--fs-s); }
+.item-review .essay-help mark { font-weight: 600; white-space: nowrap; }
+.review .editor .essay-hit { margin-top: 3px; font-size: var(--fs-s); line-height: 1.3; color: var(--text-2); }
+.review .editor .essay-hit:empty { display: none; }
+.review .editor .essay-hit.found { color: var(--ok); font-weight: 600; }
+
 /* ── 답 칸 지정 창 ── */
 /* 가운데 맞춤이면 미리보기가 그려지며 창이 커질 때 창이 위로 밀려 끄던 그림이 움직인다. 위에 붙여 아래로만 늘게 */
 dialog.region-editor { margin: 4vh auto auto; width: min(1000px, 94vw); max-height: 92vh; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--text); box-shadow: 0 12px 40px var(--shadow); }

@@ -1,4 +1,4 @@
-import { normalizeAnswer } from '../../core/rejudge.js';
+import { keyMatch, normalizeAnswer } from '../../core/rejudge.js';
 import type { AnswerKey, Panjeong, QtyUnit, Transcript } from '../../core/types.js';
 import { representative, unitChecked } from '../../core/unit-results.js';
 import { t } from './i18n.js';
@@ -6,6 +6,16 @@ import { t } from './i18n.js';
 /** 정답·허용·핵심 한 줄. 답안지별 검토의 정량 표와 문항별 검토의 머리가 같은 글을 쓴다 */
 export const keyLine = (u: QtyUnit): string => t('review.keyLine', { answer: u.정답,
   allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
+
+/**
+ * 답안지별 검토의 논술형 답 칸 아래 표시. decide의 논술형 규칙(keyMatch)과 같은 기준으로 정답·허용 표기가 그대로 들어 있는지.
+ * 논술형이 아니거나 답이 비었으면 null(빈 답은 글이 없는지 못 찾았는지를 AI 판정이 가른다)
+ */
+export function essayStatus(u: QtyUnit, 답: string): 'review.essay.quote' | 'review.essay.term' | 'review.essay.allow' | 'review.essay.none' | null {
+  if (u.유형 !== '논술형' || !normalizeAnswer(답)) return null;
+  const m = keyMatch(u, 답);
+  return m === '허용' ? 'review.essay.allow' : m === '정답' ? (u.종류 === '용어' ? 'review.essay.term' : 'review.essay.quote') : 'review.essay.none';
+}
 
 /** 정량 단위에서 같은 답(normalizeAnswer 기준)을 쓴 장의 묶음. 장 번호는 단추가 보낼 곳으로만 쓰고 화면에 보이지 않는다 */
 export interface AnswerGroup { 정규: string; 대표: string; 장: number[]; 판정: Record<Panjeong, number>; 갈림: boolean; 확인: number }

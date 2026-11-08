@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { anonLabels, anonOrder, groupAnswers, progress, sortGroups, unitSummaries, type AnswerGroup } from '../src/renderer/lib/item-review.js';
+import { anonLabels, anonOrder, essayStatus, groupAnswers, progress, sortGroups, unitSummaries, type AnswerGroup } from '../src/renderer/lib/item-review.js';
 import type { AnswerKey, Panjeong, Transcript } from '../src/core/types.js';
 
 const key = { 세트: 's', 글: 'g', 학기: 'h', 대상: { 학년: 3, 반: [1] },
@@ -53,4 +53,15 @@ test('unitSummaries·progress: 정량 → 정성 순서, 확인 수는 확인단
   assert.deepEqual(progress(key, ts), { 단위: 0, 단위전체: 3, 장: 1, 장전체: 3 });
   assert.deepEqual(progress(key, ts.map(t => ({ ...t, 확인완료: true }))), { 단위: 3, 단위전체: 3, 장: 3, 장전체: 3 });
   assert.deepEqual(progress(key, []), { 단위: 0, 단위전체: 3, 장: 0, 장전체: 0 });
+});
+
+test('essayStatus: 논술형 답 칸 아래 표시는 decide와 같은 기준(인용·용어·허용·못 찾음), 빈 답·다른 유형은 없음', () => {
+  const quote = { id: '5-1', 문항: 5, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const };
+  const term = { id: '5-2', 문항: 5, 설명: '용어 1', 정답: '비계', 허용: ['스캐폴딩'], 유형: '논술형' as const, 종류: '용어' as const };
+  assert.equal(essayStatus(quote, '그는 배움은  삶이다 라고 썼다'), 'review.essay.quote');
+  assert.equal(essayStatus(term, '비계를 세운다'), 'review.essay.term');
+  assert.equal(essayStatus(term, '스캐폴딩을 쓴다'), 'review.essay.allow');
+  assert.equal(essayStatus(quote, '배움이 곧 삶'), 'review.essay.none');
+  assert.equal(essayStatus(quote, '  '), null);
+  assert.equal(essayStatus(key.정량[0]!, '가나'), null);
 });

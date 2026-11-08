@@ -27,6 +27,46 @@ export function keyMatch(u: QtyUnit, 답: string): '정답' | '허용' | null {
   return null;
 }
 
+/** 답 글의 한 조각. 근거가 있으면 정답(또는 허용) 표기가 그대로 들어 있는 곳 */
+export interface EssayPiece { text: string; 근거?: '정답' | '허용' }
+
+/**
+ * 논술형 답(AI가 글에서 찾아 옮긴 부분)을 정답·허용 표기가 그대로 들어 있는 곳과 나머지로 나눈다. keyMatch와 같은 기준이라
+ * 줄바꿈이나 여러 칸 띄어쓰기는 한 칸으로 보고 찾는다. 조각을 이으면 NFC로 맞춘 답 그대로다. 겹치면 정답을 먼저 둔다.
+ * 논술형이 아니면 나누지 않는다
+ */
+export function essayMarks(u: QtyUnit, 답: string): EssayPiece[] {
+  if (u.유형 !== '논술형') return 답 ? [{ text: 답 }] : [];
+  const s = 답.normalize('NFC');
+  // 띄어쓰기를 한 칸으로 줄인 글(flat)과, 그 글자마다 원래 글의 위치(at)
+  let flat = '';
+  const at: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    if (!/\s/.test(s[i]!)) { flat += s[i]; at.push(i); }
+    else if (flat && !flat.endsWith(' ')) { flat += ' '; at.push(i); }
+  }
+  const hits: { start: number; end: number; 근거: '정답' | '허용' }[] = [];
+  const find = (needle: string, 근거: '정답' | '허용') => {
+    if (!needle) return;
+    for (let i = flat.indexOf(needle); i >= 0; i = flat.indexOf(needle, i + needle.length)) {
+      const start = at[i]!, end = at[i + needle.length - 1]! + 1;
+      if (!hits.some(h => start < h.end && h.start < end)) hits.push({ start, end, 근거 });
+    }
+  };
+  find(normalizeAnswer(u.정답), '정답');
+  for (const a of u.허용 ?? []) find(normalizeAnswer(a), '허용');
+  hits.sort((a, b) => a.start - b.start);
+  const out: EssayPiece[] = [];
+  let pos = 0;
+  for (const h of hits) {
+    if (h.start > pos) out.push({ text: s.slice(pos, h.start) });
+    out.push({ text: s.slice(h.start, h.end), 근거: h.근거 });
+    pos = h.end;
+  }
+  if (pos < s.length) out.push({ text: s.slice(pos) });
+  return out;
+}
+
 /** 글자로 결정되는 판정(빈칸·사례·정답·허용). 뜻으로 볼 일이면 null */
 export function decide(key: AnswerKey, 단위: string, 답: string): { 판정: Panjeong; 근거: Change['근거'] } | null {
   const u = key.정량.find(x => x.id === 단위);

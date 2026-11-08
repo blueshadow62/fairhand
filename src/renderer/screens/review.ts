@@ -8,7 +8,7 @@ import { api, imageUrl } from '../lib/api.js';
 import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
-import { keyLine } from '../lib/item-review.js';
+import { essayStatus, keyLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
 import { askCaseRecord } from './case-confirm.js';
@@ -411,10 +411,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
     const qtyRows = key.정량.map(u => {
       const v = tr.정량[u.id] ??= { 답: '', 판정: '빈칸' };
-      const ans = growArea(v.답, s => { v.답 = s; touch(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
+      // 논술형은 답 칸 아래에 정답·허용 표기가 그대로 들어 있는지 작게 보인다(답을 고치면 바로 다시 본다). 다른 유형은 그대로
+      const essay = u.유형 === '논술형' ? el('div', { class: 'essay-hit', title: t('review.essay.title') }) : null;
+      const showEssay = () => { if (!essay) return; const k = essayStatus(u, v.답); essay.textContent = k ? t(k) : ''; essay.classList.toggle('found', k !== null && k !== 'review.essay.none'); };
+      const ans = growArea(v.답, s => { v.답 = s; touch(); showEssay(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
+      showEssay();
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
-      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine(u))), el('td', {}, ans), el('td', {}, sel));
+      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine(u))), el('td', {}, ans, essay), el('td', {}, sel));
     });
     const qualRows = key.정성.map(u => {
       const v = tr.정성[u.id] ??= { 응답: false, 답: '' };
