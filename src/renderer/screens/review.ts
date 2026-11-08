@@ -1,3 +1,4 @@
+import { caseCandidates, needsCaseConfirm, previewCases, revertTranscript, type CaseRevertRequest } from '../../core/cases.js';
 import { roundScore, unitPoints } from '../../core/key.js';
 import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
 import { setSheetDone } from '../../core/unit-results.js';
@@ -9,6 +10,7 @@ import { t } from '../lib/i18n.js';
 import { keyLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
+import { askCaseRecord } from './case-confirm.js';
 import { createItemPane } from './item-review.js';
 
 const sid = (t: { 학년: number | null; 반: number | null; 번호: number | null }) => `${t.학년 ?? '?'}-${t.반 ?? '?'}-${t.번호 ?? '?'}`;
@@ -167,7 +169,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function reload(keepPage?: number): Promise<void> {
     const 폴더 = store.state.current;
     shownFor = 폴더;
-    clear(notice);
+    clear(notice); dropUndo();
     if (!폴더) { data = null; T = null; clear(top); notice.append(el('div', { class: 'muted' }, t('common.chooseSet'))); showPanes(false); item.render(null); return; }
     showPanes(true);
     let d: SetData;
@@ -225,8 +227,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     void leaveOk().then(ok => { if (ok) openPage(page); });
   }
 
-  function openPage(page: number): void {
+  /** keepUndo: '저장하고 다음'이 저장에 이어 넘기는 것이면 방금 저장의 되돌리기를 남긴다. 그 밖의 장 이동은 되돌리기를 거둔다 */
+  function openPage(page: number, keepUndo = false): void {
     if (!data) return;
+    if (!keepUndo) dropUndo();
     const saved = data.transcripts.find(x => x.page === page);
     T = saved ? structuredClone(saved) : blankTranscript(page);
     dirty = false;
@@ -292,42 +296,88 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       if (!(await save()) || data?.폴더 !== 폴더) return;
     }
     const target = next ?? page;
-    if (T?.page !== target) openPage(target); // 저장 뒤 다시 읽으면 '미확인만'에서는 이 장이 목록에서 빠져 다른 장이 열려 있다
+    if (T?.page !== target) openPage(target, true); // 저장 뒤 다시 읽으면 '미확인만'에서는 이 장이 목록에서 빠져 다른 장이 열려 있다
     if (next === undefined) showInfo(t(needSave ? 'review.savedLast' : 'review.lastPage'));
   }
 
-  let saving = false; // Ctrl+S 연타·버튼 연타로 저장과 엑셀 생성이 두 벌 도는 것을 막는다
-  /** 전사가 저장되고 사례 기록도 탈 없이 끝나면 true. '저장하고 다음'은 그때만 다음 장으로 간다 */
+  let saving = false; // Ctrl+S 연타·버튼 연타로 저장과 엑셀 생성이 두 벌 도는 것을 막는다. 사례 되돌리기도 같은 표시로 겹치지 않게
+  /** 전사가 저장되고 사례 기록도 탈 없이 끝나면 true. '저장하고 다음'은 그때만 다음 장으로 간다. 사례 확인 창에서 취소하면 저장하지 않는다 */
   async function save(): Promise<boolean> {
     if (!T || !data || saving) return false;
     saving = true;
     const tr = T, 폴더 = data.폴더;
-    // 판정이 O·X로 바뀐 단위(답이 있을 때만)는 사례 후보. 빈칸으로 바꾼 것은 사례로 남기지 않는다
-    const before = data.transcripts.find(x => x.page === tr.page);
-    const cases = data.key.정량.map(u => ({ 단위: u.id, v: tr.정량[u.id] })).filter(({ 단위, v }) => v && v.답.trim() && (v.판정 === 'O' || v.판정 === 'X') && before?.정량[단위]?.판정 !== v.판정);
+    const cases = caseCandidates(data.key, data.transcripts.find(x => x.page === tr.page), tr);
     try {
+      let record = recordCases && cases.length > 0;
+      if (record) {
+        // 같은 답을 쓴 다른 장까지 바뀌거나 정답표와 맞는 답을 X로 기록할 때는 바꾸기 전에 묻는다(전에는 바뀐 뒤에 알렸다)
+        const previews = previewCases(data.key, data.transcripts, cases, tr.page);
+        if (needsCaseConfirm(previews)) {
+          const choice = await askCaseRecord(previews);
+          if (choice === 'cancel') return false;
+          record = choice === 'record';
+        }
+      }
+      dropUndo(); // 되돌리기는 다음 저장 전까지만. 확인 창에서 취소한 것은 저장이 아니라 그대로 둔다
       let r = await api.saveTranscript(폴더, tr);
       dirty = false;
-      const others = new Map<number, string[]>();
+      const undo: CaseRevertRequest = { 사례: [], 변경: [] };
       let caseError: string | null = null; // 전사는 이미 저장됐으니 사례 기록이 실패해도 화면은 저장된 상태로 다시 읽는다
-      if (recordCases) for (const c of cases) {
+      if (record) for (const c of cases) {
         try {
-          const res = await api.applyCase(폴더, { 단위: c.단위, 답: c.v!.답, 판정: c.v!.판정 as 'O' | 'X', page: tr.page });
-          for (const b of res.바뀐장) if (b.page !== tr.page) others.set(b.page, [...(others.get(b.page) ?? []), ...b.변경]);
-          r = res;
+          const res = await api.applyCase(폴더, { ...c, page: tr.page });
+          undo.사례.push(res.이전사례 ? { ...c, 이전사례: res.이전사례 } : c);
+          undo.변경.push(...res.판정변경.filter(ch => ch.page !== tr.page)); // 이 장의 판정은 선생님이 직접 정한 것이라 되돌리지 않는다
+          if (res.엑셀 || res.엑셀오류) r = res;
         } catch (e) { caseError = (e as Error).message; break; }
       }
       await reload(store.state.current === 폴더 ? tr.page : undefined); // reload가 notice를 비우므로 안내는 그 뒤에
-      if (recordCases && cases.length) {
-        const others텍스트 = others.size ? t('review.othersChanged', { list: [...others].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ') }) : t('review.noOthers');
-        notice.append(el('div', { class: 'band info' }, t('review.casesRecorded', { n: cases.length, others: others텍스트 })));
-      }
+      if (undo.사례.length) showCaseBand(폴더, undo);
       if (r.엑셀오류) notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
       else if (!caseError) showInfo(t('review.saved'));
       // 알림은 하나만 보이므로 사례 기록 오류는 '저장했습니다'에 덮이지 않게 맨 뒤에
       if (caseError) showError(caseError);
       return caseError === null;
     } catch (e) { showError((e as Error).message); return false; }
+    finally { saving = false; }
+  }
+
+  // ── 방금 기록한 사례 되돌리기: 다음 저장이나 장 이동 전까지만(그 뒤에는 다른 장을 고쳤을 수 있다) ──
+  let undoBtn: HTMLButtonElement | null = null;
+  function dropUndo(): void { undoBtn?.remove(); undoBtn = null; }
+
+  function showCaseBand(폴더: string, undo: CaseRevertRequest): void {
+    const byPage = new Map<number, string[]>();
+    for (const ch of undo.변경) byPage.set(ch.page, [...(byPage.get(ch.page) ?? []), `${ch.단위} ${t(`verdict.${ch.이전}`)}→${t(`verdict.${ch.이후}`)}`]);
+    const others = byPage.size ? t('review.othersChanged', { list: [...byPage].map(([p, ch]) => `${tag(p)}(${ch.join(', ')})`).join(', ') }) : t('review.noOthers');
+    const btn = el('button', { class: 'small', title: t('review.case.undoTitle'), onclick: () => void undoCases(폴더, undo, band, btn) }, t('review.case.undo'));
+    const band = el('div', { class: 'band info case-band' }, el('span', {}, t('review.casesRecorded', { n: undo.사례.length, others })), btn);
+    undoBtn = btn;
+    notice.append(band);
+  }
+
+  /** 고치던 장이 있으면 그 고침은 두고 세트만 다시 읽어 목록과 문항별 칸을 새로 그린다 */
+  async function refreshData(폴더: string): Promise<void> {
+    const d = await api.readSet(폴더);
+    if (shownFor !== 폴더) return;
+    data = d; renderList(); item.render(d);
+  }
+
+  async function undoCases(폴더: string, undo: CaseRevertRequest, band: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    if (saving || btn !== undoBtn) return;
+    saving = true; btn.disabled = true;
+    try {
+      const r = await api.revertCase(폴더, undo);
+      undoBtn = null; band.remove();
+      if (dirty && T && data?.폴더 === 폴더) {
+        // 고치던 장도 되돌릴 장이면 화면의 사본에 같은 되돌리기를 한다. 그대로 두면 저장할 때 바뀐 판정을 다시 써 버린다
+        const mine = undo.변경.filter(c => c.page === T!.page);
+        if (mine.length) { T = revertTranscript(T, mine).transcript; renderEditor(); }
+        await refreshData(폴더);
+      } else await reload(store.state.current === 폴더 ? T?.page : undefined);
+      notice.append(el('div', { class: 'band info' }, [t('review.case.undone', { cases: r.사례, n: r.복원 }), r.건너뜀 ? t('review.case.undoSkipped', { n: r.건너뜀 }) : ''].join(' ').trim()));
+      if (r.엑셀오류) notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
+    } catch (e) { showError((e as Error).message); btn.disabled = false; }
     finally { saving = false; }
   }
 
@@ -387,8 +437,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   document.addEventListener('keydown', e => {
-    // 문항별 검토에서는 숨은 답안지별 장을 저장하거나 넘기지 않는다
-    if (root.classList.contains('hidden') || !T || mode !== 'sheet') return;
+    // 문항별 검토에서는 숨은 답안지별 장을 저장하거나 넘기지 않는다. 사례 확인 창이 떠 있는 동안에도 장을 넘기지 않는다
+    if (root.classList.contains('hidden') || !T || mode !== 'sheet' || document.querySelector('dialog[open]')) return;
     if ((e.ctrlKey || (MAC && e.metaKey)) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } // 맥은 ⌘S
     // 한글 조합 중의 Enter는 글자 확정이다. 그때 넘기면 마지막 글자가 빠진 채 저장된다
     else if ((e.ctrlKey || (MAC && e.metaKey)) && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); void saveAndNext(); } // 맥은 ⌘Enter

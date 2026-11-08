@@ -305,6 +305,21 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 
+/* ── 답안지별 검토: 사례로 기록하기 전 확인 창, 저장 뒤 되돌리기 띠 ── */
+dialog.case-confirm { width: min(620px, 92vw); max-height: 86vh; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--text); box-shadow: 0 12px 40px var(--shadow); }
+dialog.case-confirm[open] { display: flex; flex-direction: column; gap: 8px; }
+dialog.case-confirm::backdrop { background: rgba(10, 14, 20, .5); }
+dialog.case-confirm h3 { margin: 0; }
+dialog.case-confirm .case-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; margin: 4px 0 0; padding: 0; overflow: auto; list-style: none; }
+dialog.case-confirm .case-item { padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface-2); }
+dialog.case-confirm .case-what { overflow-wrap: anywhere; white-space: pre-wrap; } /* 논술형 답은 길어 줄을 바꿔 다 보인다 */
+dialog.case-confirm .case-pages { margin-top: 2px; font-size: var(--fs-m); color: var(--text-2); overflow-wrap: anywhere; }
+/* 정답·허용과 맞는 답을 X로 기록하려 할 때: 지나치지 않게 크고 굵게 */
+dialog.case-confirm .case-warn { margin-top: 8px; padding: 10px 12px; border: 2px solid var(--bad); border-radius: var(--r); background: var(--bad-soft); color: var(--bad); font-size: var(--fs-l); font-weight: 700; line-height: 1.45; }
+dialog.case-confirm .actions { justify-content: flex-end; margin: 4px 0 0; }
+.band.case-band { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.band.case-band > span { flex: 1 1 240px; min-width: 0; }
+
 /* ── 문항별 검토: 단위 목록 | 답 묶음. 신원을 숨기는 화면이라 학생 정보 칸이 없다 ── */
 .item-review { --units-w: 240px; display: grid; grid-template-columns: var(--units-w) minmax(0, 1fr);
   height: calc(100vh - var(--top-h) - 132px); min-height: 420px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); overflow: hidden; }
