@@ -29,7 +29,7 @@ test('write_xlsx: 시트와 머리글, 행 수', async () => {
   await writeResultXlsx(key, rows, unmatched, out, info);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(out);
-  assert.deepEqual(wb.worksheets.map(w => w.name), ['결과', '답안', '정답표', '정보']);
+  assert.deepEqual(wb.worksheets.map(w => w.name), ['결과', '문항 분석', '답안', '정답표', '정보']);
   const ws = wb.getWorksheet('결과')!;
   assert.deepEqual(headers(ws), ['학년', '반', '번호', '이름', '합계', '정량', '정성', '비고', '1-1', '3-1', 'E1']);
   assert.equal(ws.rowCount, 1 + 3 + 1); // 명단 3명 + 미확인 1장
