@@ -17,7 +17,7 @@ const optAbs = (v: unknown, platform: NodeJS.Platform): string | undefined => {
 const isCliFile = (p: string, platform: NodeJS.Platform): boolean => platform !== 'win32' || /\.(exe|cmd)$/i.test(p);
 
 export function defaultSettings(): Settings {
-  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true, 화면색: THEMES[0] };
+  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true, 자동설치: false, 화면색: THEMES[0] };
 }
 
 function parseProfile(v: unknown, platform: NodeJS.Platform): Profile | null {
@@ -59,6 +59,7 @@ export function parseSettings(raw: unknown, platform: NodeJS.Platform = process.
     사용중: optStr(raw.사용중) ?? null,
     언어: raw.언어 === 'en' ? 'en' : 'ko',
     자동업데이트: raw.자동업데이트 !== false,
+    자동설치: raw.자동설치 === true, // 묻지 않고 받는 것은 사용자가 켰을 때만
     화면색: (THEMES as readonly unknown[]).includes(raw.화면색) ? (raw.화면색 as Theme) : THEMES[0],
   });
 }

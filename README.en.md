@@ -23,9 +23,10 @@ The developer has not used this beta on a real Mac; it has only been launched an
 5. Install the Mac versions of Claude Code or Codex. 'Open login' in Settings starts the login in a Terminal window.
 
 ## Updates
-- The app checks GitHub 10 seconds after start and every 4 hours, only to see whether a new version exists. If there is one, Settings shows 'Download and install'; pressing it downloads the update and restarts the app to install it. If a transcription is running, installing waits and 'Restart to apply' appears instead.
-- To turn this off, uncheck 'Check for new versions automatically' under Settings → About. When off, the app does not contact GitHub.
-- The installer and updates are not code-signed. They are downloaded from GitHub Releases over HTTPS, and electron-updater checks each file against the SHA-512 listed in the release. An update installs only when the user presses the button.
+- The app checks GitHub 10 seconds after start and every 4 hours, only to see whether a new version exists. If there is one, Settings shows 'Download and install'; pressing it downloads the update and restarts the app to install it. If a transcription is running, installing waits and 'Restart to apply' appears instead. A new version is also announced next to the version number at the top ('Update available'); click it to open the update section in Settings.
+- Automatic download: turn on 'Download new versions automatically and install when the app closes' (off by default) to have updates downloaded in the background and installed when you close the app.
+- To turn this off, uncheck 'Check for new versions automatically' under Settings → About. When off, the app contacts GitHub only when you press 'Check now'.
+- The installer and updates are not code-signed. They are downloaded from GitHub Releases over HTTPS, and electron-updater checks each file against the SHA-512 listed in the release. An update installs only when the user presses the button, or when the app closes with automatic download turned on.
 
 ## Sample set
 When the start screen has no sets, a 'Try the sample set' button adds a short invented story ('봄비 오는 날') with **three fake answer sheets in printed type** and ready-made transcriptions, so you can try Review and Excel without AI. It says nothing about handwriting accuracy.

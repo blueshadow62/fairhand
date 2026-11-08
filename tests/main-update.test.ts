@@ -8,11 +8,50 @@ class FakeUpdater extends EventEmitter {
   autoDownload = true; autoInstallOnAppQuit = true; logger: unknown = {};
   calls: string[] = [];
   async checkForUpdates() { this.calls.push('check'); this.emit('checking-for-update'); this.emit('update-available', { version: '9.9.9' }); return null; }
-  async downloadUpdate() { this.calls.push('download'); this.emit('download-progress', { percent: 50 }); this.emit('update-downloaded', { version: '9.9.9' }); return []; }
+  quitHandler = false; // electron-updater처럼 다 받은 순간 autoInstallOnAppQuit가 켜져 있어야 '닫을 때 설치' 처리기가 달린다
+  async downloadUpdate() { this.calls.push('download'); this.emit('download-progress', { percent: 50 }); this.emit('update-downloaded', { version: '9.9.9' }); this.quitHandler ||= this.autoInstallOnAppQuit; return []; }
   quitAndInstall(silent: boolean, runAfter: boolean) { this.calls.push(`install ${silent} ${runAfter}`); }
 }
-const winUpdater = (fake: FakeUpdater, busy = () => false, seen: string[] = []) =>
-  startUpdater({ enabled: () => true, packaged: true, platform: 'win32', busy, loadUpdater: async () => fake as never, onStatus: s => seen.push(s.kind), log: () => undefined });
+const winUpdater = (fake: FakeUpdater, busy = () => false, seen: string[] = [], opt: { enabled?: () => boolean; autoInstall?: () => boolean } = {}) =>
+  startUpdater({ enabled: opt.enabled ?? (() => true), autoInstall: opt.autoInstall, packaged: true, platform: 'win32', busy, loadUpdater: async () => fake as never, onStatus: s => seen.push(s.kind), log: () => undefined });
+
+test('startUpdater: 받아 두기를 켜면 찾은 새 버전을 받아 두고, 바로 다시 시작하지 않고 닫을 때 설치한다', async () => {
+  const fake = new FakeUpdater(); let auto = true;
+  const u = winUpdater(fake, () => false, [], { autoInstall: () => auto });
+  try {
+    await u.check();
+    assert.deepEqual(fake.calls, ['check', 'download']); // 다시 시작(quitAndInstall)은 하지 않는다
+    assert.deepEqual(u.status(), { kind: 'downloaded', version: '9.9.9' });
+    assert.equal(fake.quitHandler, true);
+    assert.equal(fake.autoInstallOnAppQuit, true);
+    auto = false; u.setAutoInstall(false); // 받은 뒤 끄면 닫을 때 설치하지 않는다
+    assert.equal(fake.autoInstallOnAppQuit, false);
+  } finally { u.stop(); }
+});
+
+test('startUpdater: 받아 두기가 꺼져 있으면 닫을 때 설치하지 않는다(내려받아 설치는 바로 설치)', async () => {
+  const fake = new FakeUpdater();
+  const u = winUpdater(fake, () => true); // 전사 중이라 바로 설치는 미룬다
+  try {
+    await u.check(); await u.download();
+    assert.deepEqual(fake.calls, ['check', 'download']);
+    assert.equal(fake.autoInstallOnAppQuit, false);
+  } finally { u.stop(); }
+});
+
+test('startUpdater: 자동 확인이 꺼져 있으면 주기 확인은 건너뛰고, 누른 확인은 한다. 끄기는 찾은 새 버전을 지우지 않는다', async () => {
+  const fake = new FakeUpdater();
+  const u = winUpdater(fake, () => false, [], { enabled: () => false });
+  try {
+    assert.deepEqual(u.status(), { kind: 'disabled', reason: 'off' });
+    await u.check();
+    assert.deepEqual(fake.calls, []);
+    await u.check(true);
+    assert.deepEqual(u.status(), { kind: 'available', version: '9.9.9' });
+    u.setEnabled(false);
+    assert.deepEqual(u.status(), { kind: 'available', version: '9.9.9' });
+  } finally { u.stop(); }
+});
 
 test('startUpdater: 확인은 새 버전이 있다고만 알리고, 내려받아 설치를 눌러야 받은 뒤 바로 설치한다', async () => {
   const fake = new FakeUpdater(); const seen: string[] = [];

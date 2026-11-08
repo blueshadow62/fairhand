@@ -1,4 +1,4 @@
-import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, type SetInfo, type Settings, type Theme } from '../shared/ipc.js';
+import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, type SetInfo, type Settings, type Theme, type UpdateStatus } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
@@ -62,6 +62,20 @@ const TABS: { id: Tab; mod: { mount(root: HTMLElement, ctx: Ctx): void } }[] = [
   { id: 'settings', mod: settingsScreen },
 ];
 
+/**
+ * 설정의 업데이트 칸을 화면 가운데로. 설정 화면은 프로필·AI 상태를 늦게 그려 높이가 바뀌므로
+ * 잠깐(1.5초) 동안은 바뀔 때마다 다시 맞춘다. 떠나기 확인에서 머무르기를 골랐으면 아무것도 하지 않는다
+ */
+function revealUpdateBox(): void {
+  const screen = document.querySelector('.screen[data-tab="settings"]:not(.hidden)');
+  const box = screen?.querySelector('[data-section="update"]');
+  if (!screen || !box) return;
+  const show = () => box.scrollIntoView({ block: 'center' });
+  show();
+  const ro = new ResizeObserver(show); ro.observe(screen);
+  setTimeout(() => ro.disconnect(), 1500);
+}
+
 const errText = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 async function start(): Promise<void> {
@@ -74,10 +88,20 @@ async function start(): Promise<void> {
   const main = el('main', { id: 'main' });
   const version = el('span', { class: 'version' });
   void api.version().then(v => { version.textContent = `v${v}`; }).catch(() => undefined);
-  root.append(el('header', { id: 'top' }, el('span', { class: 'brand' }, '글눈', version), current), tabs, main, el('div', { id: 'toast', class: 'hidden' }));
+  // 버전 옆 알림: 설정 화면에 가지 않아도 새 버전이 있는 줄 알게. 누르면 설정의 업데이트 칸으로
+  const updatePill = el('button', { class: 'update-pill hidden', onclick: () => void goToAsync('settings').then(revealUpdateBox) });
+  const renderUpdatePill = (s: UpdateStatus) => {
+    const text = s.kind === 'available' ? t('app.update.available') : s.kind === 'downloading' ? t('app.update.downloading', { percent: s.percent })
+      : s.kind === 'downloaded' ? t('app.update.ready') : '';
+    updatePill.textContent = text; updatePill.title = 'version' in s ? t('app.update.hint', { version: s.version }) : '';
+    updatePill.classList.toggle('hidden', !text);
+  };
+  root.append(el('header', { id: 'top' }, el('span', { class: 'brand' }, '글눈', version), updatePill, current), tabs, main, el('div', { id: 'toast', class: 'hidden' }));
 
   store.update({ settings: await api.getSettings() });
   setLanguage(store.state.settings.언어); // 이 뒤의 t()가 모두 이 언어로 나온다
+  api.onUpdate(renderUpdatePill);
+  void api.updateStatus().then(renderUpdatePill).catch(() => undefined);
   applyTheme(store.state.settings.화면색);
   store.subscribe(s => { current.textContent = s.current ? t('common.set', { name: s.current }) : t('app.noSet'); });
   store.update({});

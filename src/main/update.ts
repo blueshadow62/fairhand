@@ -5,7 +5,8 @@ export type UpdateEvent = { type: 'check' } | { type: 'none'; version: string } 
 
 export function reduce(prev: UpdateStatus, ev: UpdateEvent): UpdateStatus {
   if (prev.kind === 'disabled' && (prev.reason === 'dev' || prev.reason === 'manual')) return prev;
-  if (ev.type === 'off') return { kind: 'disabled', reason: 'off' };
+  // 자동 확인을 꺼도 이미 찾았거나 받은 새 버전은 그대로 둔다('내려받아 설치'·'다시 시작해 적용'을 누를 수 있게)
+  if (ev.type === 'off') return ['available', 'downloading', 'downloaded'].includes(prev.kind) ? prev : { kind: 'disabled', reason: 'off' };
   if (ev.type === 'on') return prev.kind === 'disabled' ? { kind: 'idle' } : prev;
   if (prev.kind === 'disabled') return prev;
   // 받아 둔 새 버전은 사용자가 '다시 시작해 적용'을 누르기 전까지 그대로 둔다(다음 확인이 상태를 덮지 않게)
@@ -46,7 +47,11 @@ export function scheduleChecks(check: () => void, opts: { firstDelayMs: number; 
   return () => { opts.clearTimeout(a); opts.clearInterval(b); };
 }
 
-export interface Updater { check(): Promise<void>; download(): Promise<void>; install(): void; status(): UpdateStatus; setEnabled(on: boolean): void; stop(): void }
+export interface Updater {
+  /** manual: 사용자가 누른 확인(자동 확인이 꺼져 있어도 한다) */
+  check(manual?: boolean): Promise<void>; download(): Promise<void>; install(): void; status(): UpdateStatus
+  setEnabled(on: boolean): void; setAutoInstall(on: boolean): void; stop(): void
+}
 
 type AU = import('electron-updater').AppUpdater;
 
@@ -55,9 +60,10 @@ const FIRST_DELAY_MS = 10_000, INTERVAL_MS = 4 * 60 * 60 * 1000;
 /**
  * electron-updater 연결. 개발 실행·꺼짐이면 GitHub에 접속하지 않고, 오류는 상태와 로그로만 남긴다(창을 띄우지 않음).
  * 확인은 새 버전이 있는지만 알린다. 받기와 설치는 사용자가 '내려받아 설치'를 누를 때(download) 한다.
+ * '받아 두기'(autoInstall)를 켰으면 찾은 새 버전을 알아서 받아 두고, 프로그램을 닫을 때 조용히 설치한다.
  * 맥은 앱에 Apple 서명이 있어야 자동 업데이트가 설치되는데 시험판은 서명이 없어, 확인하지 않고 릴리스 페이지로 안내한다(manual).
  */
-export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; platform?: NodeJS.Platform; busy?: () => boolean; loadUpdater?: () => Promise<AU>;
+export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; platform?: NodeJS.Platform; busy?: () => boolean; autoInstall?: () => boolean; loadUpdater?: () => Promise<AU>;
   onStatus(s: UpdateStatus): void; log(level: 'warn' | 'info', ...p: unknown[]): void }): Updater {
   const manual = (deps.platform ?? process.platform) === 'darwin';
   let status: UpdateStatus = !deps.packaged ? { kind: 'disabled', reason: 'dev' } : manual ? { kind: 'disabled', reason: 'manual' }
@@ -73,7 +79,7 @@ export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; 
     deps.log('warn', '[update]', message);
     set({ type: 'error', message });
   };
-  if (!deps.packaged || manual) return { check: async () => undefined, download: async () => undefined, install: () => undefined, status: () => status, setEnabled: () => undefined, stop: () => undefined };
+  if (!deps.packaged || manual) return { check: async () => undefined, download: async () => undefined, install: () => undefined, status: () => status, setEnabled: () => undefined, setAutoInstall: () => undefined, stop: () => undefined };
 
   let au: AU | null = null;
   let installWhenReady = false; // '내려받아 설치'로 받은 것만 다 받은 뒤 바로 설치한다
@@ -100,21 +106,31 @@ export function startUpdater(deps: { enabled: () => boolean; packaged: boolean; 
     u.on('error', fail);
     return (au = u);
   };
-  const check = async () => {
-    if (!deps.enabled()) { set({ type: 'off' }); return; }
-    set({ type: 'on' });
-    if (['checking', 'available', 'downloading', 'downloaded'].includes(status.kind)) return;
-    try { await (await load()).checkForUpdates(); } catch (e) { fail(e); }
-  };
-  const download = async () => {
+  const autoInstall = () => deps.autoInstall?.() ?? false;
+  const fetchUpdate = async (installNow: boolean) => {
     if (status.kind !== 'available' || !au) return;
-    installWhenReady = true;
+    installWhenReady = installNow;
+    // electron-updater는 다 받은 순간 이 값이 켜져 있을 때만 '닫을 때 설치' 처리기를 단다. 일단 켜서 달게 하고,
+    // 닫을 때 정말 설치할지는 받은 뒤 설정값으로 맞춘다(처리기가 닫을 때 이 값을 다시 본다)
+    au.autoInstallOnAppQuit = true;
     set({ type: 'progress', percent: 0 }); // 첫 진행 소식이 오기 전에도 단추를 잠근다(두 번 누름 방지)
     try { await au.downloadUpdate(); } catch (e) { installWhenReady = false; fail(e); }
+    finally { au.autoInstallOnAppQuit = autoInstall(); }
+  };
+  const check = async (manual = false) => {
+    if (!manual && !deps.enabled()) return; // 자동 확인이 꺼져 있으면 주기 확인만 건너뛴다
+    set({ type: 'on' });
+    if (['checking', 'available', 'downloading', 'downloaded'].includes(status.kind)) return;
+    try { await (await load()).checkForUpdates(); } catch (e) { fail(e); return; }
+    if (status.kind === 'available' && autoInstall()) await fetchUpdate(false);
   };
   const stop = scheduleChecks(() => void check(), { firstDelayMs: FIRST_DELAY_MS, intervalMs: INTERVAL_MS, setTimeout, setInterval, clearTimeout, clearInterval });
   return {
-    check, download, install, status: () => status, stop,
+    check, download: () => fetchUpdate(true), install, status: () => status, stop,
     setEnabled: on => set({ type: on ? 'on' : 'off' }),
+    setAutoInstall: on => {
+      if (au && status.kind !== 'downloading') au.autoInstallOnAppQuit = on; // 받는 중이면 다 받은 뒤 맞춘다
+      if (on && status.kind === 'available') void fetchUpdate(false);
+    },
   };
 }

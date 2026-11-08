@@ -110,6 +110,9 @@ button.active { background: var(--accent-soft); border-color: var(--accent-line)
 #top .brand { font-weight: 800; font-size: 20px; letter-spacing: -.02em; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
 #top .brand::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
 #top .brand .version { font-weight: 500; font-size: var(--fs-s); color: var(--text-2); letter-spacing: 0; margin-top: 4px; }
+#top .update-pill { min-height: 0; margin-left: calc(var(--sp-2) - var(--sp-4)); padding: 3px 10px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent); color: #fff; font-size: var(--fs-s); font-weight: 600; cursor: pointer; } /* 옆의 세트 이름(옅은 알약)과 구별되게 '저장' 단추 색 */
+#top .update-pill:hover { background: var(--accent-h); border-color: var(--accent-h); }
+.row.sub { margin-top: 0; padding-left: 26px; } /* 위 체크에 딸린 체크 */
 #top .current { font-size: var(--fs-m); color: var(--accent-text); background: var(--accent-soft); padding: 4px 12px; border-radius: 999px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tabs { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2); background: var(--surface); border-right: 1px solid var(--line); overflow: hidden; }
 #tabs button { justify-content: flex-start; min-height: 44px; padding: 0 14px; border: none; background: transparent; color: var(--text-2); font-weight: 500; text-align: left; }

@@ -52,22 +52,30 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const profileBox = el('div');
   const saveProfilesBtn = el('button', { class: 'primary', onclick: () => guard(async () => { await persist(); showInfo(t('settings.profilesSaved')); renderProfiles(); }) }, t('settings.saveProfiles'));
   const versionText = el('span');
-  const updateBox = el('div');
+  const updateBox = el('div', { 'data-section': 'update' }); // 맨 위 '새 업데이트' 알림을 누르면 여기로 스크롤
 
   function renderUpdate(s: UpdateStatus): void {
     clear(updateBox);
     const busy = s.kind === 'checking' || s.kind === 'downloading';
     const manual = s.kind === 'disabled' && s.reason === 'manual'; // 서명 없는 맥 시험판: 새 버전은 릴리스 페이지에서 직접 받는다
-    const auto = el('input', { type: 'checkbox', checked: store.state.settings.자동업데이트, disabled: s.kind === 'disabled' && s.reason === 'dev',
+    const dev = s.kind === 'disabled' && s.reason === 'dev';
+    const auto = el('input', { type: 'checkbox', checked: store.state.settings.자동업데이트, disabled: dev,
       onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 자동업데이트: auto.checked }) }); renderUpdate(await api.updateStatus()); }) });
+    // 받아 두기는 자동 확인이 켜져 있을 때만 뜻이 있다(메인도 둘 다 켜졌을 때만 받는다)
+    const autoInstall = el('input', { type: 'checkbox', checked: store.state.settings.자동설치, disabled: dev || !store.state.settings.자동업데이트,
+      onchange: () => guard(async () => { store.update({ settings: await api.saveSettings({ 자동설치: autoInstall.checked }) }); renderUpdate(await api.updateStatus()); }) });
+    const willInstallOnQuit = s.kind === 'downloaded' && store.state.settings.자동업데이트 && store.state.settings.자동설치;
     updateBox.append(el('h3', {}, t('settings.update.title')),
       el('div', { class: 'row' }, el('span', {}, updateText(s)),
         manual ? el('button', { onclick: () => guard(() => api.openExternal('releases')) }, t('settings.update.openReleases'))
           : s.kind === 'available' ? el('button', { class: 'primary', onclick: () => guard(() => api.downloadUpdate()) }, t('settings.update.download'))
           : s.kind === 'downloaded' ? el('button', { class: 'primary', onclick: () => guard(() => api.installUpdate()) }, t('settings.update.install'))
-          : el('button', { disabled: busy || s.kind === 'disabled', onclick: () => guard(() => api.checkUpdate()) }, t('settings.update.check'))),
+          : el('button', { disabled: busy || (s.kind === 'disabled' && s.reason !== 'off'), onclick: () => guard(() => api.checkUpdate()) }, t('settings.update.check'))),
       ...(s.kind === 'available' ? [el('div', { class: 'muted' }, t('settings.update.downloadNote'))] : []),
-      ...(manual ? [] : [el('div', { class: 'row' }, el('label', {}, auto, t('settings.update.auto'))), el('div', { class: 'muted' }, t('settings.update.note'))]));
+      ...(willInstallOnQuit ? [el('div', { class: 'muted' }, t('settings.update.installOnQuit'))] : []),
+      ...(manual ? [] : [el('div', { class: 'row' }, el('label', {}, auto, t('settings.update.auto'))),
+        el('div', { class: 'row sub' }, el('label', {}, autoInstall, t('settings.update.autoInstall'))),
+        el('div', { class: 'muted' }, t('settings.update.note'))]));
   }
 
   function renderBasics(): void {

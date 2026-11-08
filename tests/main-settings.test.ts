@@ -23,6 +23,9 @@ test('parseSettings: 기본 프로필이 없으면 앞에 넣고, 사용중이 �
 test('parseSettings: 자동업데이트는 기본 켜짐, false일 때만 꺼짐', () => {
   assert.equal(parseSettings({}).자동업데이트, true);
   assert.equal(parseSettings({ 자동업데이트: false }).자동업데이트, false);
+  assert.equal(parseSettings({}).자동설치, false); // 받아 두기는 기본 꺼짐, true일 때만 켜짐
+  assert.equal(parseSettings({ 자동설치: 'yes' }).자동설치, false);
+  assert.equal(parseSettings({ 자동설치: true }).자동설치, true);
 });
 
 test('parseSettings: 화면색은 sky·dawn·dark만, 없거나 모르는 값은 sky', () => {

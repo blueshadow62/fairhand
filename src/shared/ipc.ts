@@ -27,7 +27,7 @@ export type Language = 'ko' | 'en';
 /** 화면 색. 값은 styles.css의 :root[data-theme]와 짝이다. 맨 앞이 기본 */
 export const THEMES = ['sky', 'dawn', 'dark'] as const;
 export type Theme = typeof THEMES[number];
-export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 화면색: Theme }
+export interface Settings { 학기폴더: string | null; 명단: string | null; 기본회전: Rotation; 프로필: Profile[]; 사용중: string | null; 언어: Language; 자동업데이트: boolean; 자동설치: boolean; 화면색: Theme }
 export interface SecretView { 저장됨: boolean; 끝4자?: string; 열림?: boolean }   // 열림 false = 봉인은 있으나 이 PC에서 못 풀어 다시 입력 필요
 export interface CliStatusView { installed: boolean; version?: string; tooOld?: boolean; loggedIn?: boolean; subscriptionType?: string; configDir?: string; command?: string; minVersion?: string }
 export interface TrashEntry { id: string; 원래이름: string; 삭제일시: string; 글?: string; 학년?: number; 반?: number[]; 쪽수?: number; 전사수?: number }
@@ -113,7 +113,7 @@ export interface GeulnunApi {
   /** 글만 보내는 모델 재판정. 진행은 onProgress */
   judgeWithModel(폴더: string, opts: { pages?: number[] }): Promise<JudgeResult>;
   updateStatus(): Promise<UpdateStatus>;
-  /** 자동업데이트가 꺼져 있거나 개발 실행이면 아무것도 하지 않는다 */
+  /** 사용자가 누른 확인이라 자동 확인이 꺼져 있어도 한다. 개발 실행·맥 시험판이면 아무것도 하지 않는다 */
   checkUpdate(): Promise<void>;
   /** 확인에서 찾은 새 버전을 내려받고, 다 받으면 다시 시작해 설치한다(전사 중이면 설치는 미룬다) */
   downloadUpdate(): Promise<void>;

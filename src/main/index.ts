@@ -36,11 +36,14 @@ app.whenReady().then(async () => {
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion(), maskJpeg: maskJpegNative });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
-  const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, busy: () => bridge.running(), log: log.write,
+  // 받아 두기는 자동 확인이 켜져 있을 때만(꺼 두고 '지금 확인'을 눌렀는데 받아 버리지 않게)
+  const autoInstall = () => settingsCache.자동업데이트 && settingsCache.자동설치;
+  const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, busy: () => bridge.running(), autoInstall, log: log.write,
     onStatus: s => win?.webContents.send(CHANNELS.updateStatus, s) });
   settings.save = async (patch) => { // 그림 프로토콜이 학기 폴더를, 업데이트가 켜짐 여부를 동기로 알아야 해서
     settingsCache = await origSave(patch);
     if ('자동업데이트' in patch) updater.setEnabled(settingsCache.자동업데이트);
+    if ('자동업데이트' in patch || '자동설치' in patch) updater.setAutoInstall(autoInstall());
     return settingsCache;
   };
   const menu = menuTemplate(process.platform); // Windows는 메뉴 없음, 맥은 단축키용 최소 메뉴
