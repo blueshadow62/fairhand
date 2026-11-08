@@ -176,6 +176,9 @@ select.v-O { background: var(--ok-soft); } select.v-X { background: var(--bad-so
 .setlist button.primary { align-items: center; }
 label.upload { display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); cursor: pointer; }
 label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; background: transparent; }
+/* 시작 방법에서 'AI 초안'을 고르면 초점이 문항지 파일 고르기로 온다. 입력란처럼 칸 전체에 초점 테를 둘러 눈에 띄게 */
+label.upload:focus-within { border-color: var(--accent); box-shadow: var(--focus); }
+label.upload input:focus { box-shadow: none; }
 
 /* ── 문항 설정: 왼쪽 세트 목록 + 오른쪽 편집 ── */
 .split { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
@@ -216,6 +219,11 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 .key-savebar { position: sticky; bottom: var(--sp-3); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); padding: 10px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); box-shadow: 0 4px 18px var(--shadow); }
 .key-savebar .warn-text { color: var(--warn-text); font-size: var(--fs-m); }
 .key-savebar > .band { margin-left: auto; } /* 저장하지 않은 변경 표시는 오른쪽 끝에 떼어 두어 단추·안내 글과 섞여 보이지 않게 */
+/* 새 세트의 시작 방법: 처음 할 일이라 사용 중 프로필 카드처럼 강조색 띠를 두고, 고를 것 셋을 같은 너비로 나란히 */
+.card.key-start { border-color: var(--accent-line); box-shadow: inset 4px 0 0 var(--accent); }
+.key-start-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.key-start-options button { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; padding: 12px 14px; text-align: left; white-space: normal; line-height: 1.4; }
+.key-start-options button .muted { font-weight: 400; }
 /* 막대에 가린 칸으로 Tab을 옮기면 막대 위까지 올려 보인다 */
 #main:has(> .screen[data-tab="key"]:not(.hidden)) { scroll-padding-bottom: 96px; }
 /* 좁은 창(1100px 안팎): 세트 목록을 줄여 표에 자리를 준다 */

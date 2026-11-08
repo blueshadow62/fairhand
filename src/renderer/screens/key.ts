@@ -8,7 +8,7 @@ import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-uti
 import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
 import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
-import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 
 function defaultSemester(d = new Date()): string {
   const m = d.getMonth() + 1;
@@ -93,7 +93,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let 전사수 = 0;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
 
   const guard = makeGuard(showError);
-  const touch = () => { if (!dirty) { dirty = true; renderStatus(); } };
+  const touch = () => { if (!dirty) { dirty = true; renderStatus(); } renderStart(); };
 
   const listBox = el('div', { class: 'setlist' });
   const editor = el('div');
@@ -140,7 +140,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function openNew(): void {
     resetDraft();
-    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true;
+    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true; startPicked = false;
     store.update({ current: null });
     renderEditor();
   }
@@ -184,6 +184,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     })());
     return el('label', { class: 'upload' }, kind === '문제' ? t('key.uploadProblem') : t('key.uploadSource'), input);
   }
+  const problemUpload = uploadInput('문제', problemArea), sourceUpload = uploadInput('지문', sourceArea);
   // 초안 수정 채팅: 현재 표 + 지시를 보내 고친 표를 받는다
   const chatLog = el('div', { class: 'chat-log' });
   const chatInput = el('input', { placeholder: t('key.chatPlaceholder'), class: 'chat-input' });
@@ -199,7 +200,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function sendChat(): Promise<void> {
     const 지시 = chatInput.value.trim();
     if (!지시) return;
-    if (!rows.some(r => r.정답 || r.요소 || r.설명)) { showError(t('key.chatNoRows')); return; }
+    if (!rowsHaveContent(rows)) { showError(t('key.chatNoRows')); return; }
     if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
     chatInput.value = ''; chatLine('me', 지시);
     const thinking = el('div', { class: 'chat-msg ai muted' }, t('key.chatThinking')); chatLog.append(thinking);
@@ -221,7 +222,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
     if (!problemArea.value.trim() && !uploaded.문제.length) { showError(t('key.problemOrFileMissing')); return; }
     if (!sourceArea.value.trim() && !uploaded.지문.length && !confirm(t('key.noSourceConfirm'))) return;
-    if (rows.some(r => r.정답 || r.요소 || r.설명) && !confirm(t('key.replaceTableConfirm'))) return;
+    if (rowsHaveContent(rows) && !confirm(t('key.replaceTableConfirm'))) return;
     draftBtn.disabled = true; draftBtn.textContent = t('key.drafting');
     try {
       const d = await api.draftKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined, 문제그림: uploaded.문제, 지문그림: uploaded.지문 });
@@ -233,8 +234,35 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     finally { draftBtn.disabled = false; draftBtn.textContent = t('key.makeDraft'); }
   }
 
+  // ── 새 세트의 시작 방법: 빈 표가 먼저 보이고 AI 초안 칸은 표 아래에 있어 손으로 입력부터 하기 쉬웠다. 고르거나 표에 글이 생기면 감춘다 ──
+  let startPicked = false;
+  let draftCard: HTMLElement | null = null;
+  let firstDesc: HTMLInputElement | null = null; // '직접 입력'을 고르면 초점을 둘 첫 행의 설명 칸
+  const startBox = el('div', { class: 'card key-start' });
+  function renderStart(): void {
+    if (rowsHaveContent(rows)) startPicked = true; // 쓴 글을 다시 지워도 다시 띄우지 않는다
+    startBox.classList.toggle('hidden', !!폴더 || startPicked);
+  }
+  function pickStart(): void { startPicked = true; renderStart(); }
+  const startOption = (title: string, help: string, onclick: () => void) =>
+    el('button', { onclick }, el('strong', {}, title), el('span', { class: 'muted' }, help));
+  startBox.append(el('h3', {}, t('key.start.title')), el('div', { class: 'muted' }, t('key.start.help')),
+    el('div', { class: 'key-start-options' },
+      startOption(t('key.start.ai'), t('key.start.aiHelp'), () => {
+        pickStart();
+        draftCard?.scrollIntoView({ block: 'start' });
+        problemUpload.querySelector('input')?.focus({ preventScroll: true });
+      }),
+      startOption(t('key.start.manual'), t('key.start.manualHelp'), () => {
+        pickStart();
+        if (!rows.length) { rows = [emptyRow()]; renderTable(); }
+        firstDesc?.focus();
+      }),
+      startOption(t('key.import'), t('key.start.importHelp'), () => void importKey())));
+
   function renderTable(): void {
     clear(tableBox);
+    firstDesc = null;
     hideTip(); // 다시 그리면 설명을 띄운 칸이 사라져 mouseleave가 오지 않는다
     // 칸 이름에 마우스를 올리면 그 칸에 무엇을 쓰는지(유형은 여섯 유형의 뜻) 보인다
     const typeTip = [t('key.tip.type'), ...UNIT_TYPES.map(u => `${t(`unit.${u}`)}: ${t(`unit.tip.${u}`)}`)].join('\n');
@@ -255,7 +283,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const type = tip(el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`)))),
         () => `${t(`unit.${r.유형}`)}: ${t(`unit.tip.${r.유형}`)}`);
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
-      const desc = el('td', essay ? { colspan: '5' } : {}, widen(bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')));
+      const descInput = widen(bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
+      if (i === 0) firstDesc = descInput;
+      const desc = el('td', essay ? { colspan: '5' } : {}, descInput);
       const actions = el('td', {}, el('div', { class: 'row' },
         el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
         el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow'))));
@@ -396,7 +426,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     await guard(async () => {
       const k = await api.importKey(); if (!k) return;
       if (dirty && !confirm(t('key.importConfirm'))) return;
-      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
+      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; startPicked = true; renderEditor();
       showInfo(t('key.imported'));
     });
   }
@@ -431,10 +461,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         // 이름표와 입력란을 label 하나로 묶는다. 따로 두면 줄이 바뀔 때 '반'만 줄 끝에 남고 입력란은 다음 줄로 갔다
         el('div', { class: 'row key-meta' }, el('label', {}, t('key.fieldTitle'), 글Input), el('label', {}, t('key.fieldSemester'), 학기Input), 학년Select,
           el('label', {}, t('key.fieldClasses'), 반Input), el('label', {}, t('key.fieldHeadcount'), 인원Input))),
+      startBox,
       el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox),
-      el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
+      draftCard = el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
         el('div', { class: 'muted' }, t('key.draftHelp')),
-        el('div', { class: 'row' }, uploadInput('문제', problemArea), uploadInput('지문', sourceArea), clearUploads),
+        el('div', { class: 'row' }, problemUpload, sourceUpload, clearUploads),
         el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
         problemArea, sourceArea,
         el('div', { class: 'row' }, draftBtn,
@@ -446,7 +477,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'muted' }, t('key.tryHelp')),
         tryInput, tryBox),
       saveBar);
-    renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); clear(judgeBox);
+    renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); renderStart(); clear(judgeBox);
   }
 
   store.subscribe(() => renderList());

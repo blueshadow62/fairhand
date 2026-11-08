@@ -13,6 +13,8 @@ export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: num
 
 export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '논술형', '응답형'];
 export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '', 배점: '1', 용어배점: '1' });
+/** 표에 쓴 글이 있는지. 번호·유형·배점은 빈 행에도 들어 있으므로 보지 않는다 */
+export const rowsHaveContent = (rows: UnitRow[]): boolean => rows.some(r => [r.설명, r.정답, r.허용, r.핵심, r.요소].some(s => s.trim()));
 
 const list = (s: string, sep: RegExp): string[] => s.split(sep).map(x => x.trim()).filter(Boolean);
 /** 1점이면 쓰지 않는다(정답표를 짧게, 배점을 두기 전 정답표와 같은 모양으로) */

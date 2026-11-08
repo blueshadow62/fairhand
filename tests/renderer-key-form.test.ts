@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { draftToRows, keyToRows, parseClasses, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
+import { draftToRows, emptyRow, keyToRows, parseClasses, rowsHaveContent, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const meta = { 글: '알바생 자르기(장강명)', 학기: '2026 2학기', 학년: 3, 반: [1, 3], 인원: {} };
@@ -40,6 +40,13 @@ test('validateRows: 비었거나 틀린 것을 한글로', () => {
   assert.ok(errs.some(e => e.includes('글')) && errs.some(e => e.includes('반')));
   assert.ok(errs.some(e => e.includes('문항 번호')) && errs.some(e => e.includes('정답')) && errs.some(e => e.includes('핵심')));
   assert.deepEqual(validateRows(meta, [{ 문항: 1, 유형: '단답형', 설명: 'x', 정답: 'y', 허용: '', 핵심: '', 요소: '', 배점: '1', 용어배점: '1' }]), []);
+});
+
+test('rowsHaveContent: 번호·유형·배점만 있는 빈 행이나 공백은 내용이 아니다', () => {
+  assert.equal(rowsHaveContent([]), false);
+  assert.equal(rowsHaveContent([emptyRow(), emptyRow(2, '요소형'), { ...emptyRow(3), 설명: '  ', 배점: '2' }]), false);
+  assert.equal(rowsHaveContent([emptyRow(), { ...emptyRow(2), 허용: '세' }]), true);
+  assert.equal(rowsHaveContent([{ ...emptyRow(1, '요소형'), 요소: '집\n학교' }]), true);
 });
 
 test('draftToRows: 초안을 편집 행으로', () => {

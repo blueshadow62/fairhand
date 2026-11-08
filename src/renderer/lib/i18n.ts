@@ -413,6 +413,13 @@ const ko = {
   'key.rulesTitle': '채점 규칙과 판정 사례',
   'key.tryTitle': '한 장만 채점해 보기',
   'key.tryHelp': '답안지 한 장(jpg 또는 PDF의 첫 장)으로 전사를 시험합니다. 결과는 저장하지 않습니다. 확인 완료된 정답표에서만 됩니다.',
+  'key.start.title': '시작 방법',
+  'key.start.help': '정답표를 어떻게 만들지 고르세요.',
+  'key.start.ai': '문항지로 AI 초안 만들기',
+  'key.start.aiHelp': '문항지 파일을 올리면 AI가 정답표 초안을 만듭니다. 글 제목을 먼저 적으세요.',
+  'key.start.manual': '직접 입력',
+  'key.start.manualHelp': '표에 문항을 한 행씩 적습니다.',
+  'key.start.importHelp': "'정답표 내보내기'로 저장해 둔 파일(.json)을 엽니다.",
 
   // 문항 표 검증(lib/key-form.ts)
   'form.titleEmpty': '글 제목이 비었습니다',
@@ -961,6 +968,13 @@ const en: Record<Key, string> = {
   'key.rulesTitle': 'Grading rules and precedents',
   'key.tryTitle': 'Try one page',
   'key.tryHelp': 'Tests transcription on one sheet (jpg, or the first page of a PDF). Nothing is saved. Works only with a confirmed key.',
+  'key.start.title': 'How to start',
+  'key.start.help': 'Select how to make the answer key.',
+  'key.start.ai': 'Make an AI draft from the question sheet',
+  'key.start.aiHelp': 'Upload the question sheet. The AI makes a draft of the answer key. Type the title first.',
+  'key.start.manual': 'Type the questions',
+  'key.start.manualHelp': 'Type each question in the table, one row at a time.',
+  'key.start.importHelp': "Open a file (.json) that you saved with 'Export key'.",
 
   'form.titleEmpty': 'The title is empty',
   'form.semesterEmpty': 'The semester is empty',
