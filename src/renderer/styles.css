@@ -203,6 +203,9 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 .keytable td select { padding-right: 22px; }
 .keytable td .row { flex-wrap: nowrap; margin: 0; gap: 4px; }
 .keytable td .row button { min-height: 32px; padding: 0 7px; min-width: 0; border-radius: var(--r-s); font-size: var(--fs-m); }
+/* 세트 정보 줄: 이름표+입력란 묶음 사이를 묶음 안(6px)보다 넓게 띄워 어느 이름표가 어느 칸 것인지 보이게 하고, 묶음 안에서는 줄을 바꾸지 않는다 */
+.key-meta { column-gap: 16px; }
+.key-meta > label { white-space: nowrap; }
 /* 좁은 창(1100px 안팎): 세트 목록을 줄여 표에 자리를 준다 */
 @media (max-width: 1200px) { .split { grid-template-columns: 180px minmax(0, 1fr); gap: var(--sp-4); } }
 

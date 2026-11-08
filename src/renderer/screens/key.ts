@@ -371,7 +371,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
             if (!confirm(t('key.deleteSetConfirm', { title: meta.글, pages: info?.쪽수 ?? 0, transcripts: info?.전사수 ?? 0 }))) return;
             await api.deleteSet(폴더!); dirty = false; await store.refreshSets(); openNew(); showInfo(t('key.setDeleted'));
           }) }, t('key.deleteSet')) : null),
-        el('div', { class: 'row' }, t('key.fieldTitle'), 글Input, t('key.fieldSemester'), 학기Input, 학년Select, t('key.fieldClasses'), 반Input, t('key.fieldHeadcount'), 인원Input)),
+        // 이름표와 입력란을 label 하나로 묶는다. 따로 두면 줄이 바뀔 때 '반'만 줄 끝에 남고 입력란은 다음 줄로 갔다
+        el('div', { class: 'row key-meta' }, el('label', {}, t('key.fieldTitle'), 글Input), el('label', {}, t('key.fieldSemester'), 학기Input), 학년Select,
+          el('label', {}, t('key.fieldClasses'), 반Input), el('label', {}, t('key.fieldHeadcount'), 인원Input))),
       el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox, statusBox),
       el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
         el('div', { class: 'muted' }, t('key.draftHelp')),
