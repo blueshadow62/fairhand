@@ -345,8 +345,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
     renderHeader();
     editor.append(headerBox,
-      // 이름표와 칸을 label로 묶어, 전사 칸을 좁혀 줄이 바뀌어도 이름표만 떨어지지 않게
-      el('h3', {}, t('review.student')), el('div', { class: 'row student' }, el('label', {}, t('review.grade'), numIn('학년')), el('label', {}, t('review.class'), numIn('반')),
+      // 이름표와 칸을 label로 묶어, 전사 칸을 좁혀 줄이 바뀌어도 이름표만 떨어지지 않게.
+      // '학생' 제목은 뺐다: 학년·반·번호 이름표로 뜻이 분명하고, 그만큼 정량 표가 위로 올라온다
+      el('div', { class: 'row student' }, el('label', {}, t('review.grade'), numIn('학년')), el('label', {}, t('review.class'), numIn('반')),
         el('label', {}, t('review.number'), numIn('번호')), el('label', { class: 'name' }, t('review.name'), nameIn), conf),
       data.명단 ? rosterPick(tr) : '',
       el('h3', {}, t('review.notes')), notes,
