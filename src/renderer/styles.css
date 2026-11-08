@@ -261,6 +261,15 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .review .editor td select { min-width: 84px; }
 .review .editor td input, .review .editor td select, .review .editor td textarea { padding-left: 8px; padding-right: 8px; }
 .review .editor .row > strong { font-size: var(--fs-l); }
+/* 학생 정보는 기본 전사 칸(420px)에서 한 줄로: 숫자 칸은 두 자리 너비로 줄이고(화살표 단추 없이, ↑↓ 키는 그대로) 이름 칸이 남는 너비를 쓴다 */
+.review .editor .student { gap: 6px; }
+.review .editor .student label { gap: 4px; white-space: nowrap; }
+.review .editor .student input { padding-left: 6px; padding-right: 6px; }
+.review .editor .student input[type="number"] { width: 36px; }
+.review .editor .student input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.review .editor .student .name { flex: 1 1 auto; }
+.review .editor .student .name input { flex: 1; width: 64px; min-width: 0; }
+.review .editor .student select { padding-left: 6px; padding-right: 2px; }
 /* 좁은 창: 양옆 단을 줄이고 확대 안내 글은 숨겨 그림 자리를 지킨다 */
 @media (max-width: 1200px) { .review { --list-w: 190px; --editor-default: 392px; } .review .viewer-bar .muted { display: none; } }
 

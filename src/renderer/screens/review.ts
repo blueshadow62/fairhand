@@ -42,8 +42,9 @@ function growArea(value: string, onInput: (v: string) => void, opts: { rows: num
       wrap.classList.add('open');
       wrap.style.height = `${box.height}px`;
       area.style.width = `${Math.round(box.width) + extra}px`;
-      const border = area.offsetHeight - area.clientHeight;
-      const h = Math.max(box.height, Math.min(area.scrollHeight + border, Math.round(window.innerHeight * 0.45))); // 접힌 높이보다 줄이지는 않는다
+      // 화면 배율 150%에서는 1px 테두리가 0.67px로 그려진다. offsetHeight - clientHeight(정수)로 재면 1px 남짓 모자라 다 보이는데도 스크롤 막대가 생겼다
+      const cs = getComputedStyle(area), border = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+      const h = Math.max(box.height, Math.min(Math.ceil(area.scrollHeight + border), Math.round(window.innerHeight * 0.45))); // 접힌 높이보다 줄이지는 않는다
       area.style.height = wrap.style.height = `${h}px`;
       area.scrollTop = scroll; // 잠깐 접었다 펼치는 사이 글 위치가 맨 위로 튀지 않게
     }
@@ -315,11 +316,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clipWatch.disconnect(); clear(editor);
     if (!T || !data) { editor.append(el('div', { class: 'muted' }, t('review.noTranscriptEditor'))); return; }
     const tr = T, key = data.key;
-    const numIn = (k: '학년' | '반' | '번호') => { const i = el('input', { type: 'number', min: '1', 'aria-label': t(k === '학년' ? 'review.grade' : k === '반' ? 'review.class' : 'review.number'), value: tr[k] === null ? '' : String(tr[k]), oninput: () => { tr[k] = numOrNull(i.value); touch(); } }); i.style.width = '64px'; return i; };
+    const numIn = (k: '학년' | '반' | '번호') => { const i = el('input', { type: 'number', min: '1', 'aria-label': t(k === '학년' ? 'review.grade' : k === '반' ? 'review.class' : 'review.number'), value: tr[k] === null ? '' : String(tr[k]), oninput: () => { tr[k] = numOrNull(i.value); touch(); } }); return i; };
     const nameIn = el('input', { 'aria-label': t('review.name'), value: tr.이름 ?? '', oninput: () => { tr.이름 = nameIn.value.trim() || null; touch(); } });
     const conf = el('select', { onchange: () => { tr.식별확신 = conf.value as Hwaksin; touch(); } }, ...(['확실', '추정', '불명'] as Hwaksin[]).map(v => el('option', { value: v, selected: v === tr.식별확신 }, t(`hwaksin.${v}`))));
-    const notes = el('textarea', { rows: 3, oninput: () => { tr.비고 = notes.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean); touch(); markNotes(); } });
-    notes.value = tr.비고.join('\n');
+    // 비고는 평소 한 줄로 접어 정량 표를 위로 올린다. 누르면 쓴 줄이 다 보이게 펼친다(Enter는 줄바꿈 그대로: 줄마다 하나)
+    const notes = growArea(tr.비고.join('\n'), v => { tr.비고 = v.split(/\r?\n/).map(s => s.trim()).filter(Boolean); touch(); markNotes(); }, { rows: 1, label: t('review.notes') });
 
     // 1점이 아닌 단위만 배점을 보인다(대부분의 세트는 모두 1점이라 표가 그대로)
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
@@ -344,7 +345,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
     renderHeader();
     editor.append(headerBox,
-      el('h3', {}, t('review.student')), el('div', { class: 'row' }, t('review.grade'), numIn('학년'), t('review.class'), numIn('반'), t('review.number'), numIn('번호'), t('review.name'), nameIn, conf),
+      // 이름표와 칸을 label로 묶어, 전사 칸을 좁혀 줄이 바뀌어도 이름표만 떨어지지 않게
+      el('h3', {}, t('review.student')), el('div', { class: 'row student' }, el('label', {}, t('review.grade'), numIn('학년')), el('label', {}, t('review.class'), numIn('반')),
+        el('label', {}, t('review.number'), numIn('번호')), el('label', { class: 'name' }, t('review.name'), nameIn), conf),
       data.명단 ? rosterPick(tr) : '',
       el('h3', {}, t('review.notes')), notes,
       el('h3', {}, t('review.qty')), qtyTable,
