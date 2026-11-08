@@ -180,7 +180,9 @@ label.upload input { max-width: 240px; min-height: 0; border: none; padding: 0; 
 .keytable th { white-space: normal; }
 .keytable td:nth-child(1), .keytable th:nth-child(1) { width: 60px; }
 .keytable td:nth-child(2), .keytable th:nth-child(2) { width: 92px; }
-.keytable td:last-child, .keytable th:last-child { width: 132px; }
+.keytable td:last-child, .keytable th:last-child { width: 150px; }
+.keytable td:nth-last-child(2), .keytable th:nth-last-child(2) { width: 70px; } /* 배점 */
+.keytable td:last-child .row { flex-wrap: wrap; } /* 위·아래·행 삭제·문항 삭제가 칸을 넘지 않게 */
 .keytable td textarea { width: 100%; }
 .keytable td input, .keytable td select { padding-left: 8px; padding-right: 8px; }
 .keytable td select { padding-right: 22px; }

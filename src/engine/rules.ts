@@ -36,7 +36,8 @@ function casesSection(key: AnswerKey): string[] {
 
 /** 규칙 본문 + 정답표 + 출력 지시. 규칙이 앞에 오므로 같은 세트 안에서 프롬프트 앞부분이 고정된다. */
 export function systemPrompt(rules: Rules, key: AnswerKey): string {
-  const keyForModel = { 글: key.글, 정량: key.정량, 정성: key.정성 };
+  // 배점은 점수 계산에만 쓴다. 모델에 보내지 않아야 배점을 바꿔도 지시문(과 잰 정확도)이 그대로다
+  const keyForModel = { 글: key.글, 정량: key.정량.map(({ 배점: _, ...u }) => u), 정성: key.정성.map(({ 배점: _, ...u }) => u) };
   const 반 = [...key.대상.반].sort((a, b) => a - b);
   const 인원 = key.대상.인원 ? Object.entries(key.대상.인원).map(([r, n]) => `${r}반 ${n}명(번호 1~${n})`).join(', ') : '';
   return [rules.본문.trimEnd(), '',

@@ -1,3 +1,4 @@
+import { roundScore, unitPoints } from '../../core/key.js';
 import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
@@ -142,7 +143,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const touch = () => { if (!dirty) { dirty = true; renderHeader(); } else updateScore(); };
   const headerBox = el('div');
   const scoreText = el('span');
-  const updateScore = () => { if (T) scoreText.textContent = t('review.score', { n: Object.values(T.정량).filter(v => v.판정 === 'O').length + Object.values(T.정성).filter(v => v.응답).length }); };
+  const updateScore = () => {
+    if (!T || !data) return;
+    const cur = T, k = data.key; // 배점(없으면 1점)만큼 더한다
+    scoreText.textContent = t('review.score', { n: roundScore(k.정량.reduce((s, u) => s + (cur.정량[u.id]?.판정 === 'O' ? unitPoints(u) : 0), 0)
+      + k.정성.reduce((s, u) => s + (cur.정성[u.id]?.응답 ? unitPoints(u) : 0), 0)) });
+  };
 
   function renderHeader(): void {
     clear(headerBox);
@@ -212,19 +218,21 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     notes.value = tr.비고.join('\n');
     const done = el('input', { type: 'checkbox', checked: tr.확인완료 === true, onchange: () => { tr.확인완료 = done.checked; touch(); } });
 
+    // 1점이 아닌 단위만 배점을 보인다(대부분의 세트는 모두 1점이라 표가 그대로)
+    const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
     const qtyRows = key.정량.map(u => {
       const v = tr.정량[u.id] ??= { 답: '', 판정: '빈칸' };
       const ans = el('input', { value: v.답, oninput: () => { v.답 = ans.value; touch(); } });
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
       const keyLine = t('review.keyLine', { answer: u.정답, allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
-      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine)), el('td', {}, ans), el('td', {}, sel));
+      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine)), el('td', {}, ans), el('td', {}, sel));
     });
     const qualRows = key.정성.map(u => {
       const v = tr.정성[u.id] ??= { 응답: false, 답: '' };
       const cb = el('input', { type: 'checkbox', checked: v.응답, onchange: () => { v.응답 = cb.checked; touch(); } });
       const ta = el('textarea', { rows: 3, oninput: () => { v.답 = ta.value; touch(); } }); ta.value = v.답;
-      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, el('label', {}, cb, t('review.responded'))), el('td', {}, ta));
+      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명), el('td', {}, el('label', {}, cb, t('review.responded'))), el('td', {}, ta));
     });
     const qtyTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.descKey')), el('th', {}, t('review.col.student')), el('th', {}, t('review.col.verdict'))), ...qtyRows);
     const qualTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.question')), el('th', {}, t('review.col.response')), el('th', {}, t('review.col.answer'))), ...qualRows);

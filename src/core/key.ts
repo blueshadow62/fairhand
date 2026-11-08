@@ -23,6 +23,7 @@ export function keyProblems(k: unknown): string[] {
     ids.add(u.id);
     if (!UNIT_ID.test(u.id)) p.push(`id '${u.id}'는 영문·숫자·_ . -만 쓸 수 있습니다(예: 1-1, E1)`);
     if (u.문항 !== undefined && !Number.isInteger(u.문항)) p.push(`${u.id}: 문항 번호가 숫자가 아닙니다`);
+    if (u.배점 !== undefined && !(typeof u.배점 === 'number' && Number.isFinite(u.배점) && u.배점 > 0 && u.배점 <= 100)) p.push(`${u.id}: 배점은 0보다 크고 100 이하인 수여야 합니다`);
   }
   const strList = (v: unknown) => Array.isArray(v) && v.every(x => typeof x === 'string');
   for (const u of Array.isArray(o.정량) ? o.정량 : []) {
@@ -59,7 +60,11 @@ export function parseKey(text: string, where = '정답표.json'): AnswerKey {
 }
 
 export const isConfirmed = (k: AnswerKey): boolean => k.확인?.완료 === true;
-export const fullScore = (k: AnswerKey): number => k.정량.length + k.정성.length;
+/** 단위 배점(없으면 1점) */
+export const unitPoints = (u: { 배점?: number }): number => u.배점 ?? 1;
+/** 0.1점 단위 배점을 더할 때 생기는 부동소수 찌꺼기(0.30000000000000004)를 없앤다 */
+export const roundScore = (n: number): number => Math.round(n * 100) / 100;
+export const fullScore = (k: AnswerKey): number => roundScore([...k.정량, ...k.정성].reduce((s, u) => s + unitPoints(u), 0));
 
 /** 반별 인원(선택). JSON 키는 문자열이지만 숫자 키로 적힌 것도 받는다. */
 export function headcount(k: AnswerKey, 반: number): number | undefined {

@@ -3,8 +3,9 @@ export type Hwaksin = '확실' | '추정' | '불명';
 
 export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형';
 /** 유형이 없으면 빈칸 위치대로 옮기는 단위로 본다. '요소형'만 쓴 순서와 상관없이 요소별 단위에 나눈다. */
-export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType }
-export interface QualUnit { id: string; 문항: number; 설명: string }
+/** 배점이 없으면 1점(배점을 두기 전 정답표와 같게). 맞으면(정성은 응답하면) 배점만큼 더한다 */
+export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType; 배점?: number }
+export interface QualUnit { id: string; 문항: number; 설명: string; 배점?: number }
 
 /** 세트별 채점 규칙. 없으면 DEFAULT_RULES(key.ts) */
 export interface GradingRules { 맞춤법: '인정' | '불인정'; 넓은말: '인정' | '불인정'; 핵심어: '모두' | '하나라도' }

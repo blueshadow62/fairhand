@@ -4,13 +4,16 @@ import type { KeyDraftResult } from '../../shared/ipc.js';
 import { t } from './i18n.js';
 
 export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '응답형';
-export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */ }
+export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */; 배점: string /* 단위마다(요소형은 요소마다), 기본 1 */ }
 export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */; 채점규칙?: GradingRules /* 없으면 기본값 */ }
 
 export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '응답형'];
-export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '' });
+export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '', 배점: '1' });
 
 const list = (s: string, sep: RegExp): string[] => s.split(sep).map(x => x.trim()).filter(Boolean);
+/** 1점이면 쓰지 않는다(정답표를 짧게, 배점을 두기 전 정답표와 같은 모양으로) */
+const points = (r: UnitRow): { 배점?: number } => { const n = Number(r.배점); return Number.isFinite(n) && n > 0 && n !== 1 ? { 배점: n } : {}; };
+const pointsText = (u: { 배점?: number }): string => String(u.배점 ?? 1);
 
 /** 편집 행 → 정답표. id는 문항마다 행 순서로 1, 2…(요소형은 요소마다), 응답형(정성)은 E1, E2… */
 export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['확인'], 사례?: Case[]): AnswerKey {
@@ -18,9 +21,9 @@ export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['�
   const nextId = (문항: number) => { const n = (seq.get(문항) ?? 0) + 1; seq.set(문항, n); return `${문항}-${n}`; };
   const 정량: QtyUnit[] = [], 정성: QualUnit[] = [];
   for (const r of rows) {
-    if (r.유형 === '응답형') { 정성.push({ id: `E${정성.length + 1}`, 문항: r.문항, 설명: r.설명.trim() }); continue; }
+    if (r.유형 === '응답형') { 정성.push({ id: `E${정성.length + 1}`, 문항: r.문항, 설명: r.설명.trim(), ...points(r) }); continue; }
     if (r.유형 === '요소형') {
-      list(r.요소, /\r?\n/).forEach((정답, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `요소 ${i + 1}`, 정답, 유형: '요소형' }));
+      list(r.요소, /\r?\n/).forEach((정답, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `요소 ${i + 1}`, 정답, 유형: '요소형', ...points(r) }));
       continue;
     }
     const u: QtyUnit = { id: nextId(r.문항), 문항: r.문항, 설명: r.설명.trim(), 정답: r.정답.trim() };
@@ -28,6 +31,7 @@ export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['�
     if (허용.length) u.허용 = 허용;
     if (r.유형 === '문장형' && 핵심.length) u.핵심 = 핵심;
     u.유형 = r.유형;
+    Object.assign(u, points(r));
     정량.push(u);
   }
   const 대상: AnswerKey['대상'] = { 학년: meta.학년, 반: [...meta.반] };
@@ -52,12 +56,12 @@ function unitsToRows(정량: QtyUnit[], 정성: QualUnit[]): UnitRow[] {
     if (유형 === '요소형') {
       const row = elementRow.get(u.문항);
       if (row) { row.요소 += `\n${u.정답}`; continue; }
-      const r = { ...emptyRow(u.문항, '요소형'), 요소: u.정답 };
+      const r = { ...emptyRow(u.문항, '요소형'), 요소: u.정답, 배점: pointsText(u) };
       elementRow.set(u.문항, r); rows.push(r); continue;
     }
-    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '' });
+    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '', 배점: pointsText(u) });
   }
-  for (const u of 정성) rows.push({ ...emptyRow(u.문항, '응답형'), 설명: u.설명 });
+  for (const u of 정성) rows.push({ ...emptyRow(u.문항, '응답형'), 설명: u.설명, 배점: pointsText(u) });
   return rows;
 }
 
@@ -82,6 +86,8 @@ export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
     if (r.유형 === '요소형') { if (!list(r.요소, /\r?\n/).length) e.push(t('form.elementsMissing', { at })); }
     else if (r.유형 !== '응답형' && !r.정답.trim()) e.push(t('form.answerEmpty', { at }));
     if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(t('form.keywordsMissing', { at }));
+    const n = Number(r.배점);
+    if (!(Number.isFinite(n) && n > 0 && n <= 100)) e.push(t('form.pointsBad', { at }));
   });
   return e;
 }

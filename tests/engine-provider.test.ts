@@ -66,6 +66,8 @@ test('transcribeRequest: 규칙+정답표 시스템 프롬프트, 쪽 지시, �
   const rules = await loadRules();
   const r = transcribeRequest({ imageJpegBase64: 'AAAA', key, rules, page: 3, effort: 'high' });
   assert.equal(r.system, systemPrompt(rules, key));
+  // 배점은 점수 계산에만 쓰여 모델 지시문을 바꾸지 않는다
+  assert.equal(systemPrompt(rules, { ...key, 정량: key.정량.map(u => ({ ...u, 배점: 3 })), 정성: key.정성.map(u => ({ ...u, 배점: 2 })) }), r.system);
   assert.equal(r.user, userText(3));
   assert.equal(r.imageJpegBase64, 'AAAA');
   assert.deepEqual(r.schema, transcriptSchema(key));

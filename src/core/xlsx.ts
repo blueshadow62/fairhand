@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type ExcelJS from 'exceljs';
 import { loadExcel } from './excel.js';
-import { fullScore } from './key.js';
+import { fullScore, unitPoints } from './key.js';
 import { DataError, type AnswerKey, type Row } from './types.js';
 
 export interface ResultInfo { 채점일시: string; 프로그램버전: string; 전사정보: string }
@@ -33,9 +33,9 @@ export async function writeResultXlsx(key: AnswerKey, rows: Row[], unmatched: Ro
   finish(ws, { 4: 20 });
 
   ws = wb.addWorksheet('정답표');
-  ws.addRow(['id', '문항', '설명', '정답', '허용', '핵심']);
-  for (const u of key.정량) ws.addRow([u.id, u.문항, u.설명, u.정답, (u.허용 ?? []).join(', '), (u.핵심 ?? []).join(', ')]);
-  for (const u of key.정성) ws.addRow([u.id, u.문항, u.설명]);
+  ws.addRow(['id', '문항', '설명', '정답', '허용', '핵심', '배점']);
+  for (const u of key.정량) ws.addRow([u.id, u.문항, u.설명, u.정답, (u.허용 ?? []).join(', '), (u.핵심 ?? []).join(', '), unitPoints(u)]);
+  for (const u of key.정성) ws.addRow([u.id, u.문항, u.설명, null, null, null, unitPoints(u)]);
   finish(ws, { 3: 30, 4: 34, 5: 20 });
 
   ws = wb.addWorksheet('정보');
