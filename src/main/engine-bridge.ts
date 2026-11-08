@@ -161,7 +161,8 @@ export class EngineBridge {
     const { key } = await this.confirmedSet(setDir);
     const image = (await imageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
     return this.exclusive(async signal => {
-      const { transcript } = await transcribePage(await this.provider(), { imageJpegBase64: image, key, rules: await loadRules(), page: 0, effort: await this.effort() }, signal);
+      // 저장하지 않는 시험이라 장 번호는 쓰이지 않지만, 전사 검사가 1 이상을 요구한다(0으로 물으면 모델이 0을 돌려줘 늘 실패했다)
+      const { transcript } = await transcribePage(await this.provider(), { imageJpegBase64: image, key, rules: await loadRules(), page: 1, effort: await this.effort() }, signal);
       const roster = await this.rosterOrNull();
       return roster ? matchRoster(transcript, key, roster).transcript : transcript;
     });

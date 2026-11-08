@@ -60,6 +60,19 @@ test('startRun: 장마다 진행을 알리고 전사를 저장하며, 두 번 �
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('tryPage: 시험 한 장을 저장하지 않고 전사해 돌려준다(모델이 묻는 장 번호를 그대로 돌려줘도 통과)', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const tr = await bridge.tryPage(set, JPEG);
+    assert.deepEqual(Object.keys(tr.정량), ['1-1', '3-1']);
+    await assert.rejects(readdir(path.join(set, 'transcripts'))); // 시험 결과는 저장하지 않는다
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('cancel: 중단하면 끝낸 장은 남고 나머지는 멈춘다', async () => {
   const { dir, set, bridge } = await setup();
   try {
