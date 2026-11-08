@@ -4,8 +4,8 @@ import { api, imageUrl, thumbUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { toItems } from '../lib/review-filter.js';
-import type { MaskRect, UploadRecord } from '../../core/types.js';
-import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
+import type { AnswerKey, MaskRect, Transcript, UploadRecord } from '../../core/types.js';
+import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, type Rotation, type SheetSource } from '../pdf-pages.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
@@ -19,6 +19,23 @@ function shrink(c: HTMLCanvasElement, w: number): HTMLCanvasElement {
   s.width = w; s.height = Math.round(c.height * w / c.width);
   s.getContext('2d')!.drawImage(c, 0, 0, s.width, s.height);
   return s;
+}
+
+/** 한 장 시험 결과 표(저장하지 않음) */
+function transcriptTable(key: AnswerKey, tr: Transcript): HTMLElement {
+  const box = el('div', {}, el('h3', {}, t('run.try.result')),
+    el('div', {}, t('run.try.student', { grade: tr.학년 ?? '?', cls: tr.반 ?? '?', no: tr.번호 ?? '?', name: tr.이름 ?? '-', conf: t(`hwaksin.${tr.식별확신}`) })));
+  box.append(el('table', {}, el('tr', {}, el('th', {}, t('run.try.col.unit')), el('th', {}, t('run.try.col.answer')), el('th', {}, t('run.try.col.student')), el('th', {}, t('run.try.col.verdict'))),
+    ...key.정량.map(u => { const v = tr.정량[u.id]; const p = v?.판정 ?? '빈칸'; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.정답), el('td', {}, v?.답 ?? ''), el('td', { class: `v-${p}` }, t(`verdict.${p}`))); }),
+    ...key.정성.map(u => { const v = tr.정성[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, v?.답 ?? ''), el('td', {}, v?.응답 ? t('run.try.responded') : t('run.try.noResponse'))); })));
+  if (tr.비고.length) box.append(el('div', { class: 'band warn' }, t('run.try.remarks', { notes: tr.비고.join(' / ') })));
+  return box;
+}
+
+/** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
+async function fileToJpeg(f: File, rotation: Rotation): Promise<ArrayBuffer> {
+  if (/\.jpe?g$/i.test(f.name)) return f.arrayBuffer();
+  return pdfPageJpeg(f, 1, rotation);
 }
 
 export function mount(root: HTMLElement, ctx: Ctx): void {
@@ -54,6 +71,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   async function reload(): Promise<void> {
     const 폴더 = store.state.current;
+    if (shownFor !== 폴더) clear(tryBox); // 시험 결과는 그 세트의 정답표로 그린 것이다
     shownFor = 폴더;
     clear(body);
     for (const p of picked) p.src.close(); picked = []; fileInput.value = ''; // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다
@@ -68,6 +86,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'card' }, el('h3', {}, t('run.upload')), uploadBox),
       el('div', { class: 'card' }, thumbsTitle, thumbsBox),
       el('div', { class: 'card' }, el('h3', {}, t('run.privacy')), privacyBox),
+      // 전체를 전사하기 전에 시험하는 일이라 학생 정보 보호(이름 가림이 시험에도 쓰인다) 다음, 전사 앞에 둔다
+      el('div', { class: 'card' }, el('h3', {}, t('run.try.title')), el('div', { class: 'muted' }, t('run.try.help')), el('div', { class: 'row' }, tryInput), tryBox),
       el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox), resultBox);
     renderUpload(); renderThumbs(); renderPrivacy(); renderRun();
   }
@@ -326,6 +346,24 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'muted' }, t('run.matchHelp')));
   }
 
+  // ── 한 장 채점해 보기: 메인은 모델 부르는 일을 한 번에 하나만 하므로 시험하는 동안 전사 단추도 잠근다 ──
+  let trying = false;
+  const tryInput = el('input', { type: 'file', accept: '.jpg,.jpeg,.pdf' });
+  tryInput.addEventListener('change', () => void tryOne());
+  const tryBox = el('div');
+  async function tryOne(): Promise<void> {
+    const f = tryInput.files?.[0]; tryInput.value = '';
+    if (!f || !data || running || trying) return;
+    const { 폴더, key } = data; // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
+    trying = true; renderRun();
+    clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('run.try.running')));
+    try {
+      const tr = await api.tryPage(폴더, await fileToJpeg(f, store.state.settings.기본회전));
+      clear(tryBox); tryBox.append(transcriptTable(key, tr));
+    } catch (e) { clear(tryBox); showError((e as Error).message); }
+    finally { trying = false; renderRun(); }
+  }
+
   // ── 전사 ──
   const progressBar = el('progress', { max: '1', value: '0' });
   const progressText = el('span');
@@ -373,14 +411,15 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(runBox);
     if (!data) return;
     const confirmed = data.key.확인?.완료 === true;
+    tryInput.disabled = running || trying || !confirmed;
     put(runBox,
       el('div', { class: 'row' },
-        el('button', { class: 'primary', disabled: running || !confirmed || !data.pages.length, onclick: () => void run({ force: false }) }, t('run.start')),
+        el('button', { class: 'primary', disabled: running || trying || !confirmed || !data.pages.length, onclick: () => void run({ force: false }) }, t('run.start')),
         el('button', { class: 'danger', disabled: !running, onclick: () => api.cancelRun().catch(e => showError(e.message)) }, t('run.cancel')),
         progressBar, progressText),
       el('div', { class: 'muted' }, t('run.startHelp')),
       el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
-        el('button', { disabled: running || !confirmed, onclick: () => {
+        el('button', { disabled: running || trying || !confirmed, onclick: () => {
           const pages = parsePageSpec(pagesInput.value);
           if (!pages) { showError(t('common.badPageSpec')); return; }
           const missing = pages.filter(p => !data!.pages.includes(p));

@@ -1,4 +1,4 @@
-import type { AnswerKey, Case, GradingRules, Transcript } from '../../core/types.js';
+import type { AnswerKey, Case, GradingRules } from '../../core/types.js';
 import type { RejudgeResult } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
@@ -7,7 +7,6 @@ import { locale, t } from '../lib/i18n.js';
 import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-utils.js';
 import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
-import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
 import { cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 import { changedUnitIds } from '../../core/unit-map.js';
 
@@ -18,17 +17,6 @@ function defaultSemester(d = new Date()): string {
 }
 
 const newMeta = (): KeyMeta => ({ 글: '', 학기: defaultSemester(), 학년: 1, 반: [], 인원: {} });
-
-/** 한 장 시험 결과 표(저장하지 않음) */
-export function transcriptTable(key: AnswerKey, tr: Transcript): HTMLElement {
-  const box = el('div', { class: 'card' }, el('h3', {}, t('key.trialTitle')),
-    el('div', {}, t('key.trialStudent', { grade: tr.학년 ?? '?', cls: tr.반 ?? '?', no: tr.번호 ?? '?', name: tr.이름 ?? '-', conf: t(`hwaksin.${tr.식별확신}`) })));
-  box.append(el('table', {}, el('tr', {}, el('th', {}, t('key.col.unit')), el('th', {}, t('key.col.answer')), el('th', {}, t('key.col.student')), el('th', {}, t('key.col.verdict'))),
-    ...key.정량.map(u => { const v = tr.정량[u.id]; const p = v?.판정 ?? '빈칸'; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.정답), el('td', {}, v?.답 ?? ''), el('td', { class: `v-${p}` }, t(`verdict.${p}`))); }),
-    ...key.정성.map(u => { const v = tr.정성[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, v?.답 ?? ''), el('td', {}, v?.응답 ? t('key.responded') : t('key.noResponse'))); })));
-  if (tr.비고.length) box.append(el('div', { class: 'band warn' }, t('key.remarks', { notes: tr.비고.join(' / ') })));
-  return box;
-}
 
 /**
  * 글 칸(설명·정답·허용·핵심)은 1280 창에서 80px 남짓이라 쓴 글이 잘린다. 누르고 있는 동안 글 길이만큼 오른쪽 칸 위로 넓혀 다 보이게 한다.
@@ -113,7 +101,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const saveBar = el('div', { class: 'key-savebar' });
   const tableBox = el('div');
   const cautionBox = el('div');
-  const tryBox = el('div');
   root.append(el('h2', {}, t('key.title')), el('div', { class: 'split' }, el('div', {}, listBox), editor));
 
   // 나가기 경로의 저장은 재판정을 묻지 않는다(운영체제 대화상자 → 브라우저 confirm → 긴 재판정이 연달아 뜨지 않게)
@@ -248,13 +235,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     finally { draftBtn.disabled = false; draftBtn.textContent = t('key.makeDraft'); }
   }
 
-  // ── 칸 안의 탭: 문항 표·AI 초안·채점 규칙·한 장 채점해 보기가 한 화면에 이어져 길이가 2,200px를 넘었다.
+  // ── 칸 안의 탭: 문항 표·AI 초안·채점 규칙이 한 화면에 이어져 길이가 2,200px를 넘었다('한 장 채점해 보기'는 답안지를 올리는 일이라 채점 실행으로 옮겼다).
   //    같은 실행 안에서는 마지막에 고른 탭을 유지한다(세트를 바꾸거나 언어를 바꿔 다시 불러와도) ──
-  type KeyTab = 'questions' | 'draft' | 'rules' | 'try';
-  const KEY_TABS: KeyTab[] = ['questions', 'draft', 'rules', 'try'];
+  type KeyTab = 'questions' | 'draft' | 'rules';
+  const KEY_TABS: KeyTab[] = ['questions', 'draft', 'rules'];
   const TAB_PREF = 'geulnun.key.tab';
   let tab: KeyTab = (() => { try { const v = sessionStorage.getItem(TAB_PREF); return KEY_TABS.find(k => k === v) ?? 'questions'; } catch { return 'questions'; } })();
-  const tabLabel: Record<KeyTab, string> = { questions: t('key.questions'), draft: t('key.tab.draft'), rules: t('key.tab.rules'), try: t('key.tab.try') };
+  const tabLabel: Record<KeyTab, string> = { questions: t('key.questions'), draft: t('key.tab.draft'), rules: t('key.tab.rules') };
   const tabButtons = new Map<KeyTab, HTMLButtonElement>();
   const panels = new Map<KeyTab, HTMLElement>();
   const tabBar = el('div', { class: 'seg key-tabs', role: 'tablist', 'aria-label': t('key.tabs') }, ...KEY_TABS.map(k => {
@@ -451,20 +438,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     });
   }
 
-  const tryInput = el('input', { type: 'file', accept: '.jpg,.jpeg,.pdf' });
-  tryInput.addEventListener('change', () => void tryOne());
-  async function tryOne(): Promise<void> {
-    const f = tryInput.files?.[0]; tryInput.value = '';
-    if (!f || !폴더) return;
-    const key = rowsToKey(meta, rows, 확인, 사례); // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
-    clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('key.trying')));
-    try {
-      const jpeg = await fileToJpeg(f, store.state.settings.기본회전);
-      const tr = await api.tryPage(폴더, jpeg);
-      clear(tryBox); tryBox.append(transcriptTable(key, tr));
-    } catch (e) { clear(tryBox); showError((e as Error).message); }
-  }
-
   async function importKey(): Promise<void> {
     await guard(async () => {
       const k = await api.importKey(); if (!k) return;
@@ -486,11 +459,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('label', { title: locked ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
       locked ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : done ? null : el('span', { class: 'warn-text' }, t('key.notConfirmedWarn')),
       dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null);
-    tryInput.disabled = !폴더 || !done || dirty;
   }
 
   function renderEditor(): void {
-    clear(editor); clear(cautionBox); clear(tryBox); attachName.textContent = '';
+    clear(editor); clear(cautionBox); attachName.textContent = '';
     if (!editing) { editor.append(el('div', { class: 'muted' }, t('key.pickSet'))); renderList(); return; }
     글Input.value = meta.글; 학기Input.value = meta.학기; 학년Select.value = String(meta.학년); 반Input.value = meta.반.join(', '); 인원Input.value = formatHeadcount(meta.인원);
     editor.append(
@@ -518,8 +490,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           el('div', { class: 'row' }, draftBtn,
             폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
           el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
-        panel('rules', rulesBox, casesBox, judgeBar, judgeBox),
-        panel('try', el('div', { class: 'muted' }, t('key.tryHelp')), tryInput, tryBox)),
+        panel('rules', rulesBox, casesBox, judgeBar, judgeBox)),
       saveBar);
     showTab(tab);
     renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); renderStart(); clear(judgeBox);
@@ -528,11 +499,4 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   store.subscribe(() => renderList());
   window.addEventListener('geulnun:open-set', e => { const name = (e as CustomEvent<string>).detail; if (name !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(name); }); });
   renderEditor();
-}
-
-
-/** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
-async function fileToJpeg(f: File, rotation: Rotation): Promise<ArrayBuffer> {
-  if (/\.jpe?g$/i.test(f.name)) return f.arrayBuffer();
-  return pdfPageJpeg(f, 1, rotation);
 }

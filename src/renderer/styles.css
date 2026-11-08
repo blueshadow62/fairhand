@@ -231,7 +231,7 @@ label.upload input:focus { box-shadow: none; }
 .key-start-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
 .key-start-options button { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; padding: 12px 14px; text-align: left; white-space: normal; line-height: 1.4; }
 .key-start-options button .muted { font-weight: 400; }
-/* 칸 안의 탭(문항·AI 초안·채점 규칙·한 장 채점): 검토 방식 탭과 같은 모양(.seg)으로 맞춘다 */
+/* 칸 안의 탭(문항·AI 초안·채점 규칙): 검토 방식 탭과 같은 모양(.seg)으로 맞춘다 */
 .key-tabs { margin-bottom: var(--sp-4); }
 /* 막대에 가린 칸으로 Tab을 옮기면 막대 위까지 올려 보인다. 탭마다 길이가 달라 스크롤 막대가 생겼다 없어지며
    화면이 옆으로 흔들리지 않게 막대 자리를 늘 둔다 */
