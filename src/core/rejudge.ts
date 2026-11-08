@@ -66,6 +66,22 @@ export function addCase(key: AnswerKey, c: Case): AnswerKey {
   return { ...key, 사례: [...rest, { ...c, 답: c.답.trim() }] };
 }
 
+/**
+ * 정답표를 저장할 때의 사례 목록. 파일에 있는 사례가 기준이다: 문항 설정 화면은 세트를 열 때 읽은 목록을 들고 있어
+ * 그사이 검토에서 쌓인 사례를 모른다. 화면이 보낸 사례 중 파일에 없는 답(같은 단위·같은 정규화 답)만 더하고(정답표 가져오기),
+ * 양쪽에 있으면 파일을 따른다. 정답표에서 사라진 단위의 사례는 버린다. 사례를 지우는 길은 removeCase 하나다
+ */
+export function mergeCases(file: Case[] | undefined, sent: Case[] | undefined, key: Pick<AnswerKey, '정량'>): Case[] {
+  const units = new Set(key.정량.map(u => u.id));
+  const seen = new Set<string>(), out: Case[] = [];
+  for (const c of [...(file ?? []), ...(sent ?? [])]) {
+    const k = `${c.단위}\u0000${normalizeAnswer(c.답)}`;
+    if (!units.has(c.단위) || seen.has(k)) continue;
+    seen.add(k); out.push(c);
+  }
+  return out;
+}
+
 export function removeCase(key: AnswerKey, 단위: string, 답: string): AnswerKey {
   const n = normalizeAnswer(답);
   return { ...key, 사례: (key.사례 ?? []).filter(x => !(x.단위 === 단위 && normalizeAnswer(x.답) === n)) };

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { isConfirmed, parseKey } from '../core/key.js';
-import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
+import { addCase, mergeCases, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
@@ -173,15 +173,21 @@ export class EngineBridge {
 
   /** 정답표 저장. 채점 내용이 바뀌었으면 확인을 지운다(화면만 믿지 않는다). 채점규칙·사례만 바뀐 저장은 확인 유지 */
   async saveKey(setDir: string, raw: unknown): Promise<AnswerKey> {
-    const key = parseKey(JSON.stringify(raw), '정답표.json');
+    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
+    // 문항별 검토의 신원 영역도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask로만 바꾼다. 그래서 두 칸은 받지 않는다.
+    // 정답표에서 지운 단위를 가리키는 사례는 검사 전에 버린다(그대로 두면 단위를 지운 저장이 막힌다)
+    const { 이름가림: _name, 신원가림: _identity, ...o } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+    const ids = new Set(Array.isArray(o.정량) ? o.정량.map((u: any) => u?.id) : []);
+    if (Array.isArray(o.사례)) o.사례 = o.사례.filter((c: any) => ids.has(c?.단위));
+    const key = parseKey(JSON.stringify(o), '정답표.json');
     let old: AnswerKey | null = null;
     try { old = (await loadSet(setDir)).key; } catch { /* 없거나 깨진 정답표는 새로 쓴다 */ }
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
-    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
-    // 문항별 검토의 신원 영역도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask로만 바꾼다
-    delete key.이름가림; delete key.신원가림;
     if (old?.이름가림) key.이름가림 = old.이름가림;
     if (old?.신원가림) key.신원가림 = old.신원가림;
+    // 화면은 세트를 열 때 읽은 사례를 보낸다. 그사이 검토에서 쌓인 사례가 지워지지 않게 파일의 사례를 기준으로 합친다
+    const 사례 = mergeCases(old?.사례, key.사례, key);
+    if (사례.length) key.사례 = 사례; else delete key.사례;
     await saveKeyFile(setDir, key);
     return key;
   }
