@@ -45,7 +45,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   const listBox = el('div', { class: 'setlist' });
   const editor = el('div');
-  const statusBox = el('div');
+  const saveBar = el('div', { class: 'key-savebar' });
   const tableBox = el('div');
   const cautionBox = el('div');
   const tryBox = el('div');
@@ -340,23 +340,25 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     } catch (e) { clear(tryBox); showError((e as Error).message); }
   }
 
+  async function importKey(): Promise<void> {
+    await guard(async () => {
+      const k = await api.importKey(); if (!k) return;
+      if (dirty && !confirm(t('key.importConfirm'))) return;
+      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
+      showInfo(t('key.imported'));
+    });
+  }
+
+  // 저장 막대: 문항이 많으면 표 아래의 저장·확인 완료가 화면 밖으로 밀려났다. 편집 칸 아래쪽에 붙여 늘 보이게 한다
   function renderStatus(): void {
-    clear(statusBox);
-    const done = 확인?.완료 === true;
-    confirmBox.checked = done; confirmBox.disabled = !폴더 || dirty;
-    statusBox.append(el('div', { class: 'row' },
+    clear(saveBar);
+    const done = 확인?.완료 === true, locked = !폴더 || dirty;
+    confirmBox.checked = done; confirmBox.disabled = locked;
+    put(saveBar,
       el('button', { class: 'primary', onclick: () => void save() }, 폴더 ? t('common.save') : t('key.createSet')),
-      el('label', { title: (!폴더 || dirty) ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
-      (!폴더 || dirty) ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : null,
-      dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null,
-      폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
-      el('button', { onclick: () => guard(async () => {
-        const k = await api.importKey(); if (!k) return;
-        if (dirty && !confirm(t('key.importConfirm'))) return;
-        const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
-        showInfo(t('key.imported'));
-      }) }, t('key.import'))));
-    if (!done && 폴더) statusBox.append(el('div', { class: 'band warn' }, t('key.notConfirmedWarn')));
+      el('label', { title: locked ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
+      locked ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : done ? null : el('span', { class: 'warn-text' }, t('key.notConfirmedWarn')),
+      dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null);
     tryInput.disabled = !폴더 || !done || dirty;
   }
 
@@ -365,7 +367,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!editing) { editor.append(el('div', { class: 'muted' }, t('key.pickSet'))); renderList(); return; }
     글Input.value = meta.글; 학기Input.value = meta.학기; 학년Select.value = String(meta.학년); 반Input.value = meta.반.join(', '); 인원Input.value = formatHeadcount(meta.인원);
     editor.append(
+      // 정답표 내보내기·가져오기는 표만이 아닌 정답표 전체(세트 정보·채점 규칙·사례)를 다루므로 세트 이름 옆에 둔다
       el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? t('common.set', { name: 폴더 }) : t('key.newSet')),
+          el('button', { onclick: () => void importKey() }, t('key.import')),
+          폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
           폴더 ? el('button', { class: 'danger', onclick: () => guard(async () => {
             const info = store.state.sets.find(s => s.폴더 === 폴더);
             if (!confirm(t('key.deleteSetConfirm', { title: meta.글, pages: info?.쪽수 ?? 0, transcripts: info?.전사수 ?? 0 }))) return;
@@ -374,7 +379,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         // 이름표와 입력란을 label 하나로 묶는다. 따로 두면 줄이 바뀔 때 '반'만 줄 끝에 남고 입력란은 다음 줄로 갔다
         el('div', { class: 'row key-meta' }, el('label', {}, t('key.fieldTitle'), 글Input), el('label', {}, t('key.fieldSemester'), 학기Input), 학년Select,
           el('label', {}, t('key.fieldClasses'), 반Input), el('label', {}, t('key.fieldHeadcount'), 인원Input))),
-      el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox, statusBox),
+      el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox),
       el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
         el('div', { class: 'muted' }, t('key.draftHelp')),
         el('div', { class: 'row' }, uploadInput('문제', problemArea), uploadInput('지문', sourceArea), clearUploads),
@@ -387,7 +392,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'card' }, el('h3', {}, t('key.rulesTitle')), rulesBox, casesBox, judgeBar, judgeBox),
       el('div', { class: 'card' }, el('h3', {}, t('key.tryTitle')),
         el('div', { class: 'muted' }, t('key.tryHelp')),
-        tryInput, tryBox));
+        tryInput, tryBox),
+      saveBar);
     renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); clear(judgeBox);
   }
 
