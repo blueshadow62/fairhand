@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { appendFiles, coversSaved, hasFile, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../lib/sheets.js';
+import { appendFiles, coversSaved, dropSlot, hasFile, moveBefore, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -121,7 +121,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     void addFiles(files);
   });
   const uploadStatus = el('div', { class: 'muted' });
-  const uploadCard = el('div', { class: 'card upload-card' }, el('h3', {}, t('run.upload')), uploadBox);
+  const moveNote = el('div', { class: 'sr-only', 'aria-live': 'polite' }); // 칩을 옮긴 자리를 화면 읽기 프로그램에 알린다
+  const uploadCard = el('div', { class: 'card upload-card' }, el('h3', {}, t('run.upload')), uploadBox, moveNote);
   const runCard = el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox);
   let justSaved: number[] = []; // 마지막으로 저장한 장. 저장한 자리에서 바로 전사하게 한다
   let listGen = 0; // 목록을 비우면(모두 빼기·저장·세트 바뀜) 늘린다. 그 전에 시작한 더하기는 목록에 넣지 않는다
@@ -320,6 +321,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const saveBtn = el('button', { class: 'primary', onclick: () => void savePages() }, t('run.splitSave'));
 
   function renderUpload(): void {
+    endDrag(); // 끄는 중에 칩을 다시 그리면(더하기가 끝남 등) 끌기를 그만둔다
     clear(uploadBox);
     // 목록이 비었을 때는 처음 할 일이라 강조하고, 파일이 있으면 강조는 '쪽 나누어 저장'에 둔다
     pickBtn.disabled = saving;
@@ -338,9 +340,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderRotationNote();
     const ranges = saveRanges(picked.map(p => ({ 포함: p.포함, 쪽수: p.src.pageCount })), next);
     const byName = sortByName(picked);
+    const sortable = picked.length > 1 && !saving; // 하나뿐이거나 저장하는 동안에는 끌기·옮기기가 없다
+    chipOf.clear();
+    const chipsBox = el('div', { class: `file-chips${sortable ? ' can-sort' : ''}`, role: 'list', 'aria-label': t('run.chipsLabel') },
+      ...picked.map((p, i) => fileChip(p, i, ranges[i] ?? null, sortable)), dropMark);
+    if (sortable) watchDrag(chipsBox);
     put(uploadBox,
-      el('div', { class: 'file-chips' }, ...picked.map((p, i) => fileChip(p, ranges[i] ?? null))),
-      el('div', { class: 'row' }, el('span', { class: 'muted' }, t('run.chipsHelp')),
+      chipsBox,
+      el('div', { class: 'row' }, el('span', { class: 'muted' }, picked.length > 1 ? `${t('run.chipsHelp')} ${t('run.chipsSortHelp')}` : t('run.chipsHelp')),
         // 손으로 바꾼 순서를 처음처럼 파일 이름 순서로 되돌린다. 이미 이름 순이면 할 일이 없다
         picked.length > 1 ? el('button', { class: 'small', disabled: saving || byName.every((p, i) => p === picked[i]), onclick: () => { if (saving) return; picked = sortByName(picked); renderUpload(); } }, t('run.sortByName')) : null,
         el('button', { class: 'small', disabled: saving, onclick: () => { if (saving) return; dropPicked(); renderUpload(); } }, t('run.removeAll'))),
@@ -357,11 +364,15 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
    * 고른 파일 하나를 단추 모양 칩으로: 저장 차례(순번)·이름·쪽 수와 받을 장 범위, 오른쪽 위 x로 그 파일만 뺀다.
    * 이미 올린 파일은 칩 안에 경고와 '다시 저장하려면 체크'를 두고, 체크하지 않으면 순번 없이 '저장 안 함'
    */
-  function fileChip(p: Picked, r: { 순번: number; 처음: number; 끝: number } | null): HTMLElement {
+  function fileChip(p: Picked, i: number, r: { 순번: number; 처음: number; 끝: number } | null, sortable: boolean): HTMLElement {
     const n = p.src.pageCount;
     const meta = !r ? t('run.chipSkip', { n }) : n === 1 ? t('run.chipOne', { page: tag(r.처음) }) : t('run.chipRange', { n, from: tag(r.처음), to: tag(r.끝) });
     const remove = t('run.removeFile', { name: p.이름 });
-    return el('div', { class: `file-chip${p.이전 ? ' uploaded' : ''}${r ? '' : ' skipped'}` },
+    // 칩 안의 x 단추 이름까지 섞여 읽히지 않게 칩 이름을 따로 준다. 옮길 수 있으면 초점을 받고 옮기는 방법을 알린다
+    const chip = el('div', { class: `file-chip${p.이전 ? ' uploaded' : ''}${r ? '' : ' skipped'}`, role: 'listitem', 'data-index': String(i),
+      'aria-label': [r ? t('run.chipOrder', { n: r.순번 }) : '', p.이름, meta].filter(Boolean).join(', '),
+      tabindex: sortable ? '0' : null, title: sortable ? t('run.chipMoveHint') : null, 'aria-description': sortable ? t('run.chipMoveHint') : null },
+      sortable ? el('span', { class: 'grip', 'aria-hidden': 'true' }) : null,
       el('span', { class: 'order', title: r ? t('run.chipOrder', { n: r.순번 }) : '' }, r ? String(r.순번) : '-'),
       el('span', { class: 'info' },
         el('span', { class: 'name', title: p.이름 }, p.이름),
@@ -370,6 +381,85 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           el('input', { type: 'checkbox', checked: p.포함, disabled: saving, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); } }),
           t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null),
       el('button', { class: 'chip-x', disabled: saving, title: remove, 'aria-label': remove, onclick: () => removePicked(p) }, '×'));
+    if (sortable) chip.addEventListener('keydown', e => moveByKey(e, i));
+    chipOf.set(p, chip);
+    return chip;
+  }
+
+  // ── 칩 순서 바꾸기: 끌어 놓기(pointer 사건)와 Alt+←·→. 순서가 바뀌면 순번·장 범위·미리보기·저장 차례가 함께 다시 그려진다 ──
+  const dropMark = el('div', { class: 'chip-drop-mark hidden', 'aria-hidden': 'true' });
+  const chipOf = new Map<Picked, HTMLElement>(); // 키보드로 옮긴 뒤 다시 그린 칩에 초점을 돌려준다
+  let drag: { from: number; chip: HTMLElement; box: HTMLElement; id: number; x: number; y: number; on: boolean; before: number | null } | null = null;
+  document.addEventListener('keydown', e => { if (drag && e.key === 'Escape') endDrag(); });
+
+  function watchDrag(box: HTMLElement): void {
+    box.addEventListener('pointerdown', e => {
+      const chip = (e.target as Element).closest<HTMLElement>('.file-chip');
+      // x·체크·'다시 저장' 글은 누르기만 한다. 끄는 것은 칩의 나머지 자리
+      if (!chip || e.button !== 0 || saving || picked.length < 2 || (e.target as Element).closest('button, input, label')) return;
+      drag = { from: Number(chip.dataset.index), chip, box, id: e.pointerId, x: e.clientX, y: e.clientY, on: false, before: null };
+      chip.setPointerCapture(e.pointerId);
+    });
+    box.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag.on) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 5) return; // 칩을 눌러 초점만 옮기는 것과 가른다
+        drag.on = true; drag.chip.classList.add('dragging'); box.classList.add('sorting');
+      }
+      autoScroll(box, e.clientY);
+      const chips = [...box.querySelectorAll<HTMLElement>('.file-chip')];
+      const slot = dropSlot(chips.map(c => c.getBoundingClientRect()), e.clientX, e.clientY);
+      if (!slot) return; // 줄 사이 틈에서는 앞서 고른 자리를 그대로 둔다
+      drag.before = slot.before;
+      showDropMark(box, chips[slot.chip]!, slot.after, slot.before === drag.from || slot.before === drag.from + 1);
+    });
+    box.addEventListener('pointerup', e => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag; endDrag();
+      if (d.on && d.before !== null) moveFile(d.from, d.before, false);
+    });
+    box.addEventListener('pointercancel', endDrag);
+  }
+
+  function endDrag(): void {
+    if (!drag) return;
+    drag.chip.classList.remove('dragging'); drag.box.classList.remove('sorting');
+    if (drag.chip.hasPointerCapture(drag.id)) drag.chip.releasePointerCapture(drag.id);
+    dropMark.classList.add('hidden');
+    drag = null;
+  }
+
+  /** 놓을 자리: 고른 칩의 앞(왼쪽)이나 뒤(오른쪽) 틈 가운데 세로 막대. 놓아도 그대로인 자리면 감춘다 */
+  function showDropMark(box: HTMLElement, chip: HTMLElement, after: boolean, same: boolean): void {
+    dropMark.classList.toggle('hidden', same);
+    if (same) return;
+    const b = box.getBoundingClientRect(), r = chip.getBoundingClientRect();
+    dropMark.style.left = `${Math.max(0, (after ? r.right + 5 : r.left - 5) - b.left + box.scrollLeft - 1.5)}px`; // 칩 간격(10px)의 가운데
+    dropMark.style.top = `${r.top - b.top + box.scrollTop}px`;
+    dropMark.style.height = `${r.height}px`;
+  }
+
+  /** 칩이 많아 칸 안에서 넘길 때: 끄는 점이 칸의 위·아래 끝에 가까우면 그쪽으로 넘긴다 */
+  function autoScroll(box: HTMLElement, y: number): void {
+    const r = box.getBoundingClientRect();
+    if (y < r.top + 20) box.scrollTop -= 10; else if (y > r.bottom - 20) box.scrollTop += 10;
+  }
+
+  function moveFile(from: number, before: number, keepFocus: boolean): void {
+    const pk = picked[from];
+    const next = moveBefore(picked, from, before);
+    if (saving || !pk || next.every((x, k) => x === picked[k])) return;
+    picked = next;
+    renderUpload();
+    moveNote.textContent = t('run.moved', { name: pk.이름, n: picked.indexOf(pk) + 1 });
+    if (keepFocus) chipOf.get(pk)?.focus();
+  }
+
+  /** Alt+←·→: 초점이 있는 칩을 한 자리 앞이나 뒤로. 맨 앞·맨 뒤에서는 그대로 */
+  function moveByKey(e: KeyboardEvent, i: number): void {
+    if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault(); // Alt+←가 뒤로 가기로 넘어가지 않게
+    moveFile(i, e.key === 'ArrowLeft' ? i - 1 : i + 2, true);
   }
 
   /** 저장한 자리에서 그 장만 바로 전사한다. '전사 시작'이 화면 맨 아래에 있어 장을 저장한 뒤 한참 내려가야 했다 */

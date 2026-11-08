@@ -1,6 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFiles, coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../src/renderer/lib/sheets.js';
+import { appendFiles, coversSaved, dropSlot, hasFile, moveBefore, naturalCompare, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../src/renderer/lib/sheets.js';
+
+test('moveBefore: before번째 앞으로 옮기고(목록 길이면 맨 뒤), 제자리·범위 밖은 그대로', () => {
+  const abc = ['a', 'b', 'c'];
+  assert.deepEqual(moveBefore(abc, 0, 2), ['b', 'a', 'c']); // a를 c 앞으로
+  assert.deepEqual(moveBefore(abc, 0, 3), ['b', 'c', 'a']); // 맨 뒤로
+  assert.deepEqual(moveBefore(abc, 2, 0), ['c', 'a', 'b']); // 맨 앞으로
+  assert.deepEqual(moveBefore(abc, 1, 0), ['b', 'a', 'c']); // Alt+←: before = i - 1
+  assert.deepEqual(moveBefore(abc, 1, 3), ['a', 'c', 'b']); // Alt+→: before = i + 2
+  for (const [from, before] of [[1, 1], [1, 2], [0, -1], [2, 4], [3, 0], [-1, 1]] as const) assert.deepEqual(moveBefore(abc, from, before), abc, `${from}→${before}`);
+  assert.deepEqual(abc, ['a', 'b', 'c']); // 새 목록을 돌려준다
+});
+
+test('dropSlot: 같은 줄에서 가장 가까운 칩의 가운데 기준 앞뒤, 여러 줄로 감긴 칩, 줄 사이 틈과 밖', () => {
+  // 한 줄에 칩 둘(0, 1), 다음 줄에 칩 하나(2). 칩 높이 40, 줄 간격 10
+  const boxes = [{ left: 0, top: 0, right: 100, bottom: 40 }, { left: 110, top: 0, right: 210, bottom: 40 }, { left: 0, top: 50, right: 100, bottom: 90 }];
+  assert.deepEqual(dropSlot(boxes, 20, 20), { before: 0, chip: 0, after: false }); // 0의 왼쪽 절반
+  assert.deepEqual(dropSlot(boxes, 80, 20), { before: 1, chip: 0, after: true }); // 0의 오른쪽 절반
+  assert.deepEqual(dropSlot(boxes, 105, 20), { before: 1, chip: 0, after: true }); // 0과 1 사이 틈(가까운 쪽은 0)
+  assert.deepEqual(dropSlot(boxes, 300, 20), { before: 2, chip: 1, after: true }); // 줄 끝 오른쪽 빈 곳
+  assert.deepEqual(dropSlot(boxes, 90, 70), { before: 3, chip: 2, after: true }); // 둘째 줄 칩 뒤 = 맨 뒤
+  assert.deepEqual(dropSlot(boxes, 30, 44), { before: 0, chip: 0, after: false }); // 줄 사이 틈의 위쪽 반은 윗줄
+  assert.deepEqual(dropSlot(boxes, 30, 47), { before: 2, chip: 2, after: false }); // 아래쪽 반은 아랫줄
+  assert.equal(dropSlot(boxes, 30, 200), null); // 어느 줄에도 걸치지 않음
+  assert.equal(dropSlot([], 0, 0), null);
+});
 
 test('saveRanges: 목록 차례로 장 번호를 이어 받고, 저장하지 않는 파일은 순번 없이 건너뛴다', () => {
   assert.deepEqual(saveRanges([{ 포함: true, 쪽수: 3 }, { 포함: false, 쪽수: 2 }, { 포함: true, 쪽수: 1 }], 4), [

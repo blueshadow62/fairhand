@@ -28,6 +28,40 @@ export const sortByName = <T extends { 이름: string }>(list: readonly T[]): T[
 export const appendFiles = <T extends { 이름: string }>(list: readonly T[], add: readonly T[]): T[] => [...list, ...sortByName(add)];
 
 /**
+ * from번째 항목을 before번째 항목 앞으로 옮긴 새 목록(before가 목록 길이면 맨 뒤). 끌어 놓기와 Alt+←·→가 같이 쓴다.
+ * 제자리(before가 from이나 from+1)거나 범위 밖이면 같은 차례의 새 목록
+ */
+export function moveBefore<T>(list: readonly T[], from: number, before: number): T[] {
+  const out = [...list];
+  if (from < 0 || from >= out.length || before < 0 || before > out.length) return out;
+  const [item] = out.splice(from, 1);
+  out.splice(before > from ? before - 1 : before, 0, item!);
+  return out;
+}
+
+/** 놓을 자리를 가르는 칩 사각형(화면 좌표). DOMRect를 그대로 넘긴다 */
+export interface Box { left: number; top: number; right: number; bottom: number }
+
+/**
+ * 끄는 점(x, y)에서 놓을 자리. 칩이 여러 줄로 감기므로 같은 줄(세로로 걸치는) 칩 가운데 가로로 가장 가까운 칩을 찾아,
+ * 그 칩의 가운데보다 왼쪽이면 그 앞(before = 그 칩), 오른쪽이면 그 뒤(before = 다음 칩)에 놓는다.
+ * 줄 사이 틈(칩 간격 10px)은 위아래 줄이 반씩 맡는다. 어느 줄에도 걸치지 않으면 null
+ */
+export function dropSlot(boxes: readonly Box[], x: number, y: number): { before: number; chip: number; after: boolean } | null {
+  const HALF_GAP = 5;
+  let best = -1, dist = Infinity;
+  boxes.forEach((b, i) => {
+    if (y < b.top - HALF_GAP || y > b.bottom + HALF_GAP) return;
+    const d = x < b.left ? b.left - x : x > b.right ? x - b.right : 0;
+    if (d < dist) { dist = d; best = i; }
+  });
+  if (best < 0) return null;
+  const b = boxes[best]!;
+  const after = x >= (b.left + b.right) / 2;
+  return { before: after ? best + 1 : best, chip: best, after };
+}
+
+/**
  * 목록의 파일마다 저장할 때 받을 장 번호(next부터 목록 차례로 이어서). 저장하지 않는 파일(체크하지 않은 이미 올린 파일)은 null이고
  * 번호를 건너뛴다. 칩의 순번·장 범위와 미리보기 격자의 장 번호가 같은 차례를 보이게 한다
  */

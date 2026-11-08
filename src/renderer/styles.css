@@ -68,6 +68,8 @@ html, body { margin: 0; height: 100%; }
 body { font-family: var(--font); font-size: var(--fs); line-height: 1.5; color: var(--text); background: var(--bg); word-break: keep-all; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .hidden { display: none !important; }
+/* 화면에는 보이지 않고 화면 읽기 프로그램만 읽는 글(예: 칩을 옮긴 자리 알림) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 /* 마우스를 올리면 뜨는 설명(lib/tip.ts). 글자색·바탕색을 뒤집어 어느 화면 색에서도 눈에 띈다 */
 .tip { position: fixed; z-index: 50; max-width: 400px; padding: 8px 11px; border-radius: var(--r); background: var(--text); color: var(--surface); font-size: var(--fs-s); font-weight: 400; line-height: 1.55; white-space: pre-line; word-break: keep-all; overflow-wrap: anywhere; box-shadow: 0 6px 18px var(--shadow); pointer-events: none; }
 th.has-tip, span.has-tip { cursor: help; text-decoration: underline dotted var(--text-3); text-underline-offset: 4px; }
@@ -289,7 +291,7 @@ label.upload input:focus { box-shadow: none; }
 /* 고른 파일: 단추 모양 칩(순번·이름·쪽 수와 받을 장 범위). 순번이 저장 차례이고, 오른쪽 위 x로 그 파일만 뺀다.
    스캐너가 쪽마다 사진 파일을 내면 칩이 수십 개라 미리보기와 저장 단추를 밀어내므로 몇 줄만 보이고 안에서 넘긴다.
    x가 칩 모서리 밖으로 나오므로 위·오른쪽에 그만큼 여백을 둔다(넘기는 칸이 잘라 내지 않게) */
-.file-chips { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; max-height: 204px; overflow: auto; padding: 9px 9px 2px 0; margin: var(--sp-1) 0; }
+.file-chips { position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; max-height: 204px; overflow: auto; padding: 9px 9px 2px 0; margin: var(--sp-1) 0; }
 .file-chip { position: relative; display: inline-flex; align-items: center; gap: 8px; max-width: min(100%, 340px); min-height: 44px; padding: 6px 24px 6px 8px; border: 1px solid var(--line-h); border-radius: var(--r); background: var(--surface); box-shadow: 0 1px 2px var(--shadow); }
 .file-chip .order { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--accent); color: #fff; font-size: var(--fs-s); font-weight: 700; }
 .file-chip .info { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
@@ -302,6 +304,15 @@ label.upload input:focus { box-shadow: none; }
 .file-chip .again input { margin-top: 1px; flex: none; }
 .file-chip .chip-x { position: absolute; top: -9px; right: -9px; width: 24px; height: 24px; min-height: 0; padding: 0; border-radius: 50%; font-size: 15px; line-height: 1; color: var(--text-2); box-shadow: 0 1px 3px var(--shadow); }
 .file-chip .chip-x:hover:not(:disabled) { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+/* 칩 순서 바꾸기(파일이 둘 이상이고 저장 중이 아닐 때): 왼쪽 점 손잡이와 잡는 손 모양 포인터. 끄는 동안 그 칩을 흐리게 하고,
+   놓을 자리(칩 사이 틈)에 강조색 세로 막대. 끄는 동안 글이 골라지거나(터치에서는) 칸이 넘어가지 않게 한다 */
+.file-chips.can-sort .file-chip { cursor: grab; user-select: none; touch-action: none; }
+/* '칩을 누른 뒤 Alt+←·→'로 옮기므로 마우스로 눌러 초점이 간 칩도 고른 칩임이 보이게 한다(키보드 초점만 그리는 :focus-visible로는 안 보인다) */
+.file-chips.can-sort .file-chip:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file-chips.sorting, .file-chips.sorting .file-chip { cursor: grabbing; }
+.file-chip.dragging { opacity: .45; }
+.file-chip .grip { flex: none; width: 8px; height: 18px; margin-right: -2px; background: radial-gradient(circle, var(--text-3) 1.1px, transparent 1.5px) center / 4px 4px; }
+.chip-drop-mark { position: absolute; width: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; }
 /* 저장 전 미리보기: 고른 파일의 모든 쪽을 작은 그림 격자로. 쪽이 많으면 격자 안에서 넘겨 보아 저장 단추가 밀려나지 않게 하고,
    쪽마다 돌린 각도는 그림을 돌려 보인다. 90°·270°는 가로가 되므로 세로 칸(A4)에 들어가게 줄인다 */
 .sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-2); max-height: min(560px, 60vh); overflow: auto; padding: 2px; margin: var(--sp-2) 0; }
