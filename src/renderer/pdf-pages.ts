@@ -1,4 +1,5 @@
 import { t } from './lib/i18n.js';
+import { sheetKind } from './lib/sheets.js';
 
 type PdfJs = typeof import('pdfjs-dist');
 export type Rotation = 0 | 90 | 180 | 270;
@@ -74,11 +75,12 @@ export async function imageToCanvas(file: File, rotation: Rotation, scale = 1): 
 export interface SheetSource { name: string; pageCount: number; render(n: number, rotation: Rotation, scale: number): Promise<HTMLCanvasElement>; close(): void }
 
 export async function openSheetSource(file: File, bytes?: ArrayBuffer): Promise<SheetSource> {
-  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+  const kind = sheetKind(file.name, file.type);
+  if (kind === 'pdf') {
     const pdf = await openPdf(file, bytes);
     return { name: file.name, pageCount: pdf.pageCount, render: (n, rotation, scale) => pdf.renderPage(n, { rotation, scale }), close: () => pdf.close() };
   }
-  if (/^image\//.test(file.type) || /\.(jpe?g|png|webp|bmp)$/i.test(file.name)) {
+  if (kind === 'image') {
     return { name: file.name, pageCount: 1, render: (_n, rotation, scale) => imageToCanvas(file, rotation, scale === DPI_SCALE ? 1 : scale / DPI_SCALE), close: () => undefined };
   }
   throw new Error(t('pdf.onlyPdfOrImage'));

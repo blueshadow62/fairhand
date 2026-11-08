@@ -250,6 +250,8 @@ label.upload input:focus { box-shadow: none; }
 .thumb figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px 6px; font-size: var(--fs-s); }
 .thumb figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thumb figcaption button { min-height: 24px; padding: 0 8px; flex: none; }
+/* 끌어다 놓을 수 있는 동안(파일을 끌고 채점 실행 화면 위에 있을 때) 올리기 칸을 강조색 점선과 옅은 바탕으로. 테두리가 1px 굵어진 만큼 안쪽 여백을 줄여 글이 움직이지 않게 */
+.card.upload-card.dropping { border: 2px dashed var(--accent); background: var(--accent-soft); padding: calc(var(--sp-4) - 1px) 17px; }
 /* 고른 파일 목록: 스캐너가 쪽마다 사진 파일을 내면 수십 줄이 되어 미리보기와 저장 단추를 밀어낸다. 몇 줄만 보이고 안에서 넘긴다 */
 .picked-files { max-height: 188px; overflow: auto; }
 .picked-files .row { margin: 2px 0; }

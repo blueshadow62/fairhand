@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { nextRotation, pendingPages } from '../lib/sheets.js';
+import { nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -92,7 +92,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     data = d;
     renderCounts();
     body.append(el('h3', {}, t('common.set', { name: 폴더 })), countBox,
-      el('div', { class: 'card' }, el('h3', {}, t('run.upload')), uploadBox),
+      uploadCard,
       el('div', { class: 'card' }, thumbsTitle, thumbsBox),
       el('div', { class: 'card' }, el('h3', {}, t('run.privacy')), privacyBox),
       // 전체를 전사하기 전에 시험하는 일이라 학생 정보 보호(이름 가림이 시험에도 쓰인다) 다음, 전사 앞에 둔다
@@ -112,13 +112,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   // ── PDF 올리기 ──
-  const fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.webp,.bmp', multiple: true });
+  const fileInput = el('input', { type: 'file', accept: SHEET_ACCEPT, multiple: true });
   fileInput.addEventListener('change', () => void pickFiles());
   const uploadStatus = el('div', { class: 'muted' });
+  const uploadCard = el('div', { class: 'card upload-card' }, el('h3', {}, t('run.upload')), uploadBox);
+  let pickSeq = 0; // 고르는 동안 다시 고르거나 끌어다 놓으면 앞의 고르기는 그만둔다
 
   async function pickFiles(): Promise<void> {
     const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
     if (!files.length) return;
+    if (saving) return; // 저장하는 파일을 닫으면 저장이 중간에 멈춘다(저장 중에는 고르기 칸도 잠근다)
+    const seq = ++pickSeq;
     uploadStatus.textContent = ''; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
     dropPicked();
     rotation = store.state.settings.기본회전;
@@ -126,15 +130,45 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       try {
         const bytes = await f.arrayBuffer(); // 지문과 열기가 같은 버퍼를 쓴다(큰 스캔을 두 번 읽지 않게)
         const 지문 = await sha256(bytes);
-        const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
         const src = await openSheetSource(f, bytes);
+        if (seq !== pickSeq) { src.close(); return; }
+        const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
         const pk: Picked = { src, 지문, 크기: f.size, 이전, 포함: !이전, 회전: Array<Rotation>(src.pageCount).fill(rotation), tiles: [], closed: false };
         pk.tiles = Array.from({ length: src.pageCount }, (_, i) => makeTile(pk, i + 1));
         picked.push(pk);
-      } catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
+      } catch (e) {
+        if (seq !== pickSeq) return;
+        showError(t('run.openFailed', { name: f.name, error: (e as Error).message }));
+      }
     }
-    renderUpload();
+    if (seq === pickSeq) renderUpload();
   }
+
+  // ── 끌어다 놓기: 탐색기에서 PDF·사진을 이 화면 어디에 놓아도 '파일 선택'과 같게. 놓을 수 있는 동안 올리기 칸을 강조한다 ──
+  let dragDepth = 0; // 안쪽 요소를 지날 때마다 dragenter·dragleave가 오가 깊이로 센다
+  const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+  const dropping = (on: boolean) => uploadCard.classList.toggle('dropping', on);
+  root.addEventListener('dragenter', e => { if (!hasFiles(e) || !data) return; e.preventDefault(); dragDepth++; dropping(true); });
+  root.addEventListener('dragover', e => { if (!hasFiles(e) || !data) return; e.preventDefault(); e.dataTransfer!.dropEffect = saving ? 'none' : 'copy'; });
+  root.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; dropping(false); } });
+  root.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); // 놓은 파일을 창이 열려고(다른 주소로 가려고) 하지 않게
+    dragDepth = 0; dropping(false);
+    if (!data) return;
+    if (saving) { showError(t('run.busySaving')); return; }
+    const all = [...e.dataTransfer!.files];
+    const sheets = all.filter(f => sheetKind(f.name, f.type));
+    const skipped = all.filter(f => !sheetKind(f.name, f.type)).map(f => f.name);
+    if (skipped.length) showError(t(sheets.length ? 'run.dropSkipped' : 'run.dropNone', { names: skipped.join(', ') }));
+    if (!sheets.length) return;
+    // 고르기 칸에도 놓은 파일을 넣어 '파일 선택'으로 고른 것과 똑같이 보이고 다룬다
+    const dt = new DataTransfer();
+    for (const f of sheets) dt.items.add(f);
+    fileInput.files = dt.files;
+    uploadCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    void pickFiles();
+  });
 
   async function sha256(bytes: ArrayBuffer): Promise<string> {
     const h = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
@@ -259,7 +293,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function renderUpload(): void {
     clear(uploadBox);
-    uploadBox.append(el('div', { class: 'row' }, fileInput), uploadStatus);
+    fileInput.disabled = saving;
+    uploadBox.append(el('div', { class: 'row' }, fileInput, el('span', { class: 'muted' }, t('run.dropHint'))), uploadStatus);
     if (!picked.length || !data) return;
     const next = data.pages.length ? Math.max(...data.pages) + 1 : 1;
     // 격자에는 저장할 파일의 쪽만, 저장될 장 번호 차례로

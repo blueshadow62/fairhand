@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRotation, pendingPages } from '../src/renderer/lib/sheets.js';
+import { nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../src/renderer/lib/sheets.js';
+
+test('sheetKind: 끌어다 놓은 파일도 고르기 창과 같은 기준(PDF·사진), 이름이나 형식 하나로 알아본다', () => {
+  assert.equal(sheetKind('3반.PDF', ''), 'pdf');
+  assert.equal(sheetKind('scan', 'application/pdf'), 'pdf');
+  assert.equal(sheetKind('p001.jpeg', 'image/jpeg'), 'image');
+  assert.equal(sheetKind('사진', 'image/png'), 'image');
+  for (const [name, type] of [['명단.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'], ['메모.txt', 'text/plain'], ['정답표.json', 'application/json'], ['폴더', '']] as const)
+    assert.equal(sheetKind(name, type), null, name);
+  for (const ext of SHEET_ACCEPT.split(',')) assert.ok(sheetKind(`답안지${ext}`, ''), ext); // 고르기 창이 보이는 파일은 모두 받는다
+});
 
 test('nextRotation: 시계 방향으로 90°씩, 270° 다음은 0°', () => {
   assert.deepEqual(([0, 90, 180, 270] as const).map(nextRotation), [90, 180, 270, 0]);
