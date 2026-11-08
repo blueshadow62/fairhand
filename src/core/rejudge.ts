@@ -31,40 +31,72 @@ export function keyMatch(u: QtyUnit, 답: string): '정답' | '허용' | null {
 export interface EssayPiece { text: string; 근거?: '정답' | '허용' }
 
 /**
- * 논술형 답(AI가 글에서 찾아 옮긴 부분)을 정답·허용 표기가 그대로 들어 있는 곳과 나머지로 나눈다. keyMatch와 같은 기준이라
- * 줄바꿈이나 여러 칸 띄어쓰기는 한 칸으로 보고 찾는다. 조각을 이으면 NFC로 맞춘 답 그대로다. 겹치면 정답을 먼저 둔다.
- * 논술형이 아니면 나누지 않는다
+ * 글 전체의 한 조각. 근거·단위: 그 단위의 정답(허용) 표기가 그대로 있는 곳(시작은 그 표기의 첫 조각),
+ * 찾음: AI가 그 단위들의 답으로 옮긴 부분이 덮는 곳
  */
-export function essayMarks(u: QtyUnit, 답: string): EssayPiece[] {
-  if (u.유형 !== '논술형') return 답 ? [{ text: 답 }] : [];
-  const s = 답.normalize('NFC');
-  // 띄어쓰기를 한 칸으로 줄인 글(flat)과, 그 글자마다 원래 글의 위치(at)
+export interface EssayTextPiece { text: string; 근거?: '정답' | '허용'; 단위?: string; 시작?: boolean; 찾음?: string[] }
+
+/** 줄바꿈·여러 칸 띄어쓰기를 한 칸으로 줄인 글(flat)과, 그 글자마다 원래 글의 위치(at) */
+function flatten(s: string): { flat: string; at: number[] } {
   let flat = '';
   const at: number[] = [];
   for (let i = 0; i < s.length; i++) {
     if (!/\s/.test(s[i]!)) { flat += s[i]; at.push(i); }
     else if (flat && !flat.endsWith(' ')) { flat += ' '; at.push(i); }
   }
-  const hits: { start: number; end: number; 근거: '정답' | '허용' }[] = [];
-  const find = (needle: string, 근거: '정답' | '허용') => {
-    if (!needle) return;
-    for (let i = flat.indexOf(needle); i >= 0; i = flat.indexOf(needle, i + needle.length)) {
-      const start = at[i]!, end = at[i + needle.length - 1]! + 1;
-      if (!hits.some(h => start < h.end && h.start < end)) hits.push({ start, end, 근거 });
-    }
-  };
-  find(normalizeAnswer(u.정답), '정답');
-  for (const a of u.허용 ?? []) find(normalizeAnswer(a), '허용');
-  hits.sort((a, b) => a.start - b.start);
-  const out: EssayPiece[] = [];
-  let pos = 0;
-  for (const h of hits) {
-    if (h.start > pos) out.push({ text: s.slice(pos, h.start) });
-    out.push({ text: s.slice(h.start, h.end), 근거: h.근거 });
-    pos = h.end;
-  }
-  if (pos < s.length) out.push({ text: s.slice(pos) });
+  return { flat, at };
+}
+
+/** flat에서 needle(정규화한 글)이 나오는 곳을 원래 글의 [start, end)로. 찾은 곳끼리는 겹치지 않게 넘어간다 */
+function spansOf(f: { flat: string; at: number[] }, needle: string): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  if (!needle) return out;
+  for (let i = f.flat.indexOf(needle); i >= 0; i = f.flat.indexOf(needle, i + needle.length)) out.push({ start: f.at[i]!, end: f.at[i + needle.length - 1]! + 1 });
   return out;
+}
+
+/**
+ * 논술형 글(학생 글 전체나 단위의 답)을 단위들의 정답·허용 표기가 그대로 들어 있는 곳, AI가 단위의 답으로 옮긴 부분(답들), 나머지로 나눈다.
+ * keyMatch와 같은 기준이라 줄바꿈이나 여러 칸 띄어쓰기는 한 칸으로 보고 찾는다. 조각을 이으면 NFC로 맞춘 글 그대로다.
+ * 표기가 겹치면 앞 단위, 한 단위 안에서는 정답을 먼저 둔다. 답은 글에서 처음 나오는 곳 하나만 칠한다(못 찾으면 칠하지 않는다)
+ */
+export function essayTextMarks(units: QtyUnit[], 글: string, 답들: Record<string, string> = {}): EssayTextPiece[] {
+  const s = 글.normalize('NFC');
+  if (!s) return [];
+  const f = flatten(s);
+  const hits: { start: number; end: number; 근거: '정답' | '허용'; 단위: string }[] = [];
+  const found: { start: number; end: number; 단위: string }[] = [];
+  for (const u of units.filter(x => x.유형 === '논술형')) {
+    const add = (needle: string, 근거: '정답' | '허용') => {
+      for (const r of spansOf(f, needle)) if (!hits.some(h => r.start < h.end && h.start < r.end)) hits.push({ ...r, 근거, 단위: u.id });
+    };
+    add(normalizeAnswer(u.정답), '정답');
+    for (const a of u.허용 ?? []) add(normalizeAnswer(a), '허용');
+    const first = spansOf(f, normalizeAnswer(답들[u.id] ?? ''))[0];
+    if (first) found.push({ ...first, 단위: u.id });
+  }
+  const cuts = [...new Set([0, s.length, ...[...hits, ...found].flatMap(x => [x.start, x.end])])].sort((a, b) => a - b);
+  const out: (EssayTextPiece & { hit: number; sig: string })[] = [];
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const a = cuts[i]!, b = cuts[i + 1]!;
+    const hit = hits.findIndex(h => h.start <= a && b <= h.end), h = hits[hit];
+    const 찾음 = found.filter(x => x.start <= a && b <= x.end).map(x => x.단위);
+    const sig = 찾음.join('\u0000');
+    const last = out[out.length - 1];
+    // 같은 표시가 이어지면 한 조각으로(표시 없는 글이 경계마다 잘리지 않게). 따로 찾은 표기는 붙어 있어도 나눈다
+    if (last && last.hit === hit && last.sig === sig) { last.text += s.slice(a, b); continue; }
+    out.push({ text: s.slice(a, b), hit, sig, ...(h ? { 근거: h.근거, 단위: h.단위, ...(h.start === a ? { 시작: true } : {}) } : {}), ...(찾음.length ? { 찾음 } : {}) });
+  }
+  return out.map(({ hit: _h, sig: _s, ...p }) => p);
+}
+
+/**
+ * 논술형 답(AI가 글에서 찾아 옮긴 부분)을 정답·허용 표기가 그대로 들어 있는 곳과 나머지로 나눈다(essayTextMarks와 같은 기준).
+ * 조각을 이으면 NFC로 맞춘 답 그대로다. 논술형이 아니면 나누지 않는다
+ */
+export function essayMarks(u: QtyUnit, 답: string): EssayPiece[] {
+  if (u.유형 !== '논술형') return 답 ? [{ text: 답 }] : [];
+  return essayTextMarks([u], 답).map(p => (p.근거 ? { text: p.text, 근거: p.근거 } : { text: p.text }));
 }
 
 /** 글자로 결정되는 판정(빈칸·사례·정답·허용). 뜻으로 볼 일이면 null */

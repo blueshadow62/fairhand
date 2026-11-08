@@ -81,3 +81,16 @@ test('systemPrompt: 논술형 문항이 있는 세트에만 논술형 절을 붙
   assert.ok(essay.includes('# 논술형 문항'));
   assert.ok(essay.indexOf('# 논술형 문항') < essay.indexOf('# 정답표'));
 });
+
+test('toTranscript: 논술형 글 전체는 정답표의 논술형 문항 것만 두고, 빠지거나 틀려도 전사는 성공', () => {
+  const essayKey = { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const }] };
+  const quant = [...good.quant, { id: '9-1', answer: '배움은 삶이다', verdict: 'O' }];
+  const t = toTranscript({ ...good, quant, essays: [{ question: '9', text: '나는 배움은 삶이다 라고 쓴다.' }, { question: '3', text: '논술형 아님' }] }, essayKey, 4, info);
+  assert.deepEqual(t.논술글, { 9: '나는 배움은 삶이다 라고 쓴다.' });
+  for (const essays of [[], [{ question: '3', text: 'x' }], '글자', [{ question: '9' }]]) {
+    const u = toTranscript({ ...good, quant, essays }, essayKey, 4, info);
+    assert.ok(!('논술글' in u), JSON.stringify(essays));
+    assert.equal(u.정량['9-1']?.판정, 'O');
+  }
+  assert.ok(!('논술글' in toTranscript(good, key, 4, info))); // 논술형이 없는 세트의 전사 파일은 그대로
+});

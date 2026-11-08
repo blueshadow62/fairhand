@@ -1,5 +1,6 @@
 import { caseCandidates, needsCaseConfirm, previewCases, revertTranscript, type CaseRevertRequest } from '../../core/cases.js';
 import { roundScore, unitPoints } from '../../core/key.js';
+import { essayTextMarks } from '../../core/rejudge.js';
 import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
 import { setSheetDone } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
@@ -8,6 +9,7 @@ import { api, imageUrl } from '../lib/api.js';
 import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
+import { essayNodes, essaySpanViews } from '../lib/essay-view.js';
 import { essayStatus, keyLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
@@ -72,6 +74,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let T: Transcript | null = null;  // 편집 중인 전사(사본)
   let dirty = false;
   let zoom = 1;
+  let essayOpen = true; // 논술형 글 전체 칸을 접었는지(장을 넘겨도 같은 상태로)
   const CASE_PREF = 'geulnun.review.recordCases';
   let recordCases = (() => { try { return localStorage.getItem(CASE_PREF) !== '0'; } catch { return true; } })();
   const remember = (on: boolean) => { try { localStorage.setItem(CASE_PREF, on ? '1' : '0'); } catch { /* 저장 못 해도 기본값(켬)으로 */ } };
@@ -404,12 +407,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
     // 1점이 아닌 단위만 배점을 보인다(대부분의 세트는 모두 1점이라 표가 그대로)
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
+    const essayPaint = new Map<number, () => void>(); // 논술형 문항 → 글 전체 다시 칠하기(단위의 답을 고치면 밑줄이 따라간다)
     const qtyRows = key.정량.map(u => {
       const v = tr.정량[u.id] ??= { 답: '', 판정: '빈칸' };
       // 논술형은 답 칸 아래에 정답·허용 표기가 그대로 들어 있는지 작게 보인다(답을 고치면 바로 다시 본다). 다른 유형은 그대로
       const essay = u.유형 === '논술형' ? el('div', { class: 'essay-hit', title: t('review.essay.title') }) : null;
       const showEssay = () => { if (!essay) return; const k = essayStatus(u, v.답); essay.textContent = k ? t(k) : ''; essay.classList.toggle('found', k !== null && k !== 'review.essay.none'); };
-      const ans = growArea(v.답, s => { v.답 = s; touch(); showEssay(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
+      const ans = growArea(v.답, s => { v.답 = s; touch(); showEssay(); essayPaint.get(u.문항)?.(); }, { rows: 1, singleLine: true, label: t('review.col.student') });
       showEssay();
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
@@ -421,7 +425,26 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const ta = growArea(v.답, s => { v.답 = s; touch(); }, { rows: 3, label: t('review.col.answer') });
       return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명), el('td', {}, el('label', {}, cb, t('review.responded'))), el('td', {}, ta));
     });
-    const qtyTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.descKey')), el('th', {}, t('review.col.student')), el('th', {}, t('review.col.verdict'))), ...qtyRows);
+    /**
+     * 논술형 문항의 학생 글 전체(전사할 때 받은 것). 그 문항 모든 단위의 정답·허용 표기에 색과 단위 표시, AI가 단위의 답으로 옮긴 부분에 밑줄.
+     * 글을 받기 전에 전사한 장은 다시 전사하면 받는다고 알린다
+     */
+    function essayRow(q: number): HTMLElement {
+      const text = tr.논술글?.[String(q)];
+      if (text === undefined) return el('tr', { class: 'essay-row' }, el('td', { colspan: '4', class: 'muted' }, t('review.essay.noFull', { n: q })));
+      const units = key.정량.filter(u => u.유형 === '논술형' && u.문항 === q);
+      const body = el('div', { class: 'essay-text' });
+      const paint = () => body.replaceChildren(...(text.trim()
+        ? essayNodes(essaySpanViews(essayTextMarks(units, text, Object.fromEntries(units.map(u => [u.id, tr.정량[u.id]?.답 ?? '']))), true))
+        : [el('span', { class: 'muted' }, t('review.essay.emptyText'))]));
+      essayPaint.set(q, paint); paint();
+      const box = el('details', { class: 'essay-full', open: essayOpen, ontoggle: () => { essayOpen = box.open; } },
+        el('summary', {}, t('review.essay.fullTitle', { n: q })), el('div', { class: 'muted essay-legend' }, t('review.essay.fullHelp')), body);
+      return el('tr', { class: 'essay-row' }, el('td', { colspan: '4' }, box));
+    }
+    // 글 전체 줄은 그 문항의 마지막 단위 바로 아래에 둔다(단위 행과 함께 보게)
+    const qtyBody = key.정량.flatMap((u, i) => (u.유형 === '논술형' && !key.정량.slice(i + 1).some(x => x.유형 === '논술형' && x.문항 === u.문항) ? [qtyRows[i]!, essayRow(u.문항)] : [qtyRows[i]!]));
+    const qtyTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.descKey')), el('th', {}, t('review.col.student')), el('th', {}, t('review.col.verdict'))), ...qtyBody);
     const qualTable = el('table', {}, el('tr', {}, el('th', {}, t('review.col.id')), el('th', {}, t('review.col.question')), el('th', {}, t('review.col.response')), el('th', {}, t('review.col.answer'))), ...qualRows);
     function markNotes(): void { for (const row of [...qtyRows, ...qualRows]) row.classList.toggle('note', mentions(tr.비고, row.dataset.unit!)); }
     markNotes();

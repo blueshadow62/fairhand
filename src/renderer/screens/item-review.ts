@@ -1,5 +1,5 @@
 import { identityMask, unitPoints } from '../../core/key.js';
-import { essayMarks } from '../../core/rejudge.js';
+import { essayMarks, essayTextMarks } from '../../core/rejudge.js';
 import type { MaskRect, Panjeong, QtyUnit, QualUnit, Transcript } from '../../core/types.js';
 import { unitChecked, type UnitResultItem } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
@@ -10,6 +10,7 @@ import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { MASK_FILL, cropAspect, cropRect, gridColumns, identityInCrop, toPixels } from '../lib/answer-crop.js';
 import { cachedCrop, clearCrops, cropKey, loadCrop } from '../lib/crop-cache.js';
+import { essayNodes, essaySpanViews, essayTextOf } from '../lib/essay-view.js';
 import { anonLabels, anonOrder, groupAnswers, keyLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { openRegionEditor } from './region-editor.js';
@@ -44,6 +45,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   let onlyUnchecked = false;
   let busy = false; // 저장과 엑셀 생성이 두 벌 돌지 않게 기다리는 동안 단추를 잠근다
   const open = new Set<string>(); // 펼친 묶음: 단위 + 정규 답
+  const essayShown = new Set<string>(); // 연 글 전체: 단위 + 장(판정마다 다시 그려도 연 채로)
 
   // 판정마다 다시 그려도 키보드 초점이 같은 묶음·같은 줄의 같은 단추로 돌아오게, 단추마다 바뀌지 않는 data-focus를 단다(장 번호 대신 익명 번호).
   // 기다리는 동안 단추가 잠겨 초점이 빠져도 기억해 두었다가 잠금이 풀린 뒤 돌려준다
@@ -75,7 +77,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   new ResizeObserver(fitGrids).observe(groups);
 
   function render(d: SetData | null): void {
-    if (d?.폴더 !== data?.폴더) { open.clear(); unitId = null; closeViewer(false); clearCrops(); }
+    if (d?.폴더 !== data?.폴더) { open.clear(); essayShown.clear(); unitId = null; closeViewer(false); clearCrops(); }
     data = d;
     if (!d) { clear(units); clear(groups); return; }
     if (view && !d.transcripts.some(x => x.page === view!.page)) closeViewer(false);
@@ -241,12 +243,30 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null,
       유형 === '논술형' ? el('div', { class: 'muted essay-help' }, el('mark', { class: 'key-hit' }, t('item.essay.markKey')),
         (u as QtyUnit).허용?.length ? el('mark', { class: 'key-hit allow' }, t('item.essay.markAllow')) : null, el('span', {}, t('item.essay.help'))) : null,
+      // 글 전체를 받은 장이 있을 때만 밑줄 뜻을 알린다(옛 전사뿐이면 글 전체 칸이 없다)
+      유형 === '논술형' && data?.transcripts.some(x => essayTextOf(x, u as QtyUnit) !== undefined)
+        ? el('div', { class: 'muted essay-help' }, el('span', { class: 'found' }, t('item.essay.markFound')), el('span', {}, t('item.essay.helpFull'))) : null,
       isQty ? el('label', { class: 'cases', title: t('item.recordCasesTitle') }, cases, t('item.recordCases')) : null);
   }
 
   /** 논술형 답은 정답·허용 표기가 그대로 들어 있는 곳에 색을 입힌다(decide와 같은 기준). 다른 유형은 글 그대로 */
   const answerText = (u: QtyUnit, text: string): (string | HTMLElement)[] => essayMarks(u, text).map(p => p.근거
     ? el('mark', { class: `key-hit${p.근거 === '허용' ? ' allow' : ''}`, title: t(p.근거 === '허용' ? 'item.essay.markAllow' : 'item.essay.markKey') }, p.text) : p.text);
+
+  /**
+   * 논술형 단위의 펼친 답 아래 '글 전체'(접어 둠). 이 단위의 정답·허용 표기에 색, AI가 이 단위의 답으로 옮긴 부분에 밑줄.
+   * 글을 받기 전에 전사한 장은 그리지 않는다
+   */
+  function essayFull(u: QtyUnit, tr: Transcript, n: number): HTMLElement | null {
+    const text = essayTextOf(tr, u);
+    if (text === undefined) return null;
+    const k = `${u.id}\u0000${tr.page}`;
+    const box = el('details', { class: 'essay-full', open: essayShown.has(k), ontoggle: () => { if (box.open) essayShown.add(k); else essayShown.delete(k); } },
+      el('summary', { 'data-focus': `essay:${n}` }, t('item.essay.full')),
+      el('div', { class: 'essay-text' }, text.trim() ? essayNodes(essaySpanViews(essayTextMarks([u], text, { [u.id]: tr.정량[u.id]?.답 ?? '' }), false))
+        : el('span', { class: 'muted' }, t('review.essay.emptyText'))));
+    return box;
+  }
 
   /** 잘라 볼 영역(답 칸에 사방 2% 여유), 그 안에서 신원 영역과 겹쳐 칠할 곳, 칸 모양 */
   interface Grid { crop: MaskRect; hide: MaskRect | null; aspect: number }
@@ -315,7 +335,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
         el('div', { class: 'answer' }, own === g.대표 ? '' : answerText(u, own)), // 대표 답과 글자가 다를 때만 원래 글을 보인다
         checkMark(tr, u.id),
         verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
-        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')));
+        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')),
+        essayFull(u, tr, n));
     })));
     return box;
   }
@@ -327,7 +348,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
       own === g.대표 ? null : el('div', { class: 'answer' }, answerText(u, own)),
       el('div', { class: 'hw-actions' }, verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
-        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage'))));
+        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage'))),
+      essayFull(u, tr, n));
   }
 
   function qualCell(u: QualUnit, tr: Transcript, n: number, grid: Grid): HTMLElement {

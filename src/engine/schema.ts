@@ -1,3 +1,4 @@
+import { essayQuestions } from '../core/key.js';
 import { DataError, type AnswerKey } from '../core/types.js';
 
 const intOrNull = { type: ['integer', 'null'] };
@@ -15,8 +16,18 @@ export function unitListSchema(ids: string[], fields: Record<string, unknown>): 
   };
 }
 
-/** 정답표에서 만든 전사 JSON 스키마(영문 키) */
+/** 논술형 문항마다 학생 글 전체 하나: [{ question: 문항 번호(글자), text }]. 빠진 문항·중복은 양식이 막지 못해 받은 뒤 정리한다 */
+const essayListSchema = (questions: string[]): Record<string, unknown> => ({
+  type: 'array',
+  items: { type: 'object', properties: { question: { type: 'string', enum: questions }, text: { type: 'string' } }, required: ['question', 'text'], additionalProperties: false },
+});
+
+/**
+ * 정답표에서 만든 전사 JSON 스키마(영문 키). 논술형 세트에만 essays(글 전체)를 quant 앞에 둔다: 글을 먼저 옮긴 뒤 단위마다 그 글에서 찾게 하고,
+ * 논술형이 없는 세트의 양식은 그대로 둔다(잰 정확도·토큰이 유지된다)
+ */
 export function transcriptSchema(key: AnswerKey): Record<string, unknown> {
+  const essays = essayQuestions(key).map(String);
   return {
     type: 'object',
     properties: {
@@ -24,11 +35,12 @@ export function transcriptSchema(key: AnswerKey): Record<string, unknown> {
       grade: intOrNull, class: intOrNull, number: intOrNull,
       name: { type: ['string', 'null'] },
       id_confidence: { type: 'string', enum: ['확실', '추정', '불명'] },
+      ...(essays.length ? { essays: essayListSchema(essays) } : {}),
       quant: unitListSchema(key.정량.map(u => u.id), { answer: { type: 'string' }, verdict: { type: 'string', enum: ['O', 'X', '빈칸'] } }),
       qual: unitListSchema(key.정성.map(u => u.id), { responded: { type: 'boolean' }, answer: { type: 'string' } }),
       notes: { type: 'array', items: { type: 'string' } },
     },
-    required: ['page', 'grade', 'class', 'number', 'name', 'id_confidence', 'quant', 'qual', 'notes'],
+    required: ['page', 'grade', 'class', 'number', 'name', 'id_confidence', ...(essays.length ? ['essays'] : []), 'quant', 'qual', 'notes'],
     additionalProperties: false,
   };
 }
@@ -53,6 +65,13 @@ function renameUnits(list: unknown, what: string, names: Record<string, string>)
     [id, Object.fromEntries(Object.entries(u).map(([k, v]) => [names[k] ?? k, v]))]));
 }
 
+/** 모델이 낸 글 전체 목록을 문항 번호별로. 채점에 쓰지 않는 칸이라 전사를 실패로 보지 않는다: 모양이 틀린 항목은 버리고, 같은 문항이 또 나오면 앞의 것을 쓴다 */
+function essaysByQuestion(list: unknown): Record<string, string> {
+  const out = new Map<string, string>();
+  for (const e of Array.isArray(list) ? list : []) if (isObj(e) && typeof e.question === 'string' && typeof e.text === 'string' && !out.has(e.question)) out.set(e.question, e.text);
+  return Object.fromEntries(out);
+}
+
 /** 모델 출력(영문 키)을 전사 양식(한글 키)으로. 객체가 아니면 그대로 돌려 parseTranscript가 거절하게 한다. */
 export function fromModelOutput(raw: unknown): unknown {
   if (!isObj(raw)) return raw;
@@ -61,5 +80,6 @@ export function fromModelOutput(raw: unknown): unknown {
     정량: renameUnits(raw.quant, 'quant', { answer: '답', verdict: '판정' }),
     정성: renameUnits(raw.qual, 'qual', { responded: '응답', answer: '답' }),
     비고: raw.notes,
+    ...(raw.essays !== undefined ? { 논술글: essaysByQuestion(raw.essays) } : {}),
   };
 }

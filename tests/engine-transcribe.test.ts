@@ -104,3 +104,14 @@ test('transcribeSet: 저장 전에 사례·정답 정확 일치를 적용한다'
   assert.equal(saved.정량['1-1'].답, 'x');
   assert.ok(saved.비고.includes('재판정: 1-1 X→O (사례)'));
 });
+
+test('transcribeSet: 논술형 세트는 학생 글 전체(논술글)를 전사 파일에 함께 저장한다', async () => {
+  const d = sampleSet([4]);
+  const k = { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const }] };
+  const essay = (page: number) => ({ ...good(page), quant: [...good(page).quant, { id: '9-1', answer: '배움은 삶이다', verdict: 'O' }], essays: [{ question: '9', text: '첫 문단.\n배움은 삶이다.' }] });
+  const r = await transcribeSet(provider(page => ({ output: essay(page), model: 'm' })), d, k, rules, [4], new AbortController().signal);
+  assert.deepEqual(r.ok, [4]);
+  const saved = JSON.parse(readFileSync(path.join(d, 'transcripts', 'p04.json'), 'utf-8'));
+  assert.deepEqual(saved.논술글, { 9: '첫 문단.\n배움은 삶이다.' });
+  assert.equal(saved.정량['9-1'].답, '배움은 삶이다');
+});

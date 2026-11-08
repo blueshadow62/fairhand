@@ -23,6 +23,11 @@ export function parseTranscript(text: string, where: string): Transcript {
   if (t.확인완료 !== undefined && typeof t.확인완료 !== 'boolean') throw new DataError(`${where}: 확인완료는 true/false여야 함`);
   // 정답표에서 빠진 단위 id가 남아 있어도 읽는다(정답표를 고친 뒤에도 옛 전사가 열리게)
   if (t.확인단위 !== undefined && !(Array.isArray(t.확인단위) && t.확인단위.every((x: unknown) => typeof x === 'string'))) throw new DataError(`${where}: 확인단위는 글자 목록이어야 함`);
+  // 논술형 글 전체는 화면에만 쓰는 칸이라 모양이 틀린 항목은 오류 대신 버린다(손으로 고친 파일 하나가 세트를 막지 않게)
+  if (t.논술글 !== undefined) {
+    const ok = t.논술글 && typeof t.논술글 === 'object' && !Array.isArray(t.논술글) ? Object.entries(t.논술글).filter(([, v]) => typeof v === 'string') : [];
+    if (ok.length) t.논술글 = Object.fromEntries(ok); else delete t.논술글;
+  }
   return t as Transcript;
 }
 

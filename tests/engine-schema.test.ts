@@ -75,3 +75,39 @@ test('systemPrompt: 채점 규칙 절과 사례 절', async () => {
   assert.ok(!p.includes('"사례"')); // 정답표 JSON 안에는 넣지 않는다
   assert.ok(!systemPrompt(r, key).includes('# 판정 사례'));
 });
+
+const essayUnits = [
+  { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const },
+  { id: '9-2', 문항: 9, 설명: '용어 1', 정답: '학습자 중심', 유형: '논술형' as const, 종류: '용어' as const },
+  { id: '10-1', 문항: 10, 설명: '용어 1', 정답: '비계', 유형: '논술형' as const, 종류: '용어' as const },
+];
+
+test('transcriptSchema: 논술형 세트에만 essays(문항마다 글 전체)를 quant 앞에 둔다', () => {
+  const plain = transcriptSchema(key) as any;
+  assert.ok(!('essays' in plain.properties) && !plain.required.includes('essays'));
+  const s = transcriptSchema({ ...key, 정량: [...key.정량, ...essayUnits] }) as any;
+  // 글을 먼저 옮긴 뒤 단위마다 그 글에서 찾게 한다(구조화 출력은 양식의 칸 순서대로 낸다)
+  assert.deepEqual(Object.keys(s.properties), ['page', 'grade', 'class', 'number', 'name', 'id_confidence', 'essays', 'quant', 'qual', 'notes']);
+  assert.deepEqual(s.required, Object.keys(s.properties));
+  assert.deepEqual(s.properties.essays.items.properties.question.enum, ['9', '10']); // 문항마다 한 번, 단위마다가 아니다
+  assert.deepEqual(s.properties.essays.items.required, ['question', 'text']);
+  assert.equal(s.properties.essays.items.additionalProperties, false);
+});
+
+test('fromModelOutput: essays는 문항 번호별 논술글로. 모양이 틀린 항목은 버리고 같은 문항은 앞의 것', () => {
+  const base = { page: 1, grade: 3, class: 1, number: 2, name: null, id_confidence: '확실', quant: [], qual: [], notes: [] };
+  const out = fromModelOutput({ ...base, essays: [{ question: '9', text: '첫 글\n둘째 문단' }, { question: '9', text: '또' }, { question: 10, text: 'x' }, { question: '11' }, '글자', { question: '10', text: '' }] }) as any;
+  assert.deepEqual(out.논술글, { 9: '첫 글\n둘째 문단', 10: '' });
+  assert.deepEqual((fromModelOutput({ ...base, essays: '글' }) as any).논술글, {});
+  assert.ok(!('논술글' in (fromModelOutput(base) as any))); // 논술형이 없는 세트의 출력은 그대로
+});
+
+test('systemPrompt: 논술형 세트는 글 전체를 essays로 받고, 단위의 답은 그 글에서 글자 그대로 옮기게 한다', async () => {
+  const r = await loadRules();
+  const plain = systemPrompt(r, key);
+  assert.ok(!plain.includes('essays'));
+  const p = systemPrompt(r, { ...key, 정량: [...key.정량, ...essayUnits] });
+  const section = p.slice(p.indexOf('# 논술형 문항'), p.indexOf('# 정답표'));
+  assert.ok(section.includes('`essays`에는 논술형 문항마다 항목 하나 `{question, text}`를 한 번씩 넣는다'));
+  assert.ok(section.includes('answer에는 그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로 옮긴다'));
+});

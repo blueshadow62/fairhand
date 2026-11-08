@@ -56,3 +56,10 @@ test('parseTranscript·validateTranscripts: page는 1 이상 정수, 답은 글�
   assert.throws(() => validateTranscripts(key, [{ ...t, 정량: { '1-1': { 답: null as unknown as string, 판정: 'X' } } }]), (e: unknown) => e instanceof DataError && /답은 글자/.test(e.message));
   assert.throws(() => validateTranscripts(key, [{ ...t, 정성: { E1: { 응답: true, 답: 3 as unknown as string } } }]), (e: unknown) => e instanceof DataError && /답은 글자/.test(e.message));
 });
+
+test('parseTranscript: 논술글(화면에만 쓰는 칸)은 글자 값만 남기고 모양이 틀리면 오류 대신 버린다. 옛 파일에는 없다', () => {
+  const base = { page: 3, 학년: 3, 반: 1, 번호: 1, 이름: null, 식별확신: '확실', 정량: {}, 정성: {}, 비고: [] };
+  assert.ok(!('논술글' in load('p01.json')));
+  assert.deepEqual(parseTranscript(JSON.stringify({ ...base, 논술글: { 9: '글 전체', 10: 3, 11: '' } }), 'x').논술글, { 9: '글 전체', 11: '' });
+  for (const 논술글 of ['글', ['글'], null, { 9: null }]) assert.ok(!('논술글' in parseTranscript(JSON.stringify({ ...base, 논술글 }), 'x')), JSON.stringify(논술글));
+});
