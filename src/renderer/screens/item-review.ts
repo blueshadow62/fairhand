@@ -6,8 +6,11 @@ import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
-import { anonLabels, groupAnswers, keyLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
+import { MASK_FILL, cropAspect, cropRect, gridColumns, identityInCrop, toPixels } from '../lib/answer-crop.js';
+import { cachedCrop, clearCrops, cropKey, loadCrop } from '../lib/crop-cache.js';
+import { anonLabels, anonOrder, groupAnswers, keyLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
+import { openRegionEditor } from './region-editor.js';
 
 /** 실행마다 새로 정한다. 익명 줄 순서가 실행마다 달라 지난번 순서로 학생을 짐작하지 못한다 */
 const SALT = Array.from(crypto.getRandomValues(new Uint32Array(2)), n => n.toString(36)).join('');
@@ -47,8 +50,27 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     [...root.querySelectorAll<HTMLElement>('[data-focus]')].find(x => x.dataset.focus === k)?.focus({ preventScroll: true });
   }
 
+  // ── 손글씨 격자: 답 칸이 있는 단위는 펼친 묶음의 답마다 같은 자리를 잘라 보인다. 원본이 무거워 화면에 들어온 칸만 읽는다 ──
+  const lazy = new WeakMap<Element, () => Promise<HTMLCanvasElement>>();
+  const seen = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      seen.unobserve(e.target);
+      const c = e.target as HTMLCanvasElement;
+      lazy.get(c)?.().then(src => { if (c.isConnected) paintCrop(c, src); }).catch(() => { c.classList.add('failed'); c.title = t('item.imageFailed'); });
+    }
+  }, { root: groups, rootMargin: '300px 0px' });
+  function paintCrop(c: HTMLCanvasElement, src: HTMLCanvasElement): void {
+    c.width = src.width; c.height = src.height;
+    c.getContext('2d')!.drawImage(src, 0, 0);
+    c.style.setProperty('--ar', String(src.width / src.height)); // 그림을 받기 전에는 A4로 어림한 모양이었다
+  }
+  /** 격자 열 수는 칸 모양과 지금 너비로 정한다(그림 칸을 열고 닫거나 창 크기를 바꾸면 다시) */
+  const fitGrids = (): void => { for (const g of groups.querySelectorAll<HTMLElement>('.hw-grid')) g.style.gridTemplateColumns = `repeat(${gridColumns(g.clientWidth, Number(g.dataset.aspect))}, minmax(0, 1fr))`; };
+  new ResizeObserver(fitGrids).observe(groups);
+
   function render(d: SetData | null): void {
-    if (d?.폴더 !== data?.폴더) { open.clear(); unitId = null; closeViewer(false); }
+    if (d?.폴더 !== data?.폴더) { open.clear(); unitId = null; closeViewer(false); clearCrops(); }
     data = d;
     if (!d) { clear(units); clear(groups); return; }
     if (view && !d.transcripts.some(x => x.page === view!.page)) closeViewer(false);
@@ -125,8 +147,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     g.drawImage(img, 0, 0);
     // 끄는 동안에도 저장된 영역을 함께 칠해 머리 줄이 드러나지 않게 한다. 경계는 바깥쪽으로 올려 한 줄도 새지 않게
     for (const r of [identityMask(data.key), ...(dragging ? [dragging] : [])]) {
-      const x = Math.floor(r.x * W), y = Math.floor(r.y * H), w = Math.ceil((r.x + r.w) * W) - x, h = Math.ceil((r.y + r.h) * H) - y;
-      g.fillStyle = '#7d8696'; g.fillRect(x, y, w, h);
+      const { x, y, w, h } = toPixels(r, W, H);
+      g.fillStyle = MASK_FILL; g.fillRect(x, y, w, h);
       if (w > W * 0.2 && h > H * 0.02) {
         g.fillStyle = '#fff'; g.font = `600 ${Math.round(Math.min(h * 0.45, W * 0.03))}px Pretendard, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText(t('item.maskLabel'), x + w / 2, y + h / 2, w * 0.9);
@@ -145,7 +167,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   attachRectDrag(canvas, { enabled: () => editing && !!view?.img, onMove: r => { dragging = r; draw(); }, onDone: r => { if (r) void saveMask(r); else { dragging = null; draw(); } } });
 
   document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape' || !view || root.offsetParent === null) return; // 문항별 화면이 보일 때만
+    // 문항별 화면이 보일 때만. 답 칸 지정 창이 열려 있으면 Esc는 그 창을 닫는 데 쓴다
+    if (e.key !== 'Escape' || !view || root.offsetParent === null || document.querySelector('dialog[open]')) return;
     if (editing) { editing = false; dragging = null; renderViewBar(); draw(); } else closeViewer();
   });
 
@@ -173,6 +196,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   function renderGroups(): void {
     holdFocus();
     const scroll = groups.scrollTop; // 판정을 넣은 뒤 다시 그려도 보던 자리에 머문다
+    seen.disconnect(); // 지난번 칸은 지운다
     clear(groups);
     if (!data) return;
     const d = data;
@@ -182,23 +206,70 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     const u = (qty ?? qual)!;
     const labels = anonLabels(SALT, u.id, d.transcripts.map(x => x.page));
     const byPage = new Map(d.transcripts.map(x => [x.page, x]));
-    groups.append(el('div', { class: 'muted' }, t('item.notice')), head(u, !!qty, d.transcripts.every(x => unitChecked(x, u.id))));
-    if (qty) for (const g of sortGroups(groupAnswers(d.transcripts, qty.id))) groups.append(groupBox(qty, g, labels, byPage));
-    else groups.append(el('div', { class: 'qual-list' }, ...[...labels].sort(([, a], [, b]) => a - b).map(([page, n]) => qualRow(qual!, byPage.get(page)!, n))));
+    const region = d.key.답영역?.[u.id];
+    const grid = region ? gridOf(region, d) : null;
+    const qtyGroups = qty ? sortGroups(groupAnswers(d.transcripts, qty.id)) : [];
+    groups.append(el('div', { class: 'muted' }, t('item.notice')), head(u, !!qty, d.transcripts.every(x => unitChecked(x, u.id)), !!region, qtyGroups));
+    if (!region) groups.append(el('div', { class: 'region-hint band info' }, el('span', {}, t('item.region.hint')),
+      el('button', { class: 'small', 'data-focus': 'region-hint', onclick: () => editRegion(u) }, t('item.region.set'))));
+    const anon = [...labels].sort(([, a], [, b]) => a - b);
+    if (qty) for (const g of qtyGroups) groups.append(groupBox(qty, g, labels, byPage, grid));
+    else if (grid) groups.append(gridBox(grid, anon.map(([page, n]) => qualCell(qual!, byPage.get(page)!, n, grid)), 'qual-list'));
+    else groups.append(el('div', { class: 'qual-list' }, ...anon.map(([page, n]) => qualRow(qual!, byPage.get(page)!, n))));
+    fitGrids();
     groups.scrollTop = scroll;
     restoreFocus();
   }
 
-  function head(u: QtyUnit | QualUnit, isQty: boolean, allChecked: boolean): HTMLElement {
+  function head(u: QtyUnit | QualUnit, isQty: boolean, allChecked: boolean, hasRegion: boolean, qtyGroups: AnswerGroup[]): HTMLElement {
     const 유형 = isQty ? (u as QtyUnit).유형 : '응답형';
     const cases = el('input', { type: 'checkbox', 'data-focus': 'cases', checked: deps.recordCases(), onchange: () => deps.setRecordCases(cases.checked) });
+    const keys = qtyGroups.map(g => `${u.id}\u0000${g.정규}`), allOpen = keys.length > 0 && keys.every(k => open.has(k));
     return el('div', { class: 'ir-head' },
       el('div', { class: 'row' }, el('strong', { class: 'unit-id' }, u.id), 유형 ? el('span', { class: 'muted' }, t(`unit.${유형}`)) : null,
         unitPoints(u) === 1 ? null : el('span', { class: 'muted' }, t('review.points', { n: unitPoints(u) })),
         el('button', { class: 'primary', 'data-focus': 'all', disabled: busy || allChecked, title: t('item.confirmAllTitle'), onclick: () => void send(u.id, data!.transcripts.map(x => ({ page: x.page }))) }, t('item.confirmAll')),
-        isQty ? el('label', { title: t('item.recordCasesTitle') }, cases, t('item.recordCases')) : null),
+        el('button', { 'data-focus': 'region', onclick: () => editRegion(u) }, t(hasRegion ? 'item.region.edit' : 'item.region.set')),
+        hasRegion && isQty ? el('button', { 'data-focus': 'hw-all', onclick: () => { for (const k of keys) if (allOpen) open.delete(k); else open.add(k); renderGroups(); } },
+          t(allOpen ? 'item.grid.collapseAll' : 'item.grid.showAll')) : null),
       el('div', { class: 'ir-desc' }, u.설명),
-      isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null);
+      isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null,
+      isQty ? el('label', { class: 'cases', title: t('item.recordCasesTitle') }, cases, t('item.recordCases')) : null);
+  }
+
+  /** 잘라 볼 영역(답 칸에 사방 2% 여유), 그 안에서 신원 영역과 겹쳐 칠할 곳, 칸 모양 */
+  interface Grid { crop: MaskRect; hide: MaskRect | null; aspect: number }
+  function gridOf(region: MaskRect, d: SetData): Grid {
+    const crop = cropRect(region);
+    return { crop, hide: identityInCrop(crop, identityMask(d.key)), aspect: cropAspect(crop) };
+  }
+  const gridBox = (grid: Grid, cells: HTMLElement[], cls = ''): HTMLElement => el('div', { class: `hw-grid${cls ? ` ${cls}` : ''}`, 'data-aspect': String(grid.aspect) }, ...cells);
+  function hwCanvas(page: number, n: number, grid: Grid): HTMLCanvasElement {
+    const c = el('canvas', { class: 'hw', 'aria-label': t('item.grid.cell', { n }) });
+    c.style.setProperty('--ar', String(grid.aspect));
+    const url = imageUrl(data!.폴더, page), hit = cachedCrop(cropKey(url, grid.crop, grid.hide));
+    if (hit) paintCrop(c, hit);
+    else { lazy.set(c, () => loadCrop(url, grid.crop, grid.hide)); seen.observe(c); }
+    return c;
+  }
+
+  /** 답 칸 지정 창. 영역은 전사된 첫 장에서 잡고, 미리보기는 익명 순서로 다른 장 넷까지 */
+  function editRegion(u: QtyUnit | QualUnit): void {
+    if (!data) return;
+    const d = data, pages = d.transcripts.map(x => x.page);
+    if (!pages.length) return;
+    const first = Math.min(...pages), labels = anonLabels(SALT, u.id, pages);
+    openRegionEditor({ 폴더: d.폴더, 단위: u.id, current: d.key.답영역?.[u.id] ?? null, identity: identityMask(d.key), page: first,
+      previews: anonOrder(SALT, u.id, pages).filter(p => p !== first).slice(0, 4).map(p => ({ page: p, n: labels.get(p)! })),
+      save: async rect => {
+        try {
+          d.key = await api.setAnswerRegion(d.폴더, u.id, rect);
+          clearCrops(); // 옛 영역으로 자른 그림은 다시 쓰지 않는다
+          showInfo(t(rect ? 'item.region.saved' : 'item.region.cleared'));
+          if (data === d) renderGroups();
+          return true;
+        } catch (e) { showError((e as Error).message); return false; }
+      } });
   }
 
   const verdictButtons = (current: Panjeong | null, title: 'item.groupVerdict' | 'item.rowVerdict', focus: string, onPick: (v: Panjeong) => void): HTMLElement =>
@@ -208,7 +279,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   const checkMark = (tr: Transcript, 단위: string): HTMLElement =>
     unitChecked(tr, 단위) ? el('span', { class: 'ok-text', title: t('item.checked') }, '✓') : el('span', { class: 'muted' }, t('item.unchecked'));
 
-  function groupBox(u: QtyUnit, g: AnswerGroup, labels: Map<number, number>, byPage: Map<number, Transcript>): HTMLElement {
+  function groupBox(u: QtyUnit, g: AnswerGroup, labels: Map<number, number>, byPage: Map<number, Transcript>, grid: Grid | null): HTMLElement {
     const k = `${u.id}\u0000${g.정규}`, isOpen = open.has(k);
     const same = VERDICTS.find(v => g.판정[v] === g.장.length) ?? null;
     const status = g.확인 === g.장.length ? el('span', { class: 'ok-text' }, `✓ ${t('item.checked')}`)
@@ -224,7 +295,9 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
         verdictButtons(same, 'item.groupVerdict', `gv:${g.정규}`, v => void send(u.id, g.장.map(page => ({ page, 판정: v }))))));
     if (!isOpen) return box;
     // 줄 순서와 번호는 장 번호가 아니라 익명 번호(단위마다 다른 해시 순)
-    box.append(el('div', { class: 'group-rows' }, ...[...g.장].sort((a, b) => labels.get(a)! - labels.get(b)!).map(page => {
+    const pages = [...g.장].sort((a, b) => labels.get(a)! - labels.get(b)!);
+    if (grid) { box.append(gridBox(grid, pages.map(page => qtyCell(u, g, page, labels.get(page)!, byPage.get(page)!, grid)))); return box; }
+    box.append(el('div', { class: 'group-rows' }, ...pages.map(page => {
       const tr = byPage.get(page)!, v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), n = labels.get(page)!;
       return el('div', { class: `answer-row${view?.page === page ? ' viewing' : ''}` },
         el('span', { class: 'anon' }, t('item.answerN', { n })),
@@ -234,6 +307,26 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')));
     })));
     return box;
+  }
+
+  /** 손글씨 칸: 잘라낸 손글씨, 익명 번호와 확인 표시, 대표 답과 다른 전사 글, 판정 단추 */
+  function qtyCell(u: QtyUnit, g: AnswerGroup, page: number, n: number, tr: Transcript, grid: Grid): HTMLElement {
+    const v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim();
+    return el('div', { class: `hw-cell${view?.page === page ? ' viewing' : ''}` }, hwCanvas(page, n, grid),
+      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
+      own === g.대표 ? null : el('div', { class: 'answer' }, own),
+      el('div', { class: 'hw-actions' }, verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
+        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage'))));
+  }
+
+  function qualCell(u: QualUnit, tr: Transcript, n: number, grid: Grid): HTMLElement {
+    const v = tr.정성[u.id] ?? { 응답: false, 답: '' };
+    const cb = el('input', { type: 'checkbox', 'data-focus': `qr:${n}`, checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
+    return el('div', { class: `hw-cell${view?.page === tr.page ? ' viewing' : ''}` }, hwCanvas(tr.page, n, grid),
+      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
+      el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
+      el('div', { class: 'hw-actions' }, el('label', {}, cb, t('review.responded')),
+        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(tr.page, n) }, t('item.viewImage'))));
   }
 
   function qualRow(u: QualUnit, tr: Transcript, n: number): HTMLElement {

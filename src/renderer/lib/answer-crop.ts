@@ -4,6 +4,8 @@ import type { MaskRect } from '../../core/types.js';
 export const CROP_PAD = 0.02;
 /** 그림을 받기 전 칸 높이를 잡을 때 쓰는 쪽 모양(A4 세로, 가로/세로) */
 export const A4_ASPECT = 1 / Math.SQRT2;
+/** 학생 정보 자리를 칠하는 색. 종이(흰색)·글자(검정)와 다르고 어느 화면 색에서도 같게 */
+export const MASK_FILL = '#7d8696';
 
 /** 답 칸을 사방으로 pad만큼 넓힌 자르기 영역. 쪽 밖으로는 넘지 않는다 */
 export function cropRect(r: MaskRect, pad = CROP_PAD): MaskRect {

@@ -304,6 +304,7 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .item-review .ir-head .row { margin: 6px 0 4px; }
 .item-review .ir-head .unit-id { font-size: var(--fs-l); }
 .item-review .ir-head label { font-size: var(--fs-m); }
+.item-review .ir-head label.cases { margin-top: 4px; font-size: var(--fs-s); color: var(--text-2); }
 .item-review .ir-desc { font-weight: 600; }
 .item-review .answer { white-space: pre-wrap; overflow-wrap: anywhere; } /* 긴 답(논술형)도 줄을 바꿔 다 보인다 */
 .item-review .group { margin: 8px 0; border: 1px solid var(--line-2); border-radius: var(--r); }
@@ -336,6 +337,34 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .item-review canvas.sheet { display: block; background: #fff; }
 .item-review canvas.sheet.editing { cursor: crosshair; touch-action: none; }
 @media (max-width: 1200px) { .item-review { --units-w: 200px; } .item-review.viewing { --units-w: 180px; } }
+
+/* ── 손글씨 격자: 답 칸을 지정한 단위는 펼친 묶음의 답마다 잘라낸 손글씨 칸. 열 수(2~4)는 화면 코드가 칸 모양과 너비로 정한다 ── */
+.item-review .region-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.item-review .hw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px; border-top: 1px solid var(--line-2); background: var(--surface-2); }
+.item-review .qual-list.hw-grid { margin-top: 8px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.item-review .hw-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); }
+.item-review .hw-cell.viewing { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.item-review canvas.hw { display: block; width: 100%; height: auto; aspect-ratio: var(--ar, 6); object-fit: contain; border-radius: var(--r-s); background: var(--surface-3); }
+.item-review canvas.hw.failed { outline: 1px dashed var(--bad-line); }
+.item-review .hw-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: var(--fs-m); }
+.item-review .hw-meta .anon { color: var(--text-2); font-weight: 600; }
+.item-review .hw-cell .answer { font-size: var(--fs-m); }
+.item-review .hw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+
+/* ── 답 칸 지정 창 ── */
+/* 가운데 맞춤이면 미리보기가 그려지며 창이 커질 때 창이 위로 밀려 끄던 그림이 움직인다. 위에 붙여 아래로만 늘게 */
+dialog.region-editor { margin: 4vh auto auto; width: min(1000px, 94vw); max-height: 92vh; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--text); box-shadow: 0 12px 40px var(--shadow); }
+dialog.region-editor[open] { display: flex; flex-direction: column; gap: 8px; }
+dialog.region-editor::backdrop { background: rgba(10, 14, 20, .5); }
+dialog.region-editor h3 { margin: 0; }
+dialog.region-editor .page-wrap { flex: 1 1 auto; min-height: 200px; max-height: 52vh; overflow: auto; border-radius: var(--r); background: var(--viewer-bg); }
+dialog.region-editor canvas.page { display: block; width: 100%; cursor: crosshair; touch-action: none; background: #fff; }
+dialog.region-editor .preview-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+dialog.region-editor .previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+dialog.region-editor .preview { margin: 0; padding: 4px; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--surface-2); }
+dialog.region-editor .preview canvas { display: block; width: 100%; background: #fff; }
+dialog.region-editor .preview figcaption { font-size: var(--fs-s); color: var(--text-2); }
+dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
 .screen[data-tab="settings"] > section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--sp-4) 18px; margin-bottom: var(--sp-4); }

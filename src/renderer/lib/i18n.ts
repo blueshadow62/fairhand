@@ -528,6 +528,20 @@ const ko = {
   'item.maskReset': '가릴 영역을 기본(쪽 위 15%)으로 되돌렸습니다.',
   'item.maskLabel': '학생 정보 가림',
   'item.imageFailed': '그림을 불러오지 못했습니다.',
+  'item.region.set': '답 칸 지정',
+  'item.region.edit': '답 칸 고치기',
+  'item.region.hint': '답 칸을 지정하면 손글씨를 함께 볼 수 있습니다.',
+  'item.region.title': '{id} 답 칸 지정',
+  'item.region.help': '그림 위를 끌어 이 문항의 답 칸을 잡습니다. 모든 답안지에서 같은 자리를 사방으로 조금 넓혀(점선) 잘라 보입니다. 학생 정보 자리는 늘 칠해 둡니다.',
+  'item.region.preview': '다른 답안지의 같은 자리',
+  'item.region.previewHelp': '답이 잘려 보이면 영역을 더 넓게 잡으세요.',
+  'item.region.cancel': '취소',
+  'item.region.clear': '영역 지우기',
+  'item.region.saved': '답 칸을 저장했습니다. 묶음을 펼치면 손글씨가 함께 보입니다.',
+  'item.region.cleared': '답 칸을 지웠습니다.',
+  'item.grid.showAll': '손글씨 모두 보기',
+  'item.grid.collapseAll': '모두 접기',
+  'item.grid.cell': '답안 {n}의 손글씨',
 } as const;
 
 export type Key = keyof typeof ko;
@@ -1050,6 +1064,20 @@ const en: Record<Key, string> = {
   'item.maskReset': 'Hidden area set back to the default (top 15% of the page).',
   'item.maskLabel': 'Student details hidden',
   'item.imageFailed': 'Could not load the image.',
+  'item.region.set': 'Set the answer area',
+  'item.region.edit': 'Change the answer area',
+  'item.region.hint': 'Set the answer area to see the handwriting with the answers.',
+  'item.region.title': 'Answer area for {id}',
+  'item.region.help': 'Drag on the image to mark the answer area of this question. The same area, with a small margin (dashed line), is cut from every answer sheet. The student details area always stays shaded.',
+  'item.region.preview': 'The same area on other answer sheets',
+  'item.region.previewHelp': 'If an answer is cut off, mark a larger area.',
+  'item.region.cancel': 'Cancel',
+  'item.region.clear': 'Remove the area',
+  'item.region.saved': 'Answer area saved. Open a group to see the handwriting.',
+  'item.region.cleared': 'Answer area removed.',
+  'item.grid.showAll': 'Show all handwriting',
+  'item.grid.collapseAll': 'Collapse all',
+  'item.grid.cell': 'Handwriting of answer {n}',
 };
 
 export const DICT: Record<Language, Record<Key, string>> = { ko, en };
