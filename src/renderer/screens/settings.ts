@@ -20,6 +20,14 @@ export function cliStatusText(s: CliStatusView): string {
   return t('settings.cli.loginNeeded', { v });
 }
 
+/** 문서\글눈 아래 학기 폴더를 만들어 학기 폴더로 정하고 세트 목록을 다시 읽는다. 시작 화면의 '지금 상태'도 이것을 쓴다 */
+export async function createDefaultSemester(store: Ctx['store']): Promise<string> {
+  const p = await api.makeDefaultSemester();
+  store.update({ settings: await api.getSettings(), current: null });
+  await store.refreshSets();
+  return p;
+}
+
 function secretText(v: SecretView): string {
   if (!v.저장됨) return t('settings.secret.none');
   if (v.열림 === false) return t('settings.secret.locked');
@@ -78,19 +86,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'muted' }, t('settings.update.note'))]));
   }
 
+  let shownSemester: string | null = null;
   function renderBasics(): void {
     const s = store.state.settings;
+    shownSemester = s.학기폴더;
     clear(semesterBox);
     semesterBox.append(el('div', { class: 'row' }, t('settings.semester'), s.학기폴더 ? el('span', { class: 'path' }, s.학기폴더) : el('span', { class: 'muted' }, t('settings.notChosen')),
       el('button', { onclick: () => guard(async () => {
         const p = await api.pickFolder(); if (!p) return;
         store.update({ settings: await api.saveSettings({ 학기폴더: p }), current: null });
-        await store.refreshSets(); renderBasics(); showInfo(t('settings.semesterChanged'));
+        await store.refreshSets(); showInfo(t('settings.semesterChanged'));
       }) }, t('settings.choose'))),
       ...(s.학기폴더 ? [] : [el('div', { class: 'row' }, el('button', { class: 'primary', onclick: () => guard(async () => {
-        const p = await api.makeDefaultSemester();
-        store.update({ settings: await api.getSettings(), current: null });
-        await store.refreshSets(); renderBasics(); showInfo(t('settings.defaultMade', { path: p }));
+        showInfo(t('settings.defaultMade', { path: await createDefaultSemester(store) }));
       }) }, t('settings.makeDefault')))]),
       el('div', { class: 'muted' }, t('settings.semesterHelp')));
     clear(rosterBox);
@@ -227,6 +235,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('button', { onclick: () => guard(() => api.openExternal('privacy')) }, t('settings.privacy'))),
       updateBox));
   renderBasics();
+  // 학기 폴더는 시작 화면의 '기본 폴더 만들기'로도 바뀐다. 이미 그려 둔 이 화면이 '고르지 않음'으로 남지 않게
+  store.subscribe(s => { if (s.settings.학기폴더 !== shownSemester) renderBasics(); });
   renderProfiles();
   api.version().then(v => { versionText.textContent = v; }, () => undefined);
   api.updateStatus().then(renderUpdate, () => undefined);
