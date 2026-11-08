@@ -1,4 +1,5 @@
 import type { AnswerKey, MaskRect, Student, Transcript, UploadRecord } from '../core/types.js';
+import type { UnitResultsRequest } from '../core/unit-results.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
 /** 장 그림을 불러오는 주소(메인의 프로토콜 처리와 렌더러 img.src가 같은 규칙) */
@@ -38,6 +39,8 @@ export interface RunResult { ok: number[]; failed: { page: number; error: string
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
 export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]; 엑셀?: string; 엑셀오류?: string }
 export interface JudgeResult extends RejudgeResult { failed: { page: number; error: string }[] }
+/** 문항별 검토 결과. 바뀐장수: 판정·응답이 바뀐 장(이때만 엑셀을 다시 만든다), 확인장수: 새로 확인한 장, 사례수: 새로 기록한 사례 */
+export interface UnitResultsResult { 바뀐장수: number; 확인장수: number; 사례수: number; 사례오류?: string; 엑셀?: string; 엑셀오류?: string }
 /** 자동 업데이트 상태. error는 설정 화면의 한 줄과 로그에만 보인다(창을 띄우지 않음) */
 export type UpdateStatus =
   | { kind: 'disabled'; reason: 'dev' | 'off' | 'manual' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
@@ -52,7 +55,7 @@ export const CHANNELS = {
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
-  saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
+  saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
   setNameMask: 'set:name-mask', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
@@ -99,6 +102,8 @@ export interface GeulnunApi {
   deletePages(폴더: string, pages: number[]): Promise<{ 삭제: number; 엑셀?: string; 엑셀오류?: string }>;   // 여러 장을 지우고 엑셀은 한 번만
   recordUpload(폴더: string, r: Omit<UploadRecord, '일시'>): Promise<void>;
   saveTranscript(폴더: string, t: Transcript): Promise<{ 엑셀?: string; 엑셀오류?: string }>;
+  /** 문항별 검토: 한 단위의 여러 장 판정(정량)·응답(정성)을 정하고 확인 표시. 다른 단위는 그대로 두고, 판정이 바뀌면 엑셀을 한 번만 다시 만든다 */
+  setUnitResults(폴더: string, req: UnitResultsRequest): Promise<UnitResultsResult>;
   buildResult(폴더: string): Promise<{ 엑셀: string }>;
   buildCumulative(): Promise<{ 파일: string[] }>;
   /** 사례를 기록하고 같은 단위·같은 답의 장을 결정적으로 다시 판정한다(검토 화면, 사례로 기록이 켜져 있을 때) */

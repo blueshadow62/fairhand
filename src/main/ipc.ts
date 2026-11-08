@@ -155,6 +155,7 @@ export function registerIpc(d: IpcDeps): void {
 
   h(CHANNELS.saveTranscript, async (폴더: string, raw: unknown) => { const dir = await setDir(폴더); const t = parseTranscript(JSON.stringify(raw), '검토 화면'); return saveAndRebuild(dir, t, await roster(), { version: d.version }); });
   h(CHANNELS.buildResult, async (폴더: string) => rebuildResult(await setDir(폴더), await roster(), { version: d.version }));
+  h(CHANNELS.setUnitResults, async (폴더: string, req: unknown) => d.bridge.setUnitResults(await setDir(폴더), req)); // 요청 모양은 bridge가 검사한다
   h(CHANNELS.applyCase, async (폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }) => d.bridge.applyCase(await setDir(폴더), c));
   h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
   h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));

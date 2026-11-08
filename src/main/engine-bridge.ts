@@ -5,6 +5,7 @@ import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
+import { planUnitResults, unitResultsRequest } from '../core/unit-results.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { CODEX, CodexProvider, codexEnv, codexStatus, locateCodex } from '../engine/codex.js';
@@ -18,7 +19,7 @@ import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } 
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
-import { DEFAULT_EFFORT, DEFAULT_MODEL, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult } from '../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_MODEL, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type UnitResultsResult } from '../shared/ipc.js';
 import { openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -228,6 +229,33 @@ export class EngineBridge {
     const next = addCase(key, { 단위: c.단위, 답: c.답, 판정: c.판정, 일시: now().toISOString(), 출처: `검토 p${String(c.page).padStart(2, '0')}` });
     await saveKeyFile(setDir, next); // 사례는 확인을 지우지 않는다
     return this.rejudgeWith(setDir, next, transcripts);
+  }
+
+  /**
+   * 문항별 검토: 한 단위의 여러 장 판정·응답을 정하고 확인 표시를 한다. 그 단위·그 장만 쓰고, 엑셀은 판정이 바뀌었을 때 다 쓴 뒤 한 번만.
+   * 사례는 전사를 다 쓴 뒤에 기록한다. 기록이 실패해도 판정은 저장된 채로 알린다
+   */
+  async setUnitResults(setDir: string, raw: unknown, now: () => Date = () => new Date()): Promise<UnitResultsResult> {
+    const req = unitResultsRequest(raw);
+    const { key, transcripts } = await loadSet(setDir);
+    const plan = planUnitResults(key, transcripts, req, now());
+    let written = 0;
+    for (const t of plan.쓸전사) {
+      try { await saveTranscript(setDir, t); written++; }
+      catch (e) {
+        if (written) await this.rebuildSafe(setDir); // 이미 쓴 장과 엑셀이 어긋나지 않게
+        // 신원을 숨기는 화면에서 보이므로 파일 이름(장 번호)을 빼고 알린다
+        const why = (e instanceof Error ? e.message : String(e)).replace(/p\d{2,}\.json(\.tmp)?/g, '전사 파일');
+        throw new DataError(`${plan.쓸전사.length}장 중 ${written}장만 저장했습니다: ${why}`);
+      }
+    }
+    let 사례오류: string | undefined;
+    if (plan.사례.length) {
+      try { let next = key; for (const c of plan.사례) next = addCase(next, c); await saveKeyFile(setDir, next); } // 사례는 확인을 지우지 않는다
+      catch (e) { 사례오류 = e instanceof Error ? e.message : String(e); }
+    }
+    return { 바뀐장수: plan.바뀐장수, 확인장수: plan.확인장수, 사례수: 사례오류 ? 0 : plan.사례.length, ...(사례오류 ? { 사례오류 } : {}),
+      ...(plan.바뀐장수 ? await this.rebuildSafe(setDir) : {}) }; // 확인 표시만 바뀐 것은 엑셀에 나오지 않는다
   }
 
   async removeCase(setDir: string, 단위: string, 답: string): Promise<AnswerKey> {
