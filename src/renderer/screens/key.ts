@@ -229,14 +229,40 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       rows = draftToRows(d); touch(); renderTable();
       clear(cautionBox);
       if (d.주의.length) cautionBox.append(el('div', { class: 'band warn' }, t('key.draftCaution', { notes: d.주의.join(' / ') })));
+      showTab('questions'); // 초안을 넣은 표와 주의를 바로 확인하게
       showInfo(t('key.draftDone'));
     } catch (e) { showError((e as Error).message); }
     finally { draftBtn.disabled = false; draftBtn.textContent = t('key.makeDraft'); }
   }
 
+  // ── 칸 안의 탭: 문항 표·AI 초안·채점 규칙·한 장 채점해 보기가 한 화면에 이어져 길이가 2,200px를 넘었다.
+  //    같은 실행 안에서는 마지막에 고른 탭을 유지한다(세트를 바꾸거나 언어를 바꿔 다시 불러와도) ──
+  type KeyTab = 'questions' | 'draft' | 'rules' | 'try';
+  const KEY_TABS: KeyTab[] = ['questions', 'draft', 'rules', 'try'];
+  const TAB_PREF = 'geulnun.key.tab';
+  let tab: KeyTab = (() => { try { const v = sessionStorage.getItem(TAB_PREF); return KEY_TABS.find(k => k === v) ?? 'questions'; } catch { return 'questions'; } })();
+  const tabLabel: Record<KeyTab, string> = { questions: t('key.questions'), draft: t('key.tab.draft'), rules: t('key.tab.rules'), try: t('key.tab.try') };
+  const tabButtons = new Map<KeyTab, HTMLButtonElement>();
+  const panels = new Map<KeyTab, HTMLElement>();
+  const tabBar = el('div', { class: 'seg key-tabs', role: 'tablist', 'aria-label': t('key.tabs') }, ...KEY_TABS.map(k => {
+    const b = el('button', { role: 'tab', id: `key-tab-${k}`, 'aria-controls': `key-panel-${k}`, onclick: () => showTab(k) }, tabLabel[k]);
+    tabButtons.set(k, b);
+    return b;
+  }));
+  function showTab(next: KeyTab): void {
+    tab = next;
+    try { sessionStorage.setItem(TAB_PREF, next); } catch { /* 이번 화면에서만 유지 */ }
+    for (const [k, b] of tabButtons) { b.classList.toggle('active', k === next); b.setAttribute('aria-selected', String(k === next)); }
+    for (const [k, p] of panels) p.classList.toggle('hidden', k !== next);
+  }
+  function panel(k: KeyTab, ...children: (Node | string | null)[]): HTMLElement {
+    const p = el('div', { role: 'tabpanel', id: `key-panel-${k}`, 'aria-labelledby': `key-tab-${k}` }, ...children);
+    panels.set(k, p);
+    return p;
+  }
+
   // ── 새 세트의 시작 방법: 빈 표가 먼저 보이고 AI 초안 칸은 표 아래에 있어 손으로 입력부터 하기 쉬웠다. 고르거나 표에 글이 생기면 감춘다 ──
   let startPicked = false;
-  let draftCard: HTMLElement | null = null;
   let firstDesc: HTMLInputElement | null = null; // '직접 입력'을 고르면 초점을 둘 첫 행의 설명 칸
   const startBox = el('div', { class: 'card key-start' });
   function renderStart(): void {
@@ -249,12 +275,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   startBox.append(el('h3', {}, t('key.start.title')), el('div', { class: 'muted' }, t('key.start.help')),
     el('div', { class: 'key-start-options' },
       startOption(t('key.start.ai'), t('key.start.aiHelp'), () => {
-        pickStart();
-        draftCard?.scrollIntoView({ block: 'start' });
-        problemUpload.querySelector('input')?.focus({ preventScroll: true });
+        pickStart(); showTab('draft');
+        problemUpload.querySelector('input')?.focus();
       }),
       startOption(t('key.start.manual'), t('key.start.manualHelp'), () => {
-        pickStart();
+        pickStart(); showTab('questions');
         if (!rows.length) { rows = [emptyRow()]; renderTable(); }
         firstDesc?.focus();
       }),
@@ -426,7 +451,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     await guard(async () => {
       const k = await api.importKey(); if (!k) return;
       if (dirty && !confirm(t('key.importConfirm'))) return;
-      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; startPicked = true; renderEditor();
+      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; startPicked = true;
+      tab = 'questions'; // 가져온 표를 바로 확인하게
+      renderEditor();
       showInfo(t('key.imported'));
     });
   }
@@ -462,21 +489,21 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'row key-meta' }, el('label', {}, t('key.fieldTitle'), 글Input), el('label', {}, t('key.fieldSemester'), 학기Input), 학년Select,
           el('label', {}, t('key.fieldClasses'), 반Input), el('label', {}, t('key.fieldHeadcount'), 인원Input))),
       startBox,
-      el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox),
-      draftCard = el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
-        el('div', { class: 'muted' }, t('key.draftHelp')),
-        el('div', { class: 'row' }, problemUpload, sourceUpload, clearUploads),
-        el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
-        problemArea, sourceArea,
-        el('div', { class: 'row' }, draftBtn,
-          폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
-        cautionBox,
-        el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
-      el('div', { class: 'card' }, el('h3', {}, t('key.rulesTitle')), rulesBox, casesBox, judgeBar, judgeBox),
-      el('div', { class: 'card' }, el('h3', {}, t('key.tryTitle')),
-        el('div', { class: 'muted' }, t('key.tryHelp')),
-        tryInput, tryBox),
+      // 초안 주의(cautionBox)는 표에 대한 것이라 표 위에 둔다. 저장 막대는 채점 규칙도 같은 저장으로 적용되므로 탭 밖에 둔다
+      el('div', { class: 'card key-tabcard' }, tabBar,
+        panel('questions', cautionBox, tableBox),
+        panel('draft', el('h3', {}, t('key.makeDraft')),
+          el('div', { class: 'muted' }, t('key.draftHelp')),
+          el('div', { class: 'row' }, problemUpload, sourceUpload, clearUploads),
+          el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
+          problemArea, sourceArea,
+          el('div', { class: 'row' }, draftBtn,
+            폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
+          el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
+        panel('rules', rulesBox, casesBox, judgeBar, judgeBox),
+        panel('try', el('div', { class: 'muted' }, t('key.tryHelp')), tryInput, tryBox)),
       saveBar);
+    showTab(tab);
     renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); renderStart(); clear(judgeBox);
   }
 
