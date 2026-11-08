@@ -30,6 +30,7 @@ export function keyProblems(k: unknown): string[] {
     if (typeof u?.정답 !== 'string') p.push(`${u?.id}: 정답이 없습니다`);
     if (u?.허용 !== undefined && !strList(u.허용)) p.push(`${u?.id}: 허용은 글자 목록이어야 합니다`);
     if (u?.핵심 !== undefined && !strList(u.핵심)) p.push(`${u?.id}: 핵심은 글자 목록이어야 합니다`);
+    if (u?.유형 === '논술형' && u.종류 !== '인용' && u.종류 !== '용어') p.push(`${u?.id}: 논술형 단위의 종류는 '인용' 또는 '용어'여야 합니다`);
   }
   if (o.채점규칙 !== undefined) {
     if (typeof o.채점규칙 !== 'object' || o.채점규칙 === null || Array.isArray(o.채점규칙)) p.push('채점규칙은 객체여야 합니다');

@@ -15,7 +15,7 @@ const ko = {
   'common.notConfirmed': '정답표가 아직 확인되지 않았습니다',
 
   // 데이터 값의 표시 이름(값 자체는 한글 그대로 저장된다)
-  'unit.빈칸형': '빈칸형', 'unit.단답형': '단답형', 'unit.문장형': '문장형', 'unit.요소형': '요소형', 'unit.응답형': '응답형',
+  'unit.빈칸형': '빈칸형', 'unit.단답형': '단답형', 'unit.문장형': '문장형', 'unit.요소형': '요소형', 'unit.논술형': '논술형', 'unit.응답형': '응답형',
   'verdict.O': 'O', 'verdict.X': 'X', 'verdict.빈칸': '빈칸',
   'hwaksin.확실': '확실', 'hwaksin.추정': '추정', 'hwaksin.불명': '불명',
 
@@ -279,6 +279,12 @@ const ko = {
   'key.col.keywords': '핵심(쉼표)',
   'key.col.elements': '요소(줄마다)',
   'key.col.points': '배점',
+  'key.essay.quote': '인용',
+  'key.essay.term': '용어',
+  'key.essay.quotePoints': '인용 하나의 배점',
+  'key.essay.termPoints': '용어 하나의 배점',
+  'key.essay.quotesHint': '인용할 문장(줄마다 하나)',
+  'key.essay.termsHint': '써야 할 용어(쉼표, 다른 표기는 /)',
   'key.up': '위로',
   'key.down': '아래로',
   'key.addRow': '행 추가',
@@ -287,7 +293,7 @@ const ko = {
   'key.deleteQuestionConfirm': '{n}번 문항의 행 {rows}개를 모두 지울까요?',
   'key.clearAll': '문항 모두 지우기',
   'key.clearAllConfirm': '표의 모든 행을 지울까요? 저장하기 전이면 저장하지 않고 나가서 되돌릴 수 있습니다.',
-  'key.typesHelp': '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 배점, 순서 무관. 응답형: 응답 여부만 봄. 배점은 기본 1점이고 행마다 바꿀 수 있음.',
+  'key.typesHelp': '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 배점, 순서 무관. 논술형: 요소 칸에 인용할 문장(줄마다), 핵심 칸에 써야 할 용어(쉼표)를 넣고 하나마다 배점. 응답형: 응답 여부만 봄. 배점은 기본 1점이고 행마다 바꿀 수 있음.',
   'key.rule.spelling': '맞춤법이 다른 같은 뜻의 답',
   'key.rule.spellingHelp': "예: '세약서'를 계약서로 볼지",
   'key.rule.broader': '정답보다 넓은 말',
@@ -379,6 +385,7 @@ const ko = {
   'form.answerEmpty': '{at}: 정답이 비었습니다',
   'form.keywordsMissing': '{at}: 문장형인데 핵심 낱말이 없습니다',
   'form.pointsBad': '{at}: 배점은 0보다 크고 100 이하인 수여야 합니다',
+  'form.essayEmpty': '{at}: 논술형인데 인용할 문장도 써야 할 용어도 없습니다',
 
   // 검토
   'review.title': '검토: {name}',
@@ -455,7 +462,7 @@ const en: Record<Key, string> = {
   'common.saveKeyFirst': 'Save the answer key first',
   'common.notConfirmed': 'The answer key is not confirmed yet',
 
-  'unit.빈칸형': 'Blank', 'unit.단답형': 'Short', 'unit.문장형': 'Sentence', 'unit.요소형': 'Elements', 'unit.응답형': 'Response',
+  'unit.빈칸형': 'Blank', 'unit.단답형': 'Short', 'unit.문장형': 'Sentence', 'unit.요소형': 'Elements', 'unit.논술형': 'Essay', 'unit.응답형': 'Response',
   'verdict.O': 'O', 'verdict.X': 'X', 'verdict.빈칸': 'blank',
   'hwaksin.확실': 'sure', 'hwaksin.추정': 'guessed', 'hwaksin.불명': 'unknown',
 
@@ -715,6 +722,12 @@ const en: Record<Key, string> = {
   'key.col.keywords': 'Keywords (commas)',
   'key.col.elements': 'Elements (one per line)',
   'key.col.points': 'Points',
+  'key.essay.quote': 'Quote',
+  'key.essay.term': 'Term',
+  'key.essay.quotePoints': 'Points per quote',
+  'key.essay.termPoints': 'Points per term',
+  'key.essay.quotesHint': 'Sentences to quote (one per line)',
+  'key.essay.termsHint': 'Required terms (commas, alternatives with /)',
   'key.up': 'Up',
   'key.down': 'Down',
   'key.addRow': 'Add row',
@@ -723,7 +736,7 @@ const en: Record<Key, string> = {
   'key.deleteQuestionConfirm': 'Delete all {rows} rows of question {n}?',
   'key.clearAll': 'Clear all questions',
   'key.clearAllConfirm': 'Delete every row in the table? Before saving, you can undo this by leaving without saving.',
-  'key.typesHelp': 'Blank: one row per blank. Short: one answer. Sentence: all keywords must appear for O. Elements: points for each element, any order. Response: only whether the student responded. Points default to 1 and can be changed per row.',
+  'key.typesHelp': 'Blank: one row per blank. Short: one answer. Sentence: all keywords must appear for O. Elements: points for each element, any order. Essay: sentences to quote (one per line) in Elements and required terms (commas) in Keywords, points for each. Response: only whether the student responded. Points default to 1 and can be changed per row.',
   'key.rule.spelling': 'Same meaning, different spelling',
   'key.rule.spellingHelp': 'e.g. whether a misspelled answer counts',
   'key.rule.broader': 'Broader than the key',
@@ -814,6 +827,7 @@ const en: Record<Key, string> = {
   'form.answerEmpty': '{at}: the answer is empty',
   'form.keywordsMissing': '{at}: sentence type but no keywords',
   'form.pointsBad': '{at}: points must be more than 0 and at most 100',
+  'form.essayEmpty': '{at}: essay type but no sentences to quote or terms',
 
   'review.title': 'Review: {name}',
   'review.imageAlt': 'Answer sheet image',

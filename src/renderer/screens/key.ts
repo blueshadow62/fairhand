@@ -184,8 +184,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(tableBox);
     const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), t('key.col.points'), ''].map(h => el('th', {}, h)));
     const body = rows.map((r, i) => {
-      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형', allow: r.유형 === '요소형' || r.유형 === '응답형', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
-      const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소' | '배점') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
+      // 논술형은 요소 칸에 인용할 문장, 핵심 칸에 써야 할 용어를 쓴다(정답·허용 칸은 쓰지 않음)
+      const essay = r.유형 === '논술형';
+      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형' || essay, allow: r.유형 === '요소형' || r.유형 === '응답형' || essay, kw: r.유형 !== '문장형' && !essay, el: r.유형 !== '요소형' && !essay };
+      const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소' | '배점' | '용어배점') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
+      const pointsIn = (key: '배점' | '용어배점', label: string) => bind(el('input', { type: 'number', min: '0.5', step: '0.5', class: 'points', 'aria-label': label }), key);
+      const pointsCell = essay
+        ? el('div', { class: 'essay-points' }, el('label', {}, t('key.essay.quote'), pointsIn('배점', t('key.essay.quotePoints'))), el('label', {}, t('key.essay.term'), pointsIn('용어배점', t('key.essay.termPoints'))))
+        : pointsIn('배점', t('key.col.points'));
       const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
       const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
@@ -200,9 +206,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('td', {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')),
         el('td', {}, bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답')),
         el('td', {}, bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용')),
-        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심')),
-        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
-        el('td', {}, bind(el('input', { type: 'number', min: '0.5', step: '0.5', class: 'points', 'aria-label': t('key.col.points') }), '배점')),
+        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords'), placeholder: essay ? t('key.essay.termsHint') : '' }), '핵심')),
+        el('td', {}, bind(el('textarea', { rows: essay ? 3 : 2, disabled: off.el, 'aria-label': t('key.col.elements'), placeholder: essay ? t('key.essay.quotesHint') : '' }), '요소')),
+        el('td', {}, pointsCell),
         el('td', {}, el('div', { class: 'row' },
           el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
           el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow')),

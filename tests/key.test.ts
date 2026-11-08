@@ -24,6 +24,14 @@ test('배점: 만점은 배점의 합(없으면 1점), 0 이하·글자·100 넘
   assert.equal(bad(101), true);
 });
 
+test('논술형 단위는 종류(인용·용어)가 있어야 한다', () => {
+  const k = parseKey(readFileSync(FX, 'utf-8'));
+  const essay = (종류: unknown) => keyProblems({ ...k, 정량: [{ id: '9-1', 문항: 9, 설명: 'x', 정답: 'y', 유형: '논술형', 종류 }] }).some(p => p.includes('종류'));
+  assert.equal(essay('인용'), false);
+  assert.equal(essay('용어'), false);
+  assert.equal(essay(undefined), true);
+});
+
 test('parseKey: 학기가 없으면 DataError', () => {
   assert.throws(() => parseKey('{"대상":{"학년":3,"반":[1]},"정량":[],"정성":[]}', 'x.json'),
     (e: unknown) => e instanceof DataError && /x\.json/.test(e.message) && /학기/.test(e.message));

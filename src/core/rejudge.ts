@@ -13,10 +13,20 @@ export interface Change { 단위: string; 이전: Panjeong; 이후: Panjeong; �
 /** 글자로 결정되는 판정(빈칸·사례·정답·허용). 뜻으로 볼 일이면 null */
 export function decide(key: AnswerKey, 단위: string, 답: string): { 판정: Panjeong; 근거: Change['근거'] } | null {
   const n = normalizeAnswer(답);
+  const u = key.정량.find(x => x.id === 단위);
+  if (u?.유형 === '논술형') {
+    // 논술형 답은 학생 글에서 그 요소를 찾아 옮긴 부분이다. 비었으면 '글은 썼는데 없음(X)'과 '쓴 글 없음(빈칸)'을
+    // 모델만 가를 수 있어 그대로 둔다. 정답 문장·용어가 그대로 들어 있으면 O로 확정한다
+    if (!n) return null;
+    const c = findCase(key, 단위, 답);
+    if (c) return { 판정: c.판정, 근거: '사례' };
+    if (n.includes(normalizeAnswer(u.정답))) return { 판정: 'O', 근거: '정답' };
+    if (u.허용?.some(a => normalizeAnswer(a) && n.includes(normalizeAnswer(a)))) return { 판정: 'O', 근거: '허용' };
+    return null;
+  }
   if (!n) return { 판정: '빈칸', 근거: '빈칸' };
   const c = findCase(key, 단위, 답);
   if (c) return { 판정: c.판정, 근거: '사례' };
-  const u = key.정량.find(x => x.id === 단위);
   if (!u) return null;
   if (normalizeAnswer(u.정답) === n) return { 판정: 'O', 근거: '정답' };
   if (u.허용?.some(a => normalizeAnswer(a) === n)) return { 판정: 'O', 근거: '허용' };

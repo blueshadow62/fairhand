@@ -3,17 +3,26 @@ import type { AnswerKey, Case, GradingRules, QtyUnit, QualUnit } from '../../cor
 import type { KeyDraftResult } from '../../shared/ipc.js';
 import { t } from './i18n.js';
 
-export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '응답형';
-export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */; 배점: string /* 단위마다(요소형은 요소마다), 기본 1 */ }
+export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '논술형' | '응답형';
+/**
+ * 논술형은 칸을 이렇게 쓴다: 요소 = 인용할 문장(줄마다 하나), 핵심 = 써야 할 용어(쉼표, 다른 표기는 '/'),
+ * 배점 = 인용 하나의 배점, 용어배점 = 용어 하나의 배점
+ */
+export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */; 배점: string /* 단위마다(요소형은 요소마다), 기본 1 */; 용어배점: string /* 논술형 용어 하나의 배점, 기본 1 */ }
 export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */; 채점규칙?: GradingRules /* 없으면 기본값 */ }
 
-export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '응답형'];
-export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '', 배점: '1' });
+export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '논술형', '응답형'];
+export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '', 배점: '1', 용어배점: '1' });
 
 const list = (s: string, sep: RegExp): string[] => s.split(sep).map(x => x.trim()).filter(Boolean);
 /** 1점이면 쓰지 않는다(정답표를 짧게, 배점을 두기 전 정답표와 같은 모양으로) */
-const points = (r: UnitRow): { 배점?: number } => { const n = Number(r.배점); return Number.isFinite(n) && n > 0 && n !== 1 ? { 배점: n } : {}; };
+const pointsOf = (text: string): { 배점?: number } => { const n = Number(text); return Number.isFinite(n) && n > 0 && n !== 1 ? { 배점: n } : {}; };
+const points = (r: UnitRow): { 배점?: number } => pointsOf(r.배점);
 const pointsText = (u: { 배점?: number }): string => String(u.배점 ?? 1);
+const validPoints = (text: string): boolean => { const n = Number(text); return Number.isFinite(n) && n > 0 && n <= 100; };
+/** 논술형 용어 칸: "구성주의, 학습자 중심/학습자중심" → [{정답: 구성주의}, {정답: 학습자 중심, 허용: [학습자중심]}] */
+const terms = (s: string): { 정답: string; 허용: string[] }[] =>
+  list(s, /,/).map(x => x.split('/').map(y => y.trim()).filter(Boolean)).filter(a => a.length).map(([정답, ...허용]) => ({ 정답: 정답!, 허용 }));
 
 /** 편집 행 → 정답표. id는 문항마다 행 순서로 1, 2…(요소형은 요소마다), 응답형(정성)은 E1, E2… */
 export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['확인'], 사례?: Case[]): AnswerKey {
@@ -24,6 +33,11 @@ export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['�
     if (r.유형 === '응답형') { 정성.push({ id: `E${정성.length + 1}`, 문항: r.문항, 설명: r.설명.trim(), ...points(r) }); continue; }
     if (r.유형 === '요소형') {
       list(r.요소, /\r?\n/).forEach((정답, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `요소 ${i + 1}`, 정답, 유형: '요소형', ...points(r) }));
+      continue;
+    }
+    if (r.유형 === '논술형') { // 한 편의 글에서 찾을 요소마다 단위 하나(인용 먼저, 그다음 용어)
+      list(r.요소, /\r?\n/).forEach((정답, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `인용 ${i + 1}`, 정답, 유형: '논술형', 종류: '인용', ...points(r) }));
+      terms(r.핵심).forEach(({ 정답, 허용 }, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `용어 ${i + 1}`, 정답, ...(허용.length ? { 허용 } : {}), 유형: '논술형', 종류: '용어', ...pointsOf(r.용어배점) }));
       continue;
     }
     const u: QtyUnit = { id: nextId(r.문항), 문항: r.문항, 설명: r.설명.trim(), 정답: r.정답.trim() };
@@ -51,15 +65,29 @@ function unitsToRows(정량: QtyUnit[], 정성: QualUnit[]): UnitRow[] {
   for (const u of 정량) perQuestion.set(u.문항, (perQuestion.get(u.문항) ?? 0) + 1);
   const rows: UnitRow[] = [];
   const elementRow = new Map<number, UnitRow>();
+  const essayRow = new Map<number, UnitRow>();
   for (const u of 정량) {
     const 유형: UnitType = u.유형 ?? (u.핵심?.length ? '문장형' : (perQuestion.get(u.문항)! > 1 ? '빈칸형' : '단답형'));
+    if (유형 === '논술형') { // 같은 문항의 인용·용어 단위를 한 행으로 모은다
+      let row = essayRow.get(u.문항);
+      if (!row) { row = emptyRow(u.문항, '논술형'); row.요소 = ''; essayRow.set(u.문항, row); rows.push(row); }
+      if (u.종류 === '용어') {
+        const term = [u.정답, ...(u.허용 ?? [])].join('/');
+        if (!row.핵심) row.용어배점 = pointsText(u);
+        row.핵심 = row.핵심 ? `${row.핵심}, ${term}` : term;
+      } else {
+        if (!row.요소) row.배점 = pointsText(u);
+        row.요소 = row.요소 ? `${row.요소}\n${u.정답}` : u.정답;
+      }
+      continue;
+    }
     if (유형 === '요소형') {
       const row = elementRow.get(u.문항);
       if (row) { row.요소 += `\n${u.정답}`; continue; }
       const r = { ...emptyRow(u.문항, '요소형'), 요소: u.정답, 배점: pointsText(u) };
       elementRow.set(u.문항, r); rows.push(r); continue;
     }
-    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '', 배점: pointsText(u) });
+    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '', 배점: pointsText(u), 용어배점: '1' });
   }
   for (const u of 정성) rows.push({ ...emptyRow(u.문항, '응답형'), 설명: u.설명, 배점: pointsText(u) });
   return rows;
@@ -84,10 +112,13 @@ export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
     const at = t('form.rowAt', { n: i + 1 });
     if (!Number.isInteger(r.문항) || r.문항 <= 0) e.push(t('form.questionBad', { at }));
     if (r.유형 === '요소형') { if (!list(r.요소, /\r?\n/).length) e.push(t('form.elementsMissing', { at })); }
+    else if (r.유형 === '논술형') {
+      if (!list(r.요소, /\r?\n/).length && !terms(r.핵심).length) e.push(t('form.essayEmpty', { at }));
+      if (!validPoints(r.용어배점)) e.push(t('form.pointsBad', { at }));
+    }
     else if (r.유형 !== '응답형' && !r.정답.trim()) e.push(t('form.answerEmpty', { at }));
     if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(t('form.keywordsMissing', { at }));
-    const n = Number(r.배점);
-    if (!(Number.isFinite(n) && n > 0 && n <= 100)) e.push(t('form.pointsBad', { at }));
+    if (!validPoints(r.배점)) e.push(t('form.pointsBad', { at }));
   });
   return e;
 }

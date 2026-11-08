@@ -73,3 +73,11 @@ test('transcribeRequest: 규칙+정답표 시스템 프롬프트, 쪽 지시, �
   assert.deepEqual(r.schema, transcriptSchema(key));
   assert.equal(r.effort, 'high');
 });
+
+test('systemPrompt: 논술형 문항이 있는 세트에만 논술형 절을 붙인다(없는 세트의 지시문은 그대로)', async () => {
+  const rules = await loadRules();
+  assert.ok(!systemPrompt(rules, key).includes('# 논술형 문항'));
+  const essay = systemPrompt(rules, { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형', 종류: '인용' }] });
+  assert.ok(essay.includes('# 논술형 문항'));
+  assert.ok(essay.indexOf('# 논술형 문항') < essay.indexOf('# 정답표'));
+});

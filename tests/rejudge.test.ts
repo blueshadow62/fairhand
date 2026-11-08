@@ -2,10 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { addCase, findCase, normalizeAnswer, pagesWithSameAnswer, rejudgeAll, rejudgeTranscript, removeCase } from '../src/core/rejudge.js';
+import { addCase, decide, findCase, normalizeAnswer, pagesWithSameAnswer, rejudgeAll, rejudgeTranscript, removeCase } from '../src/core/rejudge.js';
 import type { AnswerKey, Transcript } from '../src/core/types.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
+
+test('decide(논술형): 글 속에 정답 문장·용어(허용)가 그대로 있으면 O, 비었거나 못 찾으면 모델 판정을 둔다(X·빈칸을 덮지 않음)', () => {
+  const essayKey: AnswerKey = { ...key, 정량: [
+    { id: '5-1', 문항: 5, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형', 종류: '인용' },
+    { id: '5-2', 문항: 5, 설명: '용어 1', 정답: '학습자 중심', 허용: ['학습자중심'], 유형: '논술형', 종류: '용어' }] };
+  assert.deepEqual(decide(essayKey, '5-1', '그래서 배움은 삶이다 라고 했다'), { 판정: 'O', 근거: '정답' });
+  assert.deepEqual(decide(essayKey, '5-2', '학습자중심 수업'), { 판정: 'O', 근거: '허용' });
+  assert.equal(decide(essayKey, '5-1', ''), null); // 빈칸으로 바꾸지 않는다
+  assert.equal(decide(essayKey, '5-1', '배움이 곧 삶'), null); // 바꿔 쓴 것은 모델 판정대로
+});
 const t = (page: number, 답: Record<string, [string, 'O' | 'X' | '빈칸']>, 비고: string[] = []): Transcript => ({
   page, 학년: 3, 반: 1, 번호: page, 이름: null, 식별확신: '확실',
   정량: Object.fromEntries(Object.entries(답).map(([id, [a, v]]) => [id, { 답: a, 판정: v }])),
