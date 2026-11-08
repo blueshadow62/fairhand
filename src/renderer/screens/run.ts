@@ -368,6 +368,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const progressBar = el('progress', { max: '1', value: '0' });
   const progressText = el('span');
   const pagesInput = el('input', { size: 10, placeholder: t('common.pagesPlaceholder') });
+  let redoOpen = false;
 
   async function run(opts: { pages?: number[]; force?: boolean }): Promise<void> {
     if (!data || running) return;
@@ -418,15 +419,18 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('button', { class: 'danger', disabled: !running, onclick: () => api.cancelRun().catch(e => showError(e.message)) }, t('run.cancel')),
         progressBar, progressText),
       el('div', { class: 'muted' }, t('run.startHelp')),
-      el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
-        el('button', { disabled: running || trying || !confirmed, onclick: () => {
-          const pages = parsePageSpec(pagesInput.value);
-          if (!pages) { showError(t('common.badPageSpec')); return; }
-          const missing = pages.filter(p => !data!.pages.includes(p));
-          if (missing.length) { showError(t('run.missingPages', { pages: missing.map(tag).join(', ') })); return; }
-          if (!confirm(t('run.redoConfirm', { pages: pages.map(tag).join(', ') }))) return;
-          void run({ pages, force: true });
-        } }, t('run.redo'))),
+      // 처음 쓰는 사람에게는 '전사 시작' 하나면 되어 다시 전사할 장은 접어 둔다. 전사 칸을 다시 그려도 사용자가 연 상태는 그대로
+      el('details', { class: 'advanced', open: redoOpen, ontoggle: (e: Event) => { redoOpen = (e.target as HTMLDetailsElement).open; } },
+        el('summary', {}, t('run.advanced'), el('span', { class: 'muted' }, t('run.advancedHint'))),
+        el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
+          el('button', { disabled: running || trying || !confirmed, onclick: () => {
+            const pages = parsePageSpec(pagesInput.value);
+            if (!pages) { showError(t('common.badPageSpec')); return; }
+            const missing = pages.filter(p => !data!.pages.includes(p));
+            if (missing.length) { showError(t('run.missingPages', { pages: missing.map(tag).join(', ') })); return; }
+            if (!confirm(t('run.redoConfirm', { pages: pages.map(tag).join(', ') }))) return;
+            void run({ pages, force: true });
+          } }, t('run.redo')))),
       confirmed ? null : el('div', { class: 'band error' }, t('run.notConfirmedLong')));
   }
 

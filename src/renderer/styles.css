@@ -445,7 +445,7 @@ dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 .screen[data-tab="settings"] > section > :last-child { margin-bottom: 0; }
 /* 사용 중인 AI 프로필 카드: 강조색 테두리와 왼쪽 띠 */
 .card.in-use { border-color: var(--accent-line); box-shadow: inset 4px 0 0 var(--accent); }
-/* 프로필 카드의 '고급'(실행 파일·설정 폴더): 처음 쓰는 사람에게 필요 없는 칸이라 접어 두고, 펼침 단추는 글보다 옅게 */
+/* 프로필 카드와 채점 실행 전사 칸의 '고급'(실행 파일·설정 폴더, 다시 전사할 장): 처음 쓰는 사람에게 필요 없는 칸이라 접어 두고, 펼침 단추는 글보다 옅게 */
 .card details.advanced { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--line-2); }
 .card details.advanced > summary { width: fit-content; padding: 4px 2px; cursor: pointer; font-weight: 600; color: var(--text-2); }
 .card details.advanced > summary:hover, .card details.advanced[open] > summary { color: var(--text); }
