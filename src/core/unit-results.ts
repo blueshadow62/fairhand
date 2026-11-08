@@ -1,14 +1,19 @@
-import { findCase, normalizeAnswer } from './rejudge.js';
+import { decide, findCase, normalizeAnswer } from './rejudge.js';
 import { DataError, type AnswerKey, type Case, type Panjeong, type Transcript } from './types.js';
 
-/** 문항별 검토에서 한 장에 정할 것. 판정(정량)·응답(정성)이 없으면 확인 표시만 한다 */
-export interface UnitResultItem { page: number; 판정?: Panjeong; 응답?: boolean }
+/** 문항별 검토에서 한 장에 정할 것. 판정(정량)·응답(정성)·답(AI가 옮긴 글을 고친 것)이 없으면 확인 표시만 한다 */
+export interface UnitResultItem { page: number; 판정?: Panjeong; 응답?: boolean; 답?: string }
 /** 한 단위의 여러 장을 한꺼번에 정하는 요청. 사례기록이면 답 묶음 전체를 O·X로 바꾼 것을 사례로 남긴다 */
 export interface UnitResultsRequest { 단위: string; 항목: UnitResultItem[]; 사례기록?: boolean }
-/** 쓸전사: 판정·응답·확인 표시 중 하나라도 바뀐 장. 바뀐장수: 판정·응답이 바뀐 장(엑셀을 다시 만들 일). 확인장수: 새로 확인한 장 */
-export interface UnitResultsPlan { 쓸전사: Transcript[]; 바뀐장수: number; 확인장수: number; 사례: Case[] }
+/**
+ * 쓸전사: 판정·응답·답·확인 표시 중 하나라도 바뀐 장. 바뀐장수: 판정·응답·답이 바뀐 장(엑셀을 다시 만들 일). 확인장수: 새로 확인한 장.
+ * 글고침: 답 글을 고친 장. 판정필요: 글을 고쳤는데 글자만으로 판정이 정해지지 않아 확인을 푼 장(선생님이 O·X를 고를 일)
+ */
+export interface UnitResultsPlan { 쓸전사: Transcript[]; 바뀐장수: number; 확인장수: number; 글고침: number; 판정필요: number; 사례: Case[] }
 
 export const MAX_UNIT_ITEMS = 1000;
+/** 고친 답 글 하나의 길이 한도(논술형 단위의 답도 들어갈 만큼) */
+export const MAX_ANSWER_LEN = 20000;
 const VERDICTS: readonly unknown[] = ['O', 'X', '빈칸'];
 
 /** 이 장에서 이 단위를 확인했는지. 답안지별 검토에서 장 전체를 확인 완료한 것도 친다 */
@@ -58,9 +63,11 @@ export function unitResultsRequest(raw: unknown): UnitResultsRequest {
     if (!Number.isInteger(x.page) || (x.page as number) < 1) throw new DataError('잘못된 장 번호가 있습니다');
     if (x.판정 !== undefined && !VERDICTS.includes(x.판정)) throw new DataError('판정 값이 잘못되었습니다');
     if (x.응답 !== undefined && typeof x.응답 !== 'boolean') throw new DataError('응답 값은 true/false여야 합니다');
-    const it: UnitResultItem = { page: x.page as number, ...(x.판정 !== undefined ? { 판정: x.판정 as Panjeong } : {}), ...(x.응답 !== undefined ? { 응답: x.응답 as boolean } : {}) };
+    if (x.답 !== undefined && (typeof x.답 !== 'string' || x.답.length > MAX_ANSWER_LEN)) throw new DataError(`고친 답 글은 ${MAX_ANSWER_LEN}자 이하의 글자여야 합니다`);
+    const it: UnitResultItem = { page: x.page as number, ...(x.판정 !== undefined ? { 판정: x.판정 as Panjeong } : {}), ...(x.응답 !== undefined ? { 응답: x.응답 as boolean } : {}),
+      ...(x.답 !== undefined ? { 답: x.답 as string } : {}) };
     const prev = byPage.get(it.page);
-    if (prev && (prev.판정 !== it.판정 || prev.응답 !== it.응답)) throw new DataError('같은 장을 서로 다르게 정한 요청입니다');
+    if (prev && (prev.판정 !== it.판정 || prev.응답 !== it.응답 || prev.답 !== it.답)) throw new DataError('같은 장을 서로 다르게 정한 요청입니다');
     byPage.set(it.page, it);
   }
   return { 단위: o.단위, 항목: [...byPage.values()], 사례기록: o.사례기록 === true };
@@ -82,24 +89,40 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
 
   const units = [...key.정량, ...key.정성].map(u => u.id);
   const 쓸전사: Transcript[] = [];
-  let 바뀐장수 = 0, 확인장수 = 0;
+  let 바뀐장수 = 0, 확인장수 = 0, 글고침 = 0, 판정필요 = 0;
   for (const it of req.항목) {
     const t = byPage.get(it.page)!;
     let next = t, changed = false;
+    // 확인 표시: mark 이 단위를 확인으로, unmark 확인을 푼다, keep 그대로. 같은 글로 '고친' 것은 아무것도 바꾸지 않는다(확인으로 치지 않는다)
+    const newText = it.답 !== undefined && it.답 !== (qty ? t.정량[단위]?.답 ?? '' : t.정성[단위]?.답 ?? '');
+    let check: 'mark' | 'unmark' | 'keep' = it.답 !== undefined && !newText && it.판정 === undefined && it.응답 === undefined ? 'keep' : 'mark';
+    if (newText) 글고침++;
     if (qty) {
       const cur = t.정량[단위] ?? { 답: '', 판정: '빈칸' as Panjeong };
-      if (it.판정 !== undefined && it.판정 !== cur.판정) { next = { ...next, 정량: { ...next.정량, [단위]: { ...cur, 판정: it.판정 } } }; changed = true; }
+      const 답 = it.답 ?? cur.답;
+      let 판정 = it.판정 ?? cur.판정;
+      // 글을 고쳤는데 판정을 함께 정하지 않았으면: 빈칸·사례·정답·허용 글자 일치는 전사 저장 때와 같은 규칙으로 정하고 확인한다.
+      // 뜻으로 볼 일이면 옛 판정(AI가 다른 글에 내린 것)이 '확인됨'으로 남지 않게 확인을 풀어 선생님이 고르게 한다
+      if (newText && it.판정 === undefined) {
+        const d = decide(key, 단위, 답);
+        if (d) 판정 = d.판정; else { check = 'unmark'; 판정필요++; }
+      }
+      if (답 !== cur.답 || 판정 !== cur.판정) { next = { ...next, 정량: { ...next.정량, [단위]: { ...cur, 답, 판정 } } }; changed = true; }
     } else {
       const cur = t.정성[단위] ?? { 응답: false, 답: '' };
-      if (it.응답 !== undefined && it.응답 !== cur.응답) { next = { ...next, 정성: { ...next.정성, [단위]: { ...cur, 응답: it.응답 } } }; changed = true; }
+      const 답 = it.답 ?? cur.답, 응답 = it.응답 ?? cur.응답;
+      if (newText && it.응답 === undefined) check = 'keep'; // 응답형은 응답 여부로만 채점하므로 글만 고쳤으면 응답·확인 표시는 그대로
+      if (답 !== cur.답 || 응답 !== cur.응답) { next = { ...next, 정성: { ...next.정성, [단위]: { ...cur, 답, 응답 } } }; changed = true; }
     }
-    const marks = t.확인단위 ?? [];
-    if (!marks.includes(단위)) next = { ...next, 확인단위: [...marks, 단위] };
-    const done = new Set(next.확인단위 ?? []);
-    if (next.확인완료 !== true && units.every(id => done.has(id))) next = { ...next, 확인완료: true };
+    if (check === 'mark') {
+      const marks = t.확인단위 ?? [];
+      if (!marks.includes(단위)) next = { ...next, 확인단위: [...marks, 단위] };
+      const done = new Set(next.확인단위 ?? []);
+      if (next.확인완료 !== true && units.every(id => done.has(id))) next = { ...next, 확인완료: true };
+      if (!unitChecked(t, 단위)) 확인장수++;
+    } else if (check === 'unmark') next = uncheckChanged(next, key, [단위]).transcript;
     if (next !== t) 쓸전사.push(next);
     if (changed) 바뀐장수++;
-    if (!unitChecked(t, 단위)) 확인장수++;
   }
 
   const 사례: Case[] = [];
@@ -122,5 +145,5 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
       사례.push({ 단위, 답, 판정: v, 일시: now.toISOString(), 출처: '문항별 검토' });
     }
   }
-  return { 쓸전사, 바뀐장수, 확인장수, 사례 };
+  return { 쓸전사, 바뀐장수, 확인장수, 글고침, 판정필요, 사례 };
 }

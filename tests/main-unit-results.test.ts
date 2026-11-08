@@ -26,6 +26,23 @@ async function setup() {
   return { dir, set, bridge, page, xlsx };
 }
 
+test('setUnitResults 글 고치기: 답 글을 저장하고 글자로 판정을 맞추며 엑셀을 다시 만든다. 사례는 기록하지 않는다', async () => {
+  const { dir, set, bridge, page, xlsx } = await setup();
+  try {
+    // p03 1-1은 빈 답에 X. 허용 표기('가나다')로 고치면 O로 맞추고 확인한다
+    const r = await bridge.setUnitResults(set, { 단위: '1-1', 항목: [{ page: 3, 답: '가나다' }], 사례기록: true }, NOW);
+    assert.deepEqual([r.바뀐장수, r.확인장수, r.글고침, r.판정필요, r.사례수], [1, 1, 1, 0, 0]);
+    assert.ok(r.엑셀 && !r.엑셀오류);
+    assert.equal(await xlsx(), 1);
+    const p3 = await page(3);
+    assert.deepEqual([p3.정량['1-1'], p3.확인단위], [{ 답: '가나다', 판정: 'O' }, ['1-1']]);
+    assert.equal((await loadSet(set)).key.사례, undefined);
+    // 글자로 못 정하는 글이면 판정을 고르라고 알린다
+    const judge = await bridge.setUnitResults(set, { 단위: '1-1', 항목: [{ page: 3, 답: '가나라마' }] }, NOW);
+    assert.deepEqual([judge.글고침, judge.판정필요, (await page(3)).확인단위], [1, 1, undefined]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('setUnitResults: 묶음 판정을 그 단위·그 장에만 넣고, 사례를 기록하고, 엑셀을 한 번 만든다', async () => {
   const { dir, set, bridge, page, xlsx } = await setup();
   try {
@@ -48,7 +65,7 @@ test('setUnitResults: 확인만 하면 판정·엑셀은 그대로, 모든 단�
   const { dir, set, bridge, page, xlsx } = await setup();
   try {
     const r = await bridge.setUnitResults(set, { 단위: '3-1', 항목: [{ page: 1 }, { page: 3 }] }, NOW);
-    assert.deepEqual(r, { 바뀐장수: 0, 확인장수: 2, 사례수: 0 });
+    assert.deepEqual(r, { 바뀐장수: 0, 확인장수: 2, 글고침: 0, 판정필요: 0, 사례수: 0 });
     assert.equal(await xlsx(), 0);
     for (const 단위 of ['1-1', 'E1']) await bridge.setUnitResults(set, { 단위, 항목: [{ page: 1 }] }, NOW);
     const p1 = await page(1);
@@ -56,7 +73,7 @@ test('setUnitResults: 확인만 하면 판정·엑셀은 그대로, 모든 단�
     assert.deepEqual(p1.정량['3-1'], { 답: '열심히', 판정: 'X' });
     assert.notEqual((await page(3)).확인완료, true);
     const again = await bridge.setUnitResults(set, { 단위: 'E1', 항목: [{ page: 1, 응답: true }] }, NOW);
-    assert.deepEqual(again, { 바뀐장수: 0, 확인장수: 0, 사례수: 0 });
+    assert.deepEqual(again, { 바뀐장수: 0, 확인장수: 0, 글고침: 0, 판정필요: 0, 사례수: 0 });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

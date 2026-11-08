@@ -61,8 +61,11 @@ export interface JudgeResult extends RejudgeResult { failed: { page: number; err
 export interface CaseResult extends RejudgeResult { 판정변경: CaseChange[]; 이전사례?: Case }
 /** 되돌리기 결과. 사례: 지운 사례 수, 복원: 이전 값으로 돌린 판정 수, 건너뜀: 그사이 바뀌어 그대로 둔 판정 수 */
 export interface CaseRevertResult { 사례: number; 복원: number; 건너뜀: number; 엑셀?: string; 엑셀오류?: string }
-/** 문항별 검토 결과. 바뀐장수: 판정·응답이 바뀐 장(이때만 엑셀을 다시 만든다), 확인장수: 새로 확인한 장, 사례수: 새로 기록한 사례 */
-export interface UnitResultsResult { 바뀐장수: number; 확인장수: number; 사례수: number; 사례오류?: string; 엑셀?: string; 엑셀오류?: string }
+/**
+ * 문항별 검토 결과. 바뀐장수: 판정·응답·답 글이 바뀐 장(이때만 엑셀을 다시 만든다), 확인장수: 새로 확인한 장, 사례수: 새로 기록한 사례,
+ * 글고침: 답 글을 고친 장, 판정필요: 글을 고쳤는데 글자만으로 판정이 정해지지 않아 확인을 푼 장
+ */
+export interface UnitResultsResult { 바뀐장수: number; 확인장수: number; 글고침: number; 판정필요: number; 사례수: number; 사례오류?: string; 엑셀?: string; 엑셀오류?: string }
 /** 자동 업데이트 상태. error는 설정 화면의 한 줄과 로그에만 보인다(창을 띄우지 않음) */
 export type UpdateStatus =
   | { kind: 'disabled'; reason: 'dev' | 'off' | 'manual' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }

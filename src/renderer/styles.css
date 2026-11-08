@@ -464,6 +464,11 @@ dialog.case-confirm .actions { justify-content: flex-end; margin: 4px 0 0; }
 .item-review .answer-row:first-child { border-top: 0; }
 .item-review .answer-row .anon { flex: none; min-width: 64px; color: var(--text-2); font-size: var(--fs-m); font-weight: 600; }
 .item-review .answer-row .answer { flex: 1 1 160px; min-width: 0; }
+/* 글 고치기: 고치는 줄은 칸을 넓게 쓰고, 여러 줄 칸(논술형·긴 답)은 줄 전체 너비로 */
+.item-review .answer-editor { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.item-review .answer-editor .answer-edit { width: 100%; font: inherit; }
+.item-review .answer-editor textarea.answer-edit { resize: vertical; min-height: 4.5em; }
+.item-review .answer-row.text-editing, .item-review .hw-cell.text-editing { background: var(--warn-soft); }
 .item-review .qual-list { margin-top: 8px; border: 1px solid var(--line-2); border-radius: var(--r); }
 .item-review .qual-list .answer-row { padding-left: 10px; }
 .item-review .answer-row.viewing { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }

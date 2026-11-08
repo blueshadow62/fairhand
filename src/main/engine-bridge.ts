@@ -344,7 +344,7 @@ export class EngineBridge {
       try { let next = key; for (const c of plan.사례) next = addCase(next, c); await saveKeyFile(setDir, next); } // 사례는 확인을 지우지 않는다
       catch (e) { 사례오류 = e instanceof Error ? e.message : String(e); }
     }
-    return { 바뀐장수: plan.바뀐장수, 확인장수: plan.확인장수, 사례수: 사례오류 ? 0 : plan.사례.length, ...(사례오류 ? { 사례오류 } : {}),
+    return { 바뀐장수: plan.바뀐장수, 확인장수: plan.확인장수, 글고침: plan.글고침, 판정필요: plan.판정필요, 사례수: 사례오류 ? 0 : plan.사례.length, ...(사례오류 ? { 사례오류 } : {}),
       ...(plan.바뀐장수 ? await this.rebuildSafe(setDir) : {}) }; // 확인 표시만 바뀐 것은 엑셀에 나오지 않는다
   }
 

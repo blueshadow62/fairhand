@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { parseTranscript } from '../src/core/transcript.js';
 import { DataError, type AnswerKey, type Panjeong, type Transcript } from '../src/core/types.js';
-import { planUnitResults, representative, setSheetDone, uncheckChanged, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
+import { MAX_ANSWER_LEN, planUnitResults, representative, setSheetDone, uncheckChanged, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
 
 // 픽스처 정답표: 정량 1-1·3-1, 정성 E1
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
@@ -64,7 +64,7 @@ test('planUnitResults: 지금 판정과 같으면 확인 표시만, 이미 확�
   assert.equal(p.바뀐장수, 0); assert.equal(p.확인장수, 1);
   assert.deepEqual(p.쓸전사[0]!.확인단위, ['1-1']);
   const again = plan(p.쓸전사, req('1-1', [{ page: 1, 판정: 'O' }]));
-  assert.deepEqual(again, { 쓸전사: [], 바뀐장수: 0, 확인장수: 0, 사례: [] });
+  assert.deepEqual(again, { 쓸전사: [], 바뀐장수: 0, 확인장수: 0, 글고침: 0, 판정필요: 0, 사례: [] });
   const done = plan([tr(1, '가나', 'O', { 확인완료: true })], req('1-1', [{ page: 1 }])); // 답안지별에서 확인 완료한 장은 이미 확인한 것
   assert.equal(done.확인장수, 0);
   assert.deepEqual(done.쓸전사[0]!.확인단위, ['1-1']);
@@ -132,6 +132,42 @@ test('setSheetDone: 답안지별에서 확인 완료를 풀면 확인단위도 �
   const u = tr(2, '가나', 'O', { 확인단위: ['1-1'] });
   setSheetDone(u, true);
   assert.deepEqual([u.확인완료, u.확인단위], [true, ['1-1']]);
+});
+
+test('unitResultsRequest 답: 글자만, 한도 안의 길이만. 같은 장을 다른 글로 고치는 요청은 거절', () => {
+  assert.deepEqual(unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 답: '가나' }, { page: 1, 답: '가나' }] }).항목, [{ page: 1, 답: '가나' }]);
+  for (const bad of [123, null, ['가'], 'x'.repeat(MAX_ANSWER_LEN + 1)]) assert.throws(() => unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 답: bad }] }), /고친 답 글/, String(bad).slice(0, 20));
+  assert.throws(() => unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 답: '가' }, { page: 1, 답: '나' }] }), /서로 다르게/);
+});
+
+test('planUnitResults 글 고치기: 글자로 판정이 정해지면 맞추고 확인, 아니면 옛 판정을 두고 확인을 푼다', () => {
+  const fix = (t: Transcript, 답: string, extra: Partial<UnitResultsRequest['항목'][number]> = {}, k: AnswerKey = key) =>
+    plan([t], req('1-1', [{ page: t.page, 답, ...extra }]), k);
+  // 정답과 같은 글로 고치면 O로 맞추고 확인
+  const ok = fix(tr(1, '가너', 'X'), '가나');
+  assert.deepEqual(ok.쓸전사[0]!.정량['1-1'], { 답: '가나', 판정: 'O' });
+  assert.deepEqual([ok.쓸전사[0]!.확인단위, ok.바뀐장수, ok.확인장수, ok.글고침, ok.판정필요], [['1-1'], 1, 1, 1, 0]);
+  // 글자로 못 정하면 옛 판정(AI가 다른 글에 내린 것)을 두고 확인을 푼다. 답안지별에서 확인 완료한 장은 다른 단위의 확인을 남긴다
+  const judge = fix(tr(2, '가나', 'O', { 확인완료: true }), '가랑');
+  const j = judge.쓸전사[0]!;
+  assert.deepEqual([j.정량['1-1'], j.확인완료, j.확인단위, judge.판정필요, judge.확인장수], [{ 답: '가랑', 판정: 'O' }, false, ['3-1', 'E1'], 1, 0]);
+  // 판정을 함께 정하면 그대로 쓰고 확인
+  const given = fix(tr(3, '가너', 'O'), '가랑', { 판정: 'X' });
+  assert.deepEqual([given.쓸전사[0]!.정량['1-1'], given.쓸전사[0]!.확인단위, given.판정필요], [{ 답: '가랑', 판정: 'X' }, ['1-1'], 0]);
+  // 비운 글은 빈칸, 사례와 같은 글은 사례 판정
+  assert.equal(fix(tr(4, '가너', 'X'), '').쓸전사[0]!.정량['1-1']!.판정, '빈칸');
+  const withCase: AnswerKey = { ...key, 사례: [{ 단위: '1-1', 답: '가랑', 판정: 'X', 일시: 'x', 출처: '검토 p09' }] };
+  assert.equal(fix(tr(5, '가너', 'O'), '가랑', {}, withCase).쓸전사[0]!.정량['1-1']!.판정, 'X');
+  // 같은 글로 '고친' 것은 아무것도 바꾸지 않는다(확인으로 치지 않는다)
+  const same = fix(tr(6, '가너', 'X'), '가너');
+  assert.deepEqual([same.쓸전사, same.글고침, same.확인장수], [[], 0, 0]);
+});
+
+test('planUnitResults 글 고치기: 응답형은 응답·확인 표시를 그대로 두고, 사례 기록을 켜도 사례를 만들지 않는다', () => {
+  const qual = plan([tr(1, '가나', 'O')], req('E1', [{ page: 1, 답: '새 생각' }]));
+  assert.deepEqual([qual.쓸전사[0]!.정성.E1, qual.쓸전사[0]!.확인단위, qual.바뀐장수, qual.확인장수, qual.글고침], [{ 응답: true, 답: '새 생각' }, undefined, 1, 0, 1]);
+  const noCase = plan([tr(1, '가너', 'X'), tr(2, '가너', 'X')], req('1-1', [{ page: 1, 답: '가랑' }, { page: 2, 답: '가랑' }], true));
+  assert.deepEqual(noCase.사례, []);
 });
 
 test('uncheckChanged: 다시 판정이 바꾼 단위의 확인을 빼고 확인 완료를 푼다. 바뀐 단위를 확인하지 않은 장은 그대로', () => {

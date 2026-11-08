@@ -2,7 +2,7 @@ import { identityMask, unitPoints } from '../../core/key.js';
 import { essayMarks, essayTextMarks } from '../../core/rejudge.js';
 import type { MaskRect, Panjeong, QtyUnit, QualUnit, Transcript } from '../../core/types.js';
 import { unitChecked, type UnitResultItem } from '../../core/unit-results.js';
-import type { SetData } from '../../shared/ipc.js';
+import type { SetData, UnitResultsResult } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl } from '../lib/api.js';
 import { collapseToggle } from '../lib/collapse.js';
@@ -47,6 +47,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   let busy = false; // 저장과 엑셀 생성이 두 벌 돌지 않게 기다리는 동안 단추를 잠근다
   const open = new Set<string>(); // 펼친 묶음: 단위 + 정규 답
   const essayShown = new Set<string>(); // 연 글 전체: 단위 + 장(판정마다 다시 그려도 연 채로)
+  let textEdit: string | null = null; // 글을 고치는 중인 답: 단위 + 장
 
   // 판정마다 다시 그려도 키보드 초점이 같은 묶음·같은 줄의 같은 단추로 돌아오게, 단추마다 바뀌지 않는 data-focus를 단다(장 번호 대신 익명 번호).
   // 기다리는 동안 단추가 잠겨 초점이 빠져도 기억해 두었다가 잠금이 풀린 뒤 돌려준다
@@ -78,7 +79,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   new ResizeObserver(fitGrids).observe(groups);
 
   function render(d: SetData | null): void {
-    if (d?.폴더 !== data?.폴더) { open.clear(); essayShown.clear(); unitId = null; closeViewer(false); clearCrops(); }
+    if (d?.폴더 !== data?.폴더) { open.clear(); essayShown.clear(); textEdit = null; unitId = null; closeViewer(false); clearCrops(); }
     data = d;
     if (!d) { clear(units); clear(groups); return; }
     if (view && !d.transcripts.some(x => x.page === view!.page)) closeViewer(false);
@@ -326,6 +327,34 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   const checkMark = (tr: Transcript, 단위: string): HTMLElement =>
     unitChecked(tr, 단위) ? el('span', { class: 'ok-text', title: t('item.checked') }, '✓') : el('span', { class: 'muted' }, t('item.unchecked'));
 
+  // ── 글 고치기: AI가 옮긴 글을 손글씨와 견주어 고친다. 판정은 메인이 정한다(글자로 정해지면 맞추고, 아니면 확인을 풀어 선생님이 고르게) ──
+  const isEditing = (단위: string, page: number): boolean => textEdit === `${단위}\u0000${page}`;
+  const longText = (u: QtyUnit | QualUnit, s: string): boolean => ('유형' in u && u.유형 === '논술형') || s.includes('\n') || s.length > 40;
+  const editButton = (단위: string, page: number, n: number): HTMLElement =>
+    el('button', { class: 'small', 'data-focus': `edit:${n}`, disabled: busy, title: t('item.edit.title'),
+      onclick: () => { textEdit = `${단위}\u0000${page}`; keepFocus = `edit-in:${n}`; renderGroups(); } }, t('item.edit.button'));
+  /** 고치는 칸: Enter(여러 줄 칸은 Ctrl+Enter)로 저장, Esc로 그만둔다. 한글 조합 중의 Enter는 저장하지 않는다. 앞뒤 공백만 다르면 저장하지 않는다 */
+  function textEditor(단위: string, page: number, n: number, current: string, long: boolean): HTMLElement {
+    const attrs = { class: 'answer-edit', 'data-focus': `edit-in:${n}`, 'aria-label': t('item.edit.label', { n }) };
+    const box: HTMLInputElement | HTMLTextAreaElement = long ? el('textarea', { ...attrs, rows: 4 }) : el('input', attrs);
+    box.value = current;
+    const cancel = (): void => { textEdit = null; keepFocus = `edit:${n}`; renderGroups(); };
+    const save = (): void => {
+      const text = box.value.trim();
+      if (text === current.trim()) { cancel(); return; }
+      textEdit = null; keepFocus = `edit:${n}`;
+      void send(단위, [{ page, 답: text }], 'text');
+    };
+    box.addEventListener('keydown', ev => {
+      const e = ev as KeyboardEvent; // input·textarea 둘 중 하나라 형이 Event로 잡힌다
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      else if (e.key === 'Enter' && !e.isComposing && (!long || e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+    });
+    return el('div', { class: 'answer-editor' }, box,
+      el('div', { class: 'row' }, el('button', { class: 'small primary', onclick: save }, t('common.save')), el('button', { class: 'small', onclick: cancel }, t('item.edit.cancel')),
+        el('span', { class: 'muted' }, long ? t('item.edit.hintLong', { key: /Mac/.test(navigator.platform) ? '⌘Enter' : 'Ctrl+Enter' }) : t('item.edit.hint'))));
+  }
+
   function groupBox(u: QtyUnit, g: AnswerGroup, labels: Map<number, number>, byPage: Map<number, Transcript>, grid: Grid | null): HTMLElement {
     const k = `${u.id}\u0000${g.정규}`, isOpen = open.has(k);
     const same = VERDICTS.find(v => g.판정[v] === g.장.length) ?? null;
@@ -346,11 +375,14 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     if (grid) { box.append(gridBox(grid, pages.map(page => qtyCell(u, g, page, labels.get(page)!, byPage.get(page)!, grid)))); return box; }
     box.append(el('div', { class: 'group-rows' }, ...pages.map(page => {
       const tr = byPage.get(page)!, v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), n = labels.get(page)!;
-      return el('div', { class: `answer-row${view?.page === page ? ' viewing' : ''}` },
+      const editingThis = isEditing(u.id, page);
+      return el('div', { class: `answer-row${view?.page === page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` },
         el('span', { class: 'anon' }, t('item.answerN', { n })),
-        el('div', { class: 'answer' }, own === g.대표 ? '' : answerText(u, own)), // 대표 답과 글자가 다를 때만 원래 글을 보인다
+        editingThis ? textEditor(u.id, page, n, v.답, longText(u, v.답))
+          : el('div', { class: 'answer' }, own === g.대표 ? '' : answerText(u, own)), // 대표 답과 글자가 다를 때만 원래 글을 보인다
         checkMark(tr, u.id),
         verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
+        editingThis ? null : editButton(u.id, page, n),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')),
         essayFull(u, tr, n));
     })));
@@ -359,11 +391,12 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
 
   /** 손글씨 칸: 잘라낸 손글씨, 익명 번호와 확인 표시, 대표 답과 다른 전사 글, 판정 단추 */
   function qtyCell(u: QtyUnit, g: AnswerGroup, page: number, n: number, tr: Transcript, grid: Grid): HTMLElement {
-    const v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim();
-    return el('div', { class: `hw-cell${view?.page === page ? ' viewing' : ''}` }, hwCanvas(page, n, grid),
+    const v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), editingThis = isEditing(u.id, page);
+    return el('div', { class: `hw-cell${view?.page === page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` }, hwCanvas(page, n, grid),
       el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
-      own === g.대표 ? null : el('div', { class: 'answer' }, answerText(u, own)),
+      editingThis ? textEditor(u.id, page, n, v.답, longText(u, v.답)) : own === g.대표 ? null : el('div', { class: 'answer' }, answerText(u, own)),
       el('div', { class: 'hw-actions' }, verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
+        editingThis ? null : editButton(u.id, page, n),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage'))),
       essayFull(u, tr, n));
   }
@@ -371,25 +404,33 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   function qualCell(u: QualUnit, tr: Transcript, n: number, grid: Grid): HTMLElement {
     const v = tr.정성[u.id] ?? { 응답: false, 답: '' };
     const cb = el('input', { type: 'checkbox', 'data-focus': `qr:${n}`, checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
-    return el('div', { class: `hw-cell${view?.page === tr.page ? ' viewing' : ''}` }, hwCanvas(tr.page, n, grid),
+    const editingThis = isEditing(u.id, tr.page);
+    return el('div', { class: `hw-cell${view?.page === tr.page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` }, hwCanvas(tr.page, n, grid),
       el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
-      el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
+      editingThis ? textEditor(u.id, tr.page, n, v.답, longText(u, v.답)) : el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
       el('div', { class: 'hw-actions' }, el('label', {}, cb, t('review.responded')),
+        editingThis ? null : editButton(u.id, tr.page, n),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(tr.page, n) }, t('item.viewImage'))));
   }
 
   function qualRow(u: QualUnit, tr: Transcript, n: number): HTMLElement {
     const v = tr.정성[u.id] ?? { 응답: false, 답: '' };
     const cb = el('input', { type: 'checkbox', 'data-focus': `qr:${n}`, checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
-    return el('div', { class: `answer-row${view?.page === tr.page ? ' viewing' : ''}` },
+    const editingThis = isEditing(u.id, tr.page);
+    return el('div', { class: `answer-row${view?.page === tr.page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` },
       el('span', { class: 'anon' }, t('item.answerN', { n })),
-      el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
+      editingThis ? textEditor(u.id, tr.page, n, v.답, longText(u, v.답)) : el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
       el('label', {}, cb, t('review.responded')),
       checkMark(tr, u.id),
+      editingThis ? null : editButton(u.id, tr.page, n),
       el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(tr.page, n) }, t('item.viewImage')));
   }
 
-  async function send(단위: string, 항목: UnitResultItem[]): Promise<void> {
+  /** 글 고치기 저장 뒤 알림. O·X를 다시 골라야 하는지를 먼저 알린다 */
+  const textNotice = (단위: string, r: UnitResultsResult): string => !r.글고침 ? t('item.nothingNew')
+    : r.판정필요 ? t('item.edit.judge') : data?.key.정성.some(u => u.id === 단위) ? t('item.edit.saved') : t('item.edit.decided');
+
+  async function send(단위: string, 항목: UnitResultItem[], kind: 'verdict' | 'text' = 'verdict'): Promise<void> {
     if (busy || !data) return;
     busy = true; renderGroups();
     try {
@@ -398,7 +439,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       if (r.엑셀오류) deps.notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
       if (r.사례오류) deps.notice.append(el('div', { class: 'band warn' }, t('item.caseFailed', { error: r.사례오류 })));
       // 신원을 숨기는 화면이라 알림에도 장 번호 없이 수만 적는다
-      if (!r.엑셀오류) showInfo(r.바뀐장수 ? [t('item.changed', { n: r.바뀐장수 }), r.사례수 ? t('item.casesRecorded', { n: r.사례수 }) : ''].join(' ').trim()
+      if (!r.엑셀오류) showInfo(kind === 'text' ? textNotice(단위, r) : r.바뀐장수 ? [t('item.changed', { n: r.바뀐장수 }), r.사례수 ? t('item.casesRecorded', { n: r.사례수 }) : ''].join(' ').trim()
         : r.확인장수 ? t('item.confirmed', { n: r.확인장수 }) : t('item.nothingNew'));
     } catch (e) {
       showError((e as Error).message);
