@@ -23,7 +23,7 @@ The developer has not used this beta on a real Mac; it has only been launched an
 5. Install the Mac versions of Claude Code or Codex. 'Open login' in Settings starts the login in a Terminal window.
 
 ## Updates
-- The app checks GitHub for a new version 10 seconds after start and every 4 hours, and downloads it. A 'Restart to apply' button then appears in Settings; the update installs only when you press it.
+- The app checks GitHub 10 seconds after start and every 4 hours, only to see whether a new version exists. If there is one, Settings shows 'Download and install'; pressing it downloads the update and restarts the app to install it. If a transcription is running, installing waits and 'Restart to apply' appears instead.
 - To turn this off, uncheck 'Check for new versions automatically' under Settings → About. When off, the app does not contact GitHub.
 - The installer and updates are not code-signed. They are downloaded from GitHub Releases over HTTPS, and electron-updater checks each file against the SHA-512 listed in the release. An update installs only when the user presses the button.
 
@@ -35,10 +35,11 @@ The app starts in Korean. To switch to English, open **설정** (the last tab) a
 
 1. **Settings**: choose the semester folder and an AI profile (Claude Code login or API key). A roster (xlsx/csv) is optional.
 2. **Questions**: create a set and enter the answer key (optionally get an AI draft from the questions and passage). Mark it confirmed before grading.
-3. **Run**: upload the answer-sheet PDF, fix rotation, split into pages, then start transcription. A result workbook is written to the set folder.
-4. **Review**: compare each page image with its transcription, fix and save (the workbook is rebuilt). The semester cumulative record is built here too.
+3. **Run**: upload the answer-sheet PDF, fix rotation, split into pages, then start transcription. A result workbook is written to the set folder. Saved pages appear as thumbnails; delete one, or select several and delete them at once.
+4. **Review**: compare each page image with its transcription, fix and save (the workbook is rebuilt). Drag the divider to resize the two panels; click a student answer to expand it and read all of it. The semester cumulative record is built here too.
 
 ## Grading rules and precedents
+- Question types: Blank, Short, Sentence, Elements, Essay, and Response. Points are set per unit (default 1), and a score is the sum of points for correct units. Essay questions are graded item by item: whether each given sentence is quoted almost verbatim and whether each required term is used.
 - Each set has three grading rules (Questions screen): spelling variants with the same meaning, answers broader than the key, and sentence keywords (all / any).
 - Verdicts changed in Review are recorded as precedents (can be turned off) and applied right away to other pages with the same answer for the same unit, and to pages transcribed later.
 - After editing the answer key, existing pages can be re-judged: exact-text matching only (no model call), or by sending only the answer text to the model (no images).
