@@ -30,7 +30,8 @@ test('pageImageFor·imageUrl: 세트의 pages/pNN.jpg만', () => {
 });
 
 test('preload의 CHANNELS 복제가 shared/ipc.ts와 같다', () => {
-  const block = (f: string) => /CHANNELS = (\{[\s\S]*?\}) as const;/.exec(readFileSync(new URL(`../../${f}`, import.meta.url), 'utf-8'))?.[1];
+  // 줄바꿈(CRLF·LF)은 체크아웃 설정에 따라 파일마다 달라질 수 있어 같은 것으로 본다
+  const block = (f: string) => /CHANNELS = (\{[\s\S]*?\}) as const;/.exec(readFileSync(new URL(`../../${f}`, import.meta.url), 'utf-8').replace(/\r\n/g, '\n'))?.[1];
   const a = block('src/shared/ipc.ts'), b = block('src/preload/index.ts');
   assert.ok(a && a.length > 100);
   assert.equal(b, a);
