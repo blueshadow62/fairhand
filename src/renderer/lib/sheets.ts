@@ -24,6 +24,20 @@ export const hasFile = (list: readonly { 지문: string }[], 지문: string): bo
  */
 export const withFile = <T extends { 이름: string }>(list: readonly T[], item: T): T[] => [...list, item].sort((a, b) => naturalCompare(a.이름, b.이름));
 
+/**
+ * 목록의 파일마다 저장할 때 받을 장 번호(next부터 목록 차례로 이어서). 저장하지 않는 파일(체크하지 않은 이미 올린 파일)은 null이고
+ * 번호를 건너뛴다. 칩의 순번·장 범위와 미리보기 격자의 장 번호가 같은 차례를 보이게 한다
+ */
+export function saveRanges(files: readonly { 포함: boolean; 쪽수: number }[], next: number): ({ 순번: number; 처음: number; 끝: number } | null)[] {
+  let order = 0, at = next;
+  return files.map(f => {
+    if (!f.포함) return null;
+    const r = { 순번: ++order, 처음: at, 끝: at + f.쪽수 - 1 };
+    at += f.쪽수;
+    return r;
+  });
+}
+
 /** 쪽마다 돌리기 단추: 시계 방향으로 90°씩, 270° 다음은 0° */
 export const nextRotation = (r: Rotation): Rotation => ((r + 90) % 360) as Rotation;
 

@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind, withFile } from '../src/renderer/lib/sheets.js';
+import { coversSaved, hasFile, naturalCompare, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, withFile } from '../src/renderer/lib/sheets.js';
+
+test('saveRanges: 목록 차례로 장 번호를 이어 받고, 저장하지 않는 파일은 순번 없이 건너뛴다', () => {
+  assert.deepEqual(saveRanges([{ 포함: true, 쪽수: 3 }, { 포함: false, 쪽수: 2 }, { 포함: true, 쪽수: 1 }], 4), [
+    { 순번: 1, 처음: 4, 끝: 6 }, null, { 순번: 2, 처음: 7, 끝: 7 }]);
+  assert.deepEqual(saveRanges([], 1), []);
+  assert.deepEqual(saveRanges([{ 포함: false, 쪽수: 5 }], 1), [null]);
+});
 
 test('naturalCompare: 숫자는 수로(2 < 10, 001 < 010), 대소문자는 가리지 않는다', () => {
   assert.deepEqual(['scan10.pdf', 'scan2.pdf', 'Scan1.pdf'].sort(naturalCompare), ['Scan1.pdf', 'scan2.pdf', 'scan10.pdf']);

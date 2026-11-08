@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { coversSaved, hasFile, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind, withFile } from '../lib/sheets.js';
+import { coversSaved, hasFile, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, withFile } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -112,7 +112,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
 
   // ── PDF 올리기: 고른 파일은 목록에 더한다(여러 번 나눠 고르거나 끌어다 놓아도). 목록은 파일 이름 순서이고 그 차례로 쪽이 저장된다 ──
-  const fileInput = el('input', { type: 'file', accept: SHEET_ACCEPT, multiple: true });
+  // 브라우저 기본 '파일 선택' 칸은 앞서 고른 파일 이름 하나만 보여 더하기와 맞지 않는다. 숨겨 두고 앱 모양 단추로 연다
+  const fileInput = el('input', { type: 'file', accept: SHEET_ACCEPT, multiple: true, class: 'hidden' });
+  const pickBtn = el('button', { onclick: () => { if (!saving) fileInput.click(); } });
   fileInput.addEventListener('change', () => {
     const files = [...(fileInput.files ?? [])];
     fileInput.value = ''; // 뺀 파일을 다시 골라도 change가 오게
@@ -266,6 +268,15 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     rotation = store.state.settings.기본회전;
   }
 
+  /** 칩의 x: 그 파일만 빼고 닫는다. 그 사이 다른 파일을 여는 중이어도 그 더하기는 이어진다 */
+  function removePicked(pk: Picked): void {
+    if (saving) return;
+    closePicked(pk);
+    picked = picked.filter(x => x !== pk);
+    if (!picked.length) { clear(sheetGrid); rotation = store.state.settings.기본회전; }
+    renderUpload();
+  }
+
   const rotationNote = el('span', { class: 'band warn' });
   function renderRotationNote(): void {
     const own = included().reduce((n, pk) => n + pk.회전.filter(r => r !== rotation).length, 0);
@@ -308,8 +319,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function renderUpload(): void {
     clear(uploadBox);
-    fileInput.disabled = saving;
-    uploadBox.append(el('div', { class: 'row' }, fileInput, el('span', { class: 'muted' }, t('run.dropHint'))), uploadStatus);
+    // 목록이 비었을 때는 처음 할 일이라 강조하고, 파일이 있으면 강조는 '쪽 나누어 저장'에 둔다
+    pickBtn.disabled = saving;
+    pickBtn.className = picked.length ? '' : 'primary';
+    pickBtn.textContent = picked.length ? t('run.addFiles') : t('run.pickFiles');
+    uploadBox.append(el('div', { class: 'row' }, pickBtn, fileInput, el('span', { class: 'muted' }, t('run.dropHint'))), uploadStatus);
     const fresh = data ? justSaved.filter(p => data!.pages.includes(p)) : []; // 그사이 지운 장은 뺀다
     if (fresh.length) uploadBox.append(newPagesRow(fresh));
     if (!picked.length || !data) return;
@@ -320,13 +334,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     sheetGrid.replaceChildren(...tiles.map(x => x.fig));
     for (const x of tiles) if (x.state === 'idle' || x.state === 'queued') io.observe(x.fig);
     renderRotationNote();
+    const ranges = saveRanges(picked.map(p => ({ 포함: p.포함, 쪽수: p.src.pageCount })), next);
     put(uploadBox,
-      el('div', { class: 'picked-files' }, ...picked.map(p => el('div', { class: 'row' },
-        p.이전
-          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, disabled: saving, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
-          : el('span', { class: 'muted' }, t('run.fileLine', { name: p.src.name, n: p.src.pageCount })),
-        p.이전 ? el('span', { class: 'band warn' }, t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null))),
-      el('div', { class: 'row' }, el('button', { class: 'small', disabled: saving, onclick: () => { if (saving) return; dropPicked(); renderUpload(); } }, t('run.removeAll'))),
+      el('div', { class: 'file-chips' }, ...picked.map((p, i) => fileChip(p, ranges[i] ?? null))),
+      el('div', { class: 'row' }, el('span', { class: 'muted' }, t('run.chipsHelp')),
+        el('button', { class: 'small', disabled: saving, onclick: () => { if (saving) return; dropPicked(); renderUpload(); } }, t('run.removeAll'))),
       el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
         el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; turnAll(r); } }, `${r}°`)),
         el('span', { class: 'muted' }, t('run.rotationHelp')), rotationNote),
@@ -334,6 +346,25 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       data.pages.length ? el('div', { class: 'band warn' }, t('run.alreadyPages', { n: data.pages.length, next: tag(next) })) : null,
       el('div', { class: 'row' }, saveBtn));
     saveBtn.disabled = saving || !included().length;
+  }
+
+  /**
+   * 고른 파일 하나를 단추 모양 칩으로: 저장 차례(순번)·이름·쪽 수와 받을 장 범위, 오른쪽 위 x로 그 파일만 뺀다.
+   * 이미 올린 파일은 칩 안에 경고와 '다시 저장하려면 체크'를 두고, 체크하지 않으면 순번 없이 '저장 안 함'
+   */
+  function fileChip(p: Picked, r: { 순번: number; 처음: number; 끝: number } | null): HTMLElement {
+    const n = p.src.pageCount;
+    const meta = !r ? t('run.chipSkip', { n }) : n === 1 ? t('run.chipOne', { page: tag(r.처음) }) : t('run.chipRange', { n, from: tag(r.처음), to: tag(r.끝) });
+    const remove = t('run.removeFile', { name: p.이름 });
+    return el('div', { class: `file-chip${p.이전 ? ' uploaded' : ''}${r ? '' : ' skipped'}` },
+      el('span', { class: 'order', title: r ? t('run.chipOrder', { n: r.순번 }) : '' }, r ? String(r.순번) : '-'),
+      el('span', { class: 'info' },
+        el('span', { class: 'name', title: p.이름 }, p.이름),
+        el('span', { class: 'meta' }, meta),
+        p.이전 ? el('label', { class: 'again' },
+          el('input', { type: 'checkbox', checked: p.포함, disabled: saving, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); } }),
+          t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null),
+      el('button', { class: 'chip-x', disabled: saving, title: remove, 'aria-label': remove, onclick: () => removePicked(p) }, '×'));
   }
 
   /** 저장한 자리에서 그 장만 바로 전사한다. '전사 시작'이 화면 맨 아래에 있어 장을 저장한 뒤 한참 내려가야 했다 */
