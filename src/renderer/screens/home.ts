@@ -27,9 +27,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const guard = makeGuard(showError);
   const statusBox = el('div', { class: 'card' });
   const setsList = el('div');
+  // 누가기록은 세트 하나가 아닌 학기 전체의 일이라 세트 현황 머리에 둔다. 만든 파일은 바로 아래 띠에 보인다
+  const cumulativeBox = el('div');
+  const cumulativeBtn = el('button', { title: t('home.cumulativeHelp'), onclick: () => guard(async () => {
+    cumulativeBtn.disabled = true;
+    try {
+      const r = await api.buildCumulative();
+      clear(cumulativeBox);
+      cumulativeBox.append(el('div', { class: 'band info' }, t('home.cumulativeMade'), ...r.파일.map(f => el('div', { class: 'row' }, el('span', { class: 'path' }, f), el('button', { onclick: () => api.revealPath(f).catch(e => showError(e.message)) }, t('common.reveal'))))));
+    } finally { cumulativeBtn.disabled = false; }
+  }) }, t('home.makeCumulative'));
   root.append(
     el('div', { class: 'home-head' }, el('h1', {}, t('home.title')), el('div', { class: 'muted' }, t('home.tagline'))),
-    el('div', { class: 'card home-board' }, el('div', { class: 'row' }, el('h3', {}, t('home.board'))), setsList),
+    el('div', { class: 'card home-board' }, el('div', { class: 'row' }, el('h3', {}, t('home.board')), cumulativeBtn), cumulativeBox, setsList),
     el('div', { class: 'home-grid' },
       el('div', { class: 'card' }, el('h3', {}, t('home.steps')),
         el('div', { class: 'home-steps' },
@@ -96,9 +106,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       nextBtn);
   }
 
+  let shownSemester = store.state.settings.학기폴더;
   function renderSets(): void {
     clear(setsList);
+    // 다른 학기 폴더로 바꾸면 앞 학기에서 만든 누가기록 띠는 지운다
+    if (store.state.settings.학기폴더 !== shownSemester) { shownSemester = store.state.settings.학기폴더; clear(cumulativeBox); }
     const sets = store.state.sets;
+    cumulativeBtn.classList.toggle('hidden', !sets.length);
     if (!sets.length) {
       setsList.append(el('div', { class: 'muted' }, t('home.noSets')),
         el('div', { class: 'row' }, el('button', { onclick: async () => {

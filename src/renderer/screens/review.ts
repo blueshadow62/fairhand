@@ -120,11 +120,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
   const title = el('h2');
   const rebuildBtn = el('button', { onclick: () => guard(async () => { if (!data) return; const r = await api.buildResult(data.폴더); showInfo(t('review.excelRebuilt', { path: r.엑셀 })); }) }, t('review.rebuildExcel'));
-  const cumulativeBtn = el('button', { onclick: () => guard(async () => {
-    const r = await api.buildCumulative();
-    clear(notice);
-    notice.append(el('div', { class: 'band info' }, t('review.cumulativeMade'), ...r.파일.map(f => el('div', { class: 'row' }, el('span', { class: 'path' }, f), el('button', { onclick: () => api.revealPath(f).catch(e => showError(e.message)) }, t('common.reveal'))))));
-  }) }, t('review.makeCumulative'));
 
   // ── 그림 칸과 전사 칸 사이를 끌어 너비 바꾸기. 두 칸의 최소 너비는 CSS(minmax)가 지킨다 ──
   const EDITOR_PREF = 'geulnun.review.editorWidth';
@@ -181,7 +176,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     data = d;
     // 머리 줄은 비우지 않고 제목만 바꾼다. 문항별 검토는 판정마다 다시 읽어서, 비웠다 채우면 화면이 위아래로 튄다
     title.textContent = t('review.title', { name: 폴더 });
-    if (!top.firstChild) put(top, seg, title, rebuildBtn, cumulativeBtn);
+    if (!top.firstChild) put(top, seg, title, rebuildBtn); // 누가기록은 세트 하나가 아닌 학기 전체의 일이라 시작 화면의 세트 현황에서 만든다
     renderFilters();
     const pages = order();
     const target = keepPage !== undefined && pages.includes(keepPage) ? keepPage : T && pages.includes(T.page) ? T.page : pages[0];
