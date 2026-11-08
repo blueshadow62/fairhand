@@ -5,6 +5,14 @@ import { listPages, pageImageName } from '../core/setio.js';
 import { DataError } from '../core/types.js';
 import type { SetInfo } from '../shared/ipc.js';
 
+/** 렌더러가 보낸 장 번호 목록: 1 이상 정수만, 겹침은 하나로, 한 번에 1000장까지 */
+export function pagesToDelete(pages: unknown): number[] {
+  if (!Array.isArray(pages) || !pages.length) throw new DataError('지울 장이 없습니다');
+  if (pages.length > 1000) throw new DataError('한 번에 1000장까지 지울 수 있습니다');
+  if (!pages.every(p => Number.isInteger(p) && p >= 1)) throw new DataError('잘못된 장 번호가 있습니다');
+  return [...new Set(pages as number[])].sort((a, b) => a - b);
+}
+
 /** 렌더러가 보낸 '폴더 이름'을 학기 폴더 바로 아래로만 푼다. 구분자·..·절대 경로는 거절. */
 export function resolveSetDir(semesterDir: string, 폴더: string): string {
   const name = 폴더.trim();

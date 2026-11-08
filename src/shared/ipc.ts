@@ -51,7 +51,7 @@ export const CHANNELS = {
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
-  draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', recordUpload: 'pages:record-upload',
+  draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   setNameMask: 'set:name-mask', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
@@ -96,6 +96,7 @@ export interface GeulnunApi {
   onProgress(cb: (e: ProgressEvent) => void): () => void;
   addPages(폴더: string, jpegs: ArrayBuffer[], thumbs?: ArrayBuffer[]): Promise<number[]>;   // thumbs[i]는 jpegs[i]의 작은 그림
   deletePage(폴더: string, page: number): Promise<{ 엑셀?: string; 엑셀오류?: string }>;   // 그림+전사 삭제, 남은 전사로 엑셀 다시
+  deletePages(폴더: string, pages: number[]): Promise<{ 삭제: number; 엑셀?: string; 엑셀오류?: string }>;   // 여러 장을 지우고 엑셀은 한 번만
   recordUpload(폴더: string, r: Omit<UploadRecord, '일시'>): Promise<void>;
   saveTranscript(폴더: string, t: Transcript): Promise<{ 엑셀?: string; 엑셀오류?: string }>;
   buildResult(폴더: string): Promise<{ 엑셀: string }>;

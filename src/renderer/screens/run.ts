@@ -32,6 +32,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let rotation: Rotation = store.state.settings.기본회전;
   let running = false;
   let saving = false; // 장 저장 중에는 회전·포함 체크·저장 버튼을 잠근다(같은 파일 이중 저장, 각도 섞임 방지)
+  let selected = new Set<number>(); // 한꺼번에 지우려고 고른 장
+  let lastPick: number | null = null; // Shift+클릭 범위의 시작 장
 
   const body = el('div');
   root.append(el('h2', {}, t('run.title')), el('div', { class: 'band info' }, t('run.notice')), body);
@@ -54,6 +56,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     shownFor = 폴더;
     clear(body);
     for (const p of picked) p.src.close(); picked = []; fileInput.value = ''; // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다
+    selected = new Set(); lastPick = null; // 장 번호는 세트마다 겹치므로 고른 장도 버린다
     if (!폴더) { data = null; body.append(el('div', { class: 'muted' }, t('common.chooseSet'))); return; }
     let d: SetData;
     try { d = await api.readSet(폴더); } catch (e) { showError((e as Error).message); return; }
@@ -172,20 +175,70 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     renderCounts(); renderUpload(); renderThumbs(); renderPrivacy(); renderRun(); await store.refreshSets();
   }
 
+  const picks = new Map<number, { fig: HTMLElement; box: HTMLInputElement }>();
+  const pickAll = el('input', { type: 'checkbox', onchange: () => { selected = new Set(pickAll.checked && data ? data.pages : []); lastPick = null; syncPicks(); } });
+  const pickCount = el('span', { class: 'muted' });
+  const deleteSel = el('button', { class: 'danger', onclick: () => void deleteSelected() });
+
   function renderThumbs(): void {
-    clear(thumbsBox);
+    clear(thumbsBox); picks.clear();
     if (!data) return;
     thumbsTitle.textContent = t('run.savedPages', { n: data.pages.length });
-    if (!data.pages.length) { thumbsBox.append(el('div', { class: 'muted' }, t('run.noPages'))); return; }
-    thumbsBox.append(el('div', { class: 'thumbs' }, ...data.pages.map(p => {
-      const tr = data!.transcripts.find(x => x.page === p);
-      const who = !tr ? t('run.untranscribed') : tr.이름 ?? (tr.반 !== null && tr.번호 !== null ? `${tr.반}-${tr.번호}` : t('run.unidentified'));
-      return el('figure', { class: 'thumb' },
-        el('img', { src: thumbUrl(data!.폴더, p), loading: 'lazy', decoding: 'async', alt: tag(p),
-          onerror: (e: Event) => { const i = e.target as HTMLImageElement; if (i.src !== imageUrl(data!.폴더, p)) i.src = imageUrl(data!.폴더, p); } }), // 작은 그림이 없는 옛 세트는 원본으로
-        el('figcaption', {}, el('span', { title: who }, `${tag(p)} · ${who}`),
-          el('button', { class: 'danger', disabled: running, title: t('common.delete'), onclick: () => void deletePage(p) }, '×')));
-    })));
+    if (!data.pages.length) { thumbsBox.append(el('div', { class: 'muted' }, t('run.noPages'))); syncPicks(); return; }
+    thumbsBox.append(
+      el('div', { class: 'row' }, el('label', {}, pickAll, t('run.pickAll')), pickCount, deleteSel),
+      el('div', { class: 'thumbs' }, ...data.pages.map(p => {
+        const tr = data!.transcripts.find(x => x.page === p);
+        const who = !tr ? t('run.untranscribed') : tr.이름 ?? (tr.반 !== null && tr.번호 !== null ? `${tr.반}-${tr.번호}` : t('run.unidentified'));
+        // change 이벤트에는 Shift 여부가 없어 click을 쓴다. click 때는 이미 체크가 바뀌어 있다
+        const box = el('input', { type: 'checkbox', 'aria-label': t('run.pickPage', { page: tag(p) }), onclick: (e: Event) => pick(p, box.checked, (e as MouseEvent).shiftKey) });
+        const fig = el('figure', { class: 'thumb', title: t('run.pickHint') },
+          el('label', { class: 'pick' }, box),
+          el('img', { src: thumbUrl(data!.폴더, p), loading: 'lazy', decoding: 'async', alt: tag(p),
+            onclick: (e: Event) => pick(p, !selected.has(p), (e as MouseEvent).shiftKey),
+            onerror: (e: Event) => { const i = e.target as HTMLImageElement; if (i.src !== imageUrl(data!.폴더, p)) i.src = imageUrl(data!.폴더, p); } }), // 작은 그림이 없는 옛 세트는 원본으로
+          el('figcaption', {}, el('span', { title: who }, `${tag(p)} · ${who}`),
+            el('button', { class: 'danger', disabled: running, title: t('common.delete'), onclick: () => void deletePage(p) }, '×')));
+        picks.set(p, { fig, box });
+        return fig;
+      })));
+    syncPicks();
+  }
+
+  /** 고른 상태는 그림을 다시 만드는 대신 체크·테두리·버튼에만 반영한다(그림을 다시 만들면 깜박인다) */
+  function syncPicks(): void {
+    const pages = data?.pages ?? [];
+    selected = new Set(pages.filter(p => selected.has(p))); // 이미 지워진 장은 뺀다
+    for (const [p, { fig, box }] of picks) { const on = selected.has(p); box.checked = on; fig.classList.toggle('picked', on); }
+    const n = selected.size;
+    pickAll.checked = n > 0 && n === pages.length;
+    pickAll.indeterminate = n > 0 && n < pages.length;
+    pickCount.textContent = n ? t('run.pickedCount', { n }) : '';
+    deleteSel.textContent = t('run.deleteSelected', { n });
+    deleteSel.disabled = running || !n;
+  }
+
+  function pick(p: number, on: boolean, range: boolean): void {
+    const pages = data?.pages ?? [];
+    const from = lastPick === null ? -1 : pages.indexOf(lastPick);
+    const to = pages.indexOf(p);
+    const span = range && from >= 0 ? pages.slice(Math.min(from, to), Math.max(from, to) + 1) : [p];
+    for (const q of span) if (on) selected.add(q); else selected.delete(q);
+    lastPick = p;
+    syncPicks();
+  }
+
+  async function deleteSelected(): Promise<void> {
+    if (!data || running || !selected.size) return;
+    const pages = data.pages.filter(p => selected.has(p));
+    if (!confirm(t('run.deleteManyConfirm', { n: pages.length }))) return;
+    deleteSel.disabled = true;
+    try {
+      const r = await api.deletePages(data.폴더, pages);
+      selected = new Set(); lastPick = null;
+      if (r.엑셀오류) showError(t('common.excelFailed', { error: r.엑셀오류 })); else showInfo(t('run.deletedMany', { n: r.삭제 }));
+    } catch (e) { showError((e as Error).message); }
+    try { await refresh(); } catch (e) { showError((e as Error).message); }
   }
 
   async function deletePage(p: number): Promise<void> {

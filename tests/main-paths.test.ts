@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listSets, nextPageNumber, resolveSetDir, uniqueFolderName } from '../src/main/paths.js';
+import { listSets, nextPageNumber, pagesToDelete, resolveSetDir, uniqueFolderName } from '../src/main/paths.js';
 import { DataError } from '../src/core/types.js';
 
 test('resolveSetDir: Windows 예약 이름과 끝 점·공백은 거절', () => {
@@ -37,4 +37,10 @@ test('uniqueFolderName: 겹치면 (2), (3)', () => {
   const taken = new Set([path.join('D:\\학기', 'a'), path.join('D:\\학기', 'a (2)')]); // 경로 결합은 운영체제 규칙을 따른다
   assert.equal(uniqueFolderName('D:\\학기', 'a', p => taken.has(p)), 'a (3)');
   assert.equal(uniqueFolderName('D:\\학기', 'b', p => taken.has(p)), 'b');
+});
+
+test('pagesToDelete: 1 이상 정수만 받고, 겹침은 하나로 줄여 차례대로', () => {
+  assert.deepEqual(pagesToDelete([7, 2, 7, 3]), [2, 3, 7]);
+  for (const bad of [[], [0], [1.5], ['2'], [-1], 'p01', null, undefined, Array.from({ length: 1001 }, (_, i) => i + 1)])
+    assert.throws(() => pagesToDelete(bad), DataError, JSON.stringify(bad)?.slice(0, 30));
 });

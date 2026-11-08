@@ -11,7 +11,7 @@ import { EngineError, userFacingMessage } from '../engine/provider.js';
 import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
 import { leaveChoice, leaveDialogOptions, pickFileOptions, type PickKind } from './dialogs.js';
-import { listSets, nextPageNumber, pageFile, resolveSetDir, uniqueFolderName } from './paths.js';
+import { listSets, nextPageNumber, pageFile, pagesToDelete, resolveSetDir, uniqueFolderName } from './paths.js';
 import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
 import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
@@ -136,6 +136,19 @@ export function registerIpc(d: IpcDeps): void {
     if (!전사있었음 || !(await loadSet(dir)).transcripts.length) return {};
     try { return await rebuildResult(dir, await roster(), { version: d.version }); }
     catch (e) { return { 엑셀오류: e instanceof Error ? e.message : String(e) }; }
+  });
+  h(CHANNELS.deletePages, async (폴더: string, pages: unknown) => {
+    const dir = await setDir(폴더);
+    const list = pagesToDelete(pages);
+    const have = new Set(await listPages(dir));
+    const missing = list.filter(p => !have.has(p));
+    if (missing.length) throw new DataError(`이미 없는 장이 있어 아무것도 지우지 않았습니다: ${missing.join(', ')}`); // 중간에 멈춰 엑셀과 어긋나지 않게 먼저 확인
+    let 전사있었음 = false;
+    for (const p of list) if ((await removePage(dir, p)).전사있었음) 전사있었음 = true;
+    const 삭제 = list.length;
+    if (!전사있었음 || !(await loadSet(dir)).transcripts.length) return { 삭제 };
+    try { return { 삭제, ...(await rebuildResult(dir, await roster(), { version: d.version })) }; } // 엑셀은 다 지운 뒤 한 번만
+    catch (e) { return { 삭제, 엑셀오류: e instanceof Error ? e.message : String(e) }; }
   });
   h(CHANNELS.recordUpload, async (폴더: string, r: Omit<UploadRecord, '일시'>) => appendUpload(await setDir(폴더),
     { 이름: String(r.이름), 크기: Number(r.크기), 지문: String(r.지문), 장수: Number(r.장수), 시작: Number(r.시작), 끝: Number(r.끝), 일시: new Date().toISOString() }));
