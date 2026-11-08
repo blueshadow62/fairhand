@@ -80,7 +80,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (shownFor !== 폴더) {
       clear(tryBox); // 시험 결과는 그 세트의 정답표로 그린 것이다
       // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다. 같은 세트면(설정을 보고 돌아옴) 쪽마다 돌린 각도와 함께 둔다
-      dropPicked(); fileInput.value = '';
+      dropPicked(); fileInput.value = ''; uploadStatus.textContent = '';
     }
     shownFor = 폴더;
     clear(body);
@@ -119,6 +119,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function pickFiles(): Promise<void> {
     const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
     if (!files.length) return;
+    uploadStatus.textContent = ''; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
     dropPicked();
     rotation = store.state.settings.기본회전;
     for (const f of files) {
