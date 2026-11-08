@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { caseCandidates, caseEffects, caseNote, caseRequest, caseRevertRequest, needsCaseConfirm, planApplyCase, planCaseRevert, previewCases, revertTranscript } from '../src/core/cases.js';
+import { caseCandidates, caseConflict, caseEffects, caseNote, caseRequest, caseRevertRequest, needsCaseConfirm, planApplyCase, planCaseRevert, previewCases, revertTranscript } from '../src/core/cases.js';
 import type { AnswerKey, Panjeong, Transcript } from '../src/core/types.js';
 
 const key: AnswerKey = { 세트: 's', 글: 'g', 학기: 'h', 대상: { 학년: 1, 반: [1] },
@@ -48,6 +48,12 @@ test('previewCases 경고: 정답·허용과 같은 답을 X로 기록할 때만
   assert.equal(needsCaseConfirm([one('1-1', '민수', 'X')]), false);
   assert.equal(needsCaseConfirm([one('1-1', '지연', 'X')]), true);
   assert.equal(needsCaseConfirm([]), false);
+});
+
+test('caseConflict: 정답·허용과 글자로 맞는 답을 X로 정한 사례만(논술형은 들어 있으면), O·맞지 않는 답·정답표에 없는 단위는 null', () => {
+  const c = (단위: string, 답: string, 판정: 'O' | 'X') => caseConflict(key, { 단위, 답, 판정 });
+  assert.deepEqual([c('2-1', '3', 'X'), c('1-1', ' 지연이. ', 'X'), c('5-1', '배움은 삶이다 라고 했다', 'X')], ['정답', '허용', '정답']);
+  assert.deepEqual([c('2-1', '3', 'O'), c('1-1', '민수', 'X'), c('9-9', '3', 'X')], [null, null, null]);
 });
 
 test('planApplyCase: 사례를 넣고 같은 답의 장만 바꾸며 비고 한 줄, 다른 단위·빈 답 장은 그대로, 바꿔 쓴 사례를 돌려준다', () => {

@@ -6,7 +6,7 @@ import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
-import { mapUnits, remapCases, remapRegions } from '../core/unit-map.js';
+import { casesOnChangedAnswers, mapUnits, remapCases, remapRegions } from '../core/unit-map.js';
 import { planUnitResults, uncheckChanged, unitResultsRequest } from '../core/unit-results.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
@@ -195,7 +195,8 @@ export class EngineBridge {
     const cases = remapCases(old?.사례, key.사례, map, key);
     if (cases.사례.length) key.사례 = cases.사례; else delete key.사례;
     await saveKeyFile(setDir, key);
-    return { key, 정리: { 사례: { 옮김: cases.옮김, 지움: cases.지움 }, 답칸: { 옮김: regions.옮김, 지움: regions.지움 } } };
+    return { key, 정리: { 사례: { 옮김: cases.옮김, 지움: cases.지움 }, 답칸: { 옮김: regions.옮김, 지움: regions.지움 } },
+      정답바뀐사례: old ? casesOnChangedAnswers(old, key, map) : [] };
   }
 
   /** 문항별 검토 그림 보기의 신원 영역. null이면 기본 영역으로. 화면에 칠하는 데만 쓰고 AI에는 보내지 않아 전사 중에도 바꾼다 */

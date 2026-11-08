@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { cleanupNotice, draftToRows, emptyRow, keyToRows, parseClasses, rowsHaveContent, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
+import { answerChangeNotice, cleanupNotice, draftToRows, emptyRow, keyToRows, parseClasses, rejudgeQuestion, rowsHaveContent, rowsToKey, validateRows, type UnitRow } from '../src/renderer/lib/key-form.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const meta = { 글: '알바생 자르기(장강명)', 학기: '2026 2학기', 학년: 3, 반: [1, 3], 인원: {} };
@@ -111,4 +111,19 @@ test('cleanupNotice: 옮긴 것과 지운 것을 줄마다, 0인 칸은 빼고, 
   assert.equal(cleanupNotice({ 사례: { 옮김: 2, 지움: 0 }, 답칸: { 옮김: 1, 지움: 1 } }),
     '단위 번호가 바뀌어 같은 내용의 새 단위로 옮겼습니다: 판정 사례 2건, 답 칸 1개\n같은 내용의 단위가 없어 지웠습니다: 답 칸 1개');
   assert.equal(cleanupNotice({ 사례: { 옮김: 0, 지움: 3 }, 답칸: none }), '같은 내용의 단위가 없어 지웠습니다: 판정 사례 3건');
+});
+
+test('answerChangeNotice·rejudgeQuestion: 정답을 바꾼 단위의 사례를 알리고, 어긋난 사례(다섯 건까지 이름)는 다시 판정을 물을 때도 경고한다', () => {
+  const k = (단위: string, 답: string, 어긋남 = false) => ({ 단위, 답, 판정: (어긋남 ? 'X' : 'O') as 'O' | 'X', 어긋남 });
+  assert.equal(answerChangeNotice([]), '');
+  assert.equal(answerChangeNotice([k('1-1', '최은영'), k('1-1', '은영씨')]), "정답·허용을 바꾼 단위의 판정 사례 2건은 그대로 두었습니다. 새 정답과 맞는지 '채점 규칙과 사례' 탭에서 확인하세요.");
+  const mixed = [k('1-1', '최은영'), k('1-1', '혜미', true)];
+  assert.equal(answerChangeNotice(mixed), "새 정답·허용과 같은 답을 X로 정한 판정 사례가 1건 있습니다(1-1 '혜미'). 사례가 정답보다 먼저 적용되어 이 답은 X로 채점됩니다. '채점 규칙과 사례' 탭에서 확인하세요.");
+  const many = answerChangeNotice(Array.from({ length: 7 }, (_, i) => k('2-1', `답${i + 1}`, true)));
+  assert.ok(many.includes("7건 있습니다(2-1 '답1', 2-1 '답2', 2-1 '답3', 2-1 '답4', 2-1 '답5' 외 2건)"), many);
+  const plain = '정답표가 바뀌었습니다. 기존 16장을 글자 일치 기준으로 다시 판정할까요?';
+  assert.equal(rejudgeQuestion(16, []), plain);
+  assert.equal(rejudgeQuestion(16, [k('1-1', '최은영')]), plain); // 어긋나지 않은 사례는 묻는 글에 넣지 않는다
+  const warned = rejudgeQuestion(16, mixed);
+  assert.ok(warned.startsWith(`${plain}\n\n주의: `) && warned.includes("1건 있습니다(1-1 '혜미')") && warned.includes('다시 판정해도 이 답은 X'), warned);
 });

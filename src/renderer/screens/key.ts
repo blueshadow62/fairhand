@@ -7,7 +7,8 @@ import { locale, t } from '../lib/i18n.js';
 import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-utils.js';
 import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
-import { cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { answerChangeNotice, cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rejudgeQuestion, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { caseConflict } from '../../core/cases.js';
 import { changedUnitIds } from '../../core/unit-map.js';
 
 function defaultSemester(d = new Date()): string {
@@ -378,7 +379,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(casesBox);
     if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, t('key.noCases'))); return; }
     casesBox.append(el('table', {}, el('tr', {}, ...[t('key.col.unit'), t('key.col.caseAnswer'), t('key.col.verdict'), t('key.col.caseSource'), t('key.col.caseWhen'), ''].map(h => el('th', {}, h))),
-      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답), el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`)), el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
+      // 정답·허용과 같은 답을 X로 정한 사례는 다시 판정에서 정답보다 먼저 적용된다. 알고 정한 예외일 수 있어 표시만 한다
+      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답),
+        el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`), savedKey && caseConflict(savedKey, c) ? tip(el('span', { class: 'case-conflict' }, t('key.caseConflict')), t('key.caseConflictTip')) : null),
+        el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
         el('td', {}, el('button', { class: 'danger', onclick: () => guard(async () => {
           if (!폴더 || !confirm(t('key.deleteCaseConfirm', { unit: c.단위, answer: c.답, verdict: c.판정 }))) return;
           사례 = (await api.removeCase(폴더, c.단위, c.답)).사례 ?? [];
@@ -421,7 +425,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       if (!unitChangesOk(next)) return;
       const r = await api.saveKey(폴더!, next);
       savedKey = r.key; 확인 = r.key.확인; await store.refreshSets();
-      showInfo([on ? t('key.confirmedOn') : t('key.confirmedOff'), cleanupNotice(r.정리)].filter(Boolean).join('\n'));
+      showInfo([on ? t('key.confirmedOn') : t('key.confirmedOff'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례)].filter(Boolean).join('\n'));
     });
     renderStatus();
   }
@@ -443,9 +447,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const r = await api.saveKey(폴더, next);
       savedKey = r.key; 확인 = r.key.확인; 사례 = r.key.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
-      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리)].filter(Boolean).join('\n'));
+      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례)].filter(Boolean).join('\n'));
       const n = transcribed();
-      if (n > 0 && opts.askRejudge !== false && confirm(t('key.rejudgeConfirm', { n }))) {
+      if (n > 0 && opts.askRejudge !== false && confirm(rejudgeQuestion(n, r.정답바뀐사례))) {
         showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
     });

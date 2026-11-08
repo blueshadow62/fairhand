@@ -34,11 +34,18 @@ export function caseEffects(transcripts: Transcript[], c: CaseInput, exceptPage?
   });
 }
 
+/**
+ * 사례가 정답표와 어긋나는지: 정답·허용과 글자로 맞는 답(논술형은 그 표기가 들어 있는 답)을 X로 정했으면 맞은 쪽('정답'·'허용').
+ * 판정은 사례를 정답보다 먼저 보므로 그 답은 X가 된다. 선생님이 알고 정한 예외일 수 있어 막지는 않고 알리기만 한다
+ */
+export function caseConflict(key: Pick<AnswerKey, '정량'>, c: Pick<Case, '단위' | '답' | '판정'>): '정답' | '허용' | null {
+  if (c.판정 !== 'X') return null;
+  const u = key.정량.find(x => x.id === c.단위);
+  return u ? keyMatch(u, c.답) : null;
+}
+
 export function previewCases(key: AnswerKey, transcripts: Transcript[], cases: CaseInput[], page: number): CasePreview[] {
-  return cases.map(c => {
-    const u = key.정량.find(x => x.id === c.단위);
-    return { ...c, 바뀔장: caseEffects(transcripts, c, page), 경고: u && c.판정 === 'X' ? keyMatch(u, c.답) : null, 논술형: u?.유형 === '논술형' };
-  });
+  return cases.map(c => ({ ...c, 바뀔장: caseEffects(transcripts, c, page), 경고: caseConflict(key, c), 논술형: key.정량.find(x => x.id === c.단위)?.유형 === '논술형' }));
 }
 
 /** 다른 장이 바뀌거나 정답표와 맞는 답을 X로 기록할 때만 묻는다. 이 장만 바뀌는 보통의 저장은 묻지 않는다 */

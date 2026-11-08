@@ -1,3 +1,4 @@
+import { caseConflict } from './cases.js';
 import { mergeCases, normalizeAnswer } from './rejudge.js';
 import type { AnswerKey, Case, MaskRect, QtyUnit, QualUnit } from './types.js';
 
@@ -102,4 +103,22 @@ export function remapCases(file: Case[] | undefined, sent: Case[] | undefined, m
     moved.push(to === c.단위 ? c : { ...c, 단위: to });
   }
   return { 옮김, 지움, 사례: mergeCases(moved, (sent ?? []).filter(c => !inFile.has(keyOf(c))), key) };
+}
+
+/** 정답·허용이 바뀐 단위의 사례 하나. 어긋남: 새 정답·허용과 맞는 답을 X로 정한 사례(caseConflict) */
+export interface ChangedAnswerCase { 단위: string; 답: string; 판정: 'O' | 'X'; 어긋남: boolean }
+
+/**
+ * 저장으로 정답·허용이 바뀐 단위(map으로 이은 옛 단위와 견준다)의 사례. 설명으로 따라간 단위는 정답을 고쳐도 사례가 그대로라
+ * 새 정답과 맞지 않는 사례가 남을 수 있다(정답이 '은영'일 때 '혜미'를 X로 정한 사례는 정답을 '혜미'로 바꿔도 '혜미'를 X로 만든다).
+ * 사례를 지우는 길은 removeCase 하나라 여기서는 고르기만 하고, 선생님이 보고 정한다. 글자 비교는 판정과 같은 정규화(normalizeAnswer)로
+ */
+export function casesOnChangedAnswers(old: Pick<AnswerKey, '정량'>, next: Pick<AnswerKey, '정량' | '사례'>, map: UnitMap): ChangedAnswerCase[] {
+  const allowed = (u: QtyUnit) => [...new Set((u.허용 ?? []).map(normalizeAnswer).filter(Boolean))].sort().join('\u0000');
+  const changed = new Set<string>();
+  for (const o of old.정량) {
+    const u = next.정량.find(x => x.id === map.get(o.id));
+    if (u && (normalizeAnswer(o.정답) !== normalizeAnswer(u.정답) || allowed(o) !== allowed(u))) changed.add(u.id);
+  }
+  return (next.사례 ?? []).filter(c => changed.has(c.단위)).map(c => ({ 단위: c.단위, 답: c.답, 판정: c.판정, 어긋남: caseConflict(next, c) !== null }));
 }

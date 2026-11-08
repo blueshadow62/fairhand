@@ -111,6 +111,25 @@ export function cleanupNotice(r: SaveKeyResult['정리']): string {
   return [moved ? t('key.cleanup.moved', { list: moved }) : '', dropped ? t('key.cleanup.dropped', { list: dropped }) : ''].filter(Boolean).join('\n');
 }
 
+/** 어긋난 사례 목록 글: "1-1 '혜미'"를 다섯 건까지, 나머지는 수만 */
+const conflictList = (cs: SaveKeyResult['정답바뀐사례']): string => {
+  const bad = cs.filter(c => c.어긋남);
+  return bad.slice(0, 5).map(c => `${c.단위} '${c.답}'`).join(', ') + (bad.length > 5 ? t('key.caseCheck.more', { n: bad.length - 5 }) : '');
+};
+
+/** 저장 알림에 붙일 글. 정답·허용이 바뀐 단위의 사례는 그대로 두었으니 확인하라고, 새 정답과 어긋난 사례가 있으면 그것을 앞세운다 */
+export function answerChangeNotice(cs: SaveKeyResult['정답바뀐사례']): string {
+  const bad = cs.filter(c => c.어긋남).length;
+  if (bad) return t('key.caseCheck.conflict', { n: bad, list: conflictList(cs) });
+  return cs.length ? t('key.caseCheck.kept', { n: cs.length }) : '';
+}
+
+/** 저장 뒤 다시 판정을 묻는 글. 어긋난 사례가 있으면 다시 판정해도 그 답은 X라는 것을 함께 묻는다(확인 창이 떠 있는 동안 알림은 보이지 않는다) */
+export function rejudgeQuestion(n: number, cs: SaveKeyResult['정답바뀐사례']): string {
+  const bad = cs.filter(c => c.어긋남).length;
+  return bad ? t('key.rejudgeConfirmConflict', { n, m: bad, list: conflictList(cs) }) : t('key.rejudgeConfirm', { n });
+}
+
 export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
   const e: string[] = [];
   if (!meta.글.trim()) e.push(t('form.titleEmpty'));

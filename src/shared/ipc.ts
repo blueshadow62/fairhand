@@ -1,5 +1,6 @@
 import type { CaseChange, CaseRevertRequest } from '../core/cases.js';
 import type { AnswerKey, Case, MaskRect, Student, Transcript, UploadRecord } from '../core/types.js';
+import type { ChangedAnswerCase } from '../core/unit-map.js';
 import type { UnitResultsRequest } from '../core/unit-results.js';
 
 export type Rotation = 0 | 90 | 180 | 270;
@@ -37,7 +38,8 @@ export interface TrashEntry { id: string; 원래이름: string; 삭제일시: st
 export interface SetInfo { 폴더: string; key: AnswerKey; 쪽수: number; 전사수: number; 확인수: number; 미전사수: number }
 export interface SetData { 폴더: string; key: AnswerKey; transcripts: Transcript[]; pages: number[]; 올린파일: UploadRecord[]; 명단있음: boolean; 명단: Student[] | null /* 대상 학년·반만 */ }
 /** 정답표 저장 결과. 정리: 단위 id가 다시 매겨져 사례·답 칸을 같은 뜻의 새 id로 옮긴 수와, 같은 뜻의 단위가 없어 지운 수 */
-export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: number; 지움: number }; 답칸: { 옮김: number; 지움: number } } }
+/** 정리: 단위 번호가 바뀌어 옮기거나 지운 사례·답 칸 수. 정답바뀐사례: 정답·허용이 바뀐 단위에 그대로 둔 사례(선생님이 확인할 것) */
+export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: number; 지움: number }; 답칸: { 옮김: number; 지움: number } }; 정답바뀐사례: ChangedAnswerCase[] }
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }

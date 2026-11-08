@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseKey } from '../src/core/key.js';
 import { loadSet } from '../src/core/setio.js';
 import type { AnswerKey, Case } from '../src/core/types.js';
-import { changedUnitIds, mapUnits, remapCases, remapRegions, unitLabel, unitMeaning } from '../src/core/unit-map.js';
+import { casesOnChangedAnswers, changedUnitIds, mapUnits, remapCases, remapRegions, unitLabel, unitMeaning } from '../src/core/unit-map.js';
 import { EngineBridge } from '../src/main/engine-bridge.js';
 import { SecretStore } from '../src/main/secrets.js';
 import { SettingsStore } from '../src/main/settings.js';
@@ -129,6 +129,22 @@ test('remapCases: 파일의 사례를 새 id로 옮기고, 화면이 보낸 옛 
     { 옮김: 1, 지움: 1, 답영역: { '1-3': { x: 0, y: 0.5, w: 1, h: 0.1 }, E1: { x: 0, y: 0.8, w: 1, h: 0.1 } } });
 });
 
+test('casesOnChangedAnswers: 정답·허용이 바뀐 단위의 사례만 고르고, 새 정답·허용과 같은 답을 X로 정한 사례는 어긋남', () => {
+  const old = keyOf(base);
+  const cases = [c('1-1', '혜미', 'X'), c('1-1', '최은영'), c('1-2', '혜미 씨'), c('2-1', '손수건', 'X')];
+  // 1-1의 정답을 '혜미'로 바꾸고(설명이 같아 사례가 그대로다) 2-1에 허용 '손수건'을 더했다. 1-2는 그대로
+  const next = { ...keyOf([{ ...base[0]!, 정답: '혜미' }, base[1]!, { ...base[2]!, 허용: '손수건' }, ...base.slice(3)]), 사례: cases };
+  assert.deepEqual(casesOnChangedAnswers(old, next, mapUnits(old, next)), [
+    { 단위: '1-1', 답: '혜미', 판정: 'X', 어긋남: true }, { 단위: '1-1', 답: '최은영', 판정: 'O', 어긋남: false }, { 단위: '2-1', 답: '손수건', 판정: 'X', 어긋남: true }]);
+  // 판정에 쓰는 정규화로 같으면(공백·끝 문장부호) 바뀐 것이 아니고, 허용은 순서를 보지 않는다
+  const withAllow = keyOf([{ ...base[0]!, 허용: '최은영, 은영씨' }, ...base.slice(1)]);
+  const same = { ...keyOf([{ ...base[0]!, 정답: ' 은영. ', 허용: '은영씨,최은영' }, ...base.slice(1)]), 사례: cases };
+  assert.deepEqual(casesOnChangedAnswers(withAllow, same, mapUnits(withAllow, same)), []);
+  // 행을 끼워 번호만 바뀐 단위는 정답이 그대로라 고르지 않고, 정답을 고쳐 설명으로 따라간 단위는 새 번호로 고른다
+  const moved = { ...keyOf([row(1, '빈칸형', '__ 사원', '민수'), base[0]!, { ...base[1]!, 정답: '혜미씨' }, ...base.slice(2)]), 사례: [c('1-2', '은영'), c('1-3', '혜미씨', 'X')] };
+  assert.deepEqual(casesOnChangedAnswers(old, moved, mapUnits(old, moved)), [{ 단위: '1-3', 답: '혜미씨', 판정: 'X', 어긋남: true }]);
+});
+
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
 const storage = { isEncryptionAvailable: () => true, encryptString: (s: string) => Buffer.from(s), decryptString: (b: Buffer) => b.toString() };
 
@@ -152,6 +168,7 @@ test('saveKey: 단위를 끼운 저장은 사례·답 칸을 같은 뜻의 새 i
     const typo = await bridge.saveKey(set, { ...r.key, 정량: r.key.정량.map(u => u.id === '1-2' ? { ...u, 정답: '가나라' } : u) });
     assert.deepEqual(typo.정리, { 사례: { 옮김: 0, 지움: 0 }, 답칸: { 옮김: 0, 지움: 0 } });
     assert.deepEqual([typo.key.사례, typo.key.답영역], [[c('1-2', '가나다라')], { '1-2': r1, '3-1': r3 }]);
+    assert.deepEqual([r.정답바뀐사례, typo.정답바뀐사례], [[], [{ 단위: '1-2', 답: '가나다라', 판정: 'O', 어긋남: false }]]); // 정답을 고친 단위의 사례는 확인하라고 돌려준다
     // 설명을 바꾸면 다른 단위로 보고 그 단위의 답 칸을 지운다
     const again = await bridge.saveKey(set, { ...typo.key, 정량: typo.key.정량.map(u => u.id === '3-1' ? { ...u, 설명: '다른 문장' } : u) });
     assert.deepEqual(again.정리, { 사례: { 옮김: 0, 지움: 0 }, 답칸: { 옮김: 0, 지움: 1 } });

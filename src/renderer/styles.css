@@ -170,6 +170,8 @@ tr.note { background: var(--warn-soft); }
 .v-X { color: var(--bad); font-weight: 700; }
 .v-빈칸 { color: var(--text-3); }
 select.v-O { background: var(--ok-soft); } select.v-X { background: var(--bad-soft); } select.v-빈칸 { background: var(--surface-3); }
+/* 사례 표: 정답·허용과 같은 답을 X로 정한 사례(판정 옆) */
+.case-conflict { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--warn-line); border-radius: var(--r-s); background: var(--warn-soft); color: var(--warn-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; cursor: help; }
 
 /* ── 시작 화면: 머리글 + 학기 현황판(세트 목록) + 두 칸 격자(순서·지금 상태) ── */
 .home-head { margin: 4px 0 var(--sp-4); }
