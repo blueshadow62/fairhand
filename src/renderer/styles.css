@@ -250,6 +250,24 @@ label.upload input:focus { box-shadow: none; }
 .thumb figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px 6px; font-size: var(--fs-s); }
 .thumb figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thumb figcaption button { min-height: 24px; padding: 0 8px; flex: none; }
+/* 고른 파일 목록: 스캐너가 쪽마다 사진 파일을 내면 수십 줄이 되어 미리보기와 저장 단추를 밀어낸다. 몇 줄만 보이고 안에서 넘긴다 */
+.picked-files { max-height: 188px; overflow: auto; }
+.picked-files .row { margin: 2px 0; }
+/* 저장 전 미리보기: 고른 파일의 모든 쪽을 작은 그림 격자로. 쪽이 많으면 격자 안에서 넘겨 보아 저장 단추가 밀려나지 않게 하고,
+   쪽마다 돌린 각도는 그림을 돌려 보인다. 90°·270°는 가로가 되므로 세로 칸(A4)에 들어가게 줄인다 */
+.sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-2); max-height: min(560px, 60vh); overflow: auto; padding: 2px; margin: var(--sp-2) 0; }
+.sheet-tile { margin: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); overflow: hidden; }
+.sheet-tile.turned { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); } /* 따로 돌린 쪽 */
+.sheet-tile .sheet-img { aspect-ratio: 1 / 1.414; overflow: hidden; background: var(--surface-3); } /* 돌린 쪽은 흰 쪽이 회색 칸 안에 가로로 놓여 방향이 보인다 */
+.sheet-tile img { display: block; width: 100%; height: 100%; object-fit: contain; transition: transform .15s; }
+.sheet-tile img:not([src]) { visibility: hidden; } /* 아직 그리지 않은 쪽은 빈 칸 */
+.sheet-tile img.r90 { transform: rotate(90deg) scale(.707); }
+.sheet-tile img.r180 { transform: rotate(180deg); }
+.sheet-tile img.r270 { transform: rotate(270deg) scale(.707); }
+.sheet-tile.failed .sheet-img { background: var(--bad-soft); }
+.sheet-tile figcaption { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 8px; font-size: var(--fs-s); }
+.sheet-tile figcaption .angle { color: var(--accent-text); font-weight: 600; }
+.sheet-tile figcaption button { margin-left: auto; min-height: 26px; padding: 0 8px; }
 canvas.preview { display: block; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); max-width: 100%; margin: var(--sp-2) 0; }
 /* 전사 칸 머리: 쓸 AI(이름·종류·모델과 구독/API)와 전사할 장 수를 전사 단추 위에 옅은 상자로 묶는다 */
 .run-ai { padding: 10px 14px; margin-bottom: var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface-2); }

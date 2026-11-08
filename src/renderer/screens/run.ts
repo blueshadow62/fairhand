@@ -10,13 +10,14 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { pendingPages } from '../lib/sheets.js';
+import { nextRotation, pendingPages } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
 const DEFAULT_MASK: MaskRect = { x: 0.74, y: 0.07, w: 0.26, h: 0.05 };
 const BATCH = 10; // 한 번에 너무 큰 IPC 전송을 피한다
 const THUMB_W = 320; // 격자 칸(130~200px)의 두 배면 또렷하다. 원본(1650px)을 그대로 보이면 장당 디코드 60ms가 쌓여 화면이 끊긴다
+const PREVIEW_SCALE = 0.35; // 저장 전 미리보기(칸 120~150px). A4 한 쪽이 200px 남짓이라 1.5배 화면에서도 읽힌다
 function shrink(c: HTMLCanvasElement, w: number): HTMLCanvasElement {
   const s = document.createElement('canvas');
   s.width = w; s.height = Math.round(c.height * w / c.width);
@@ -45,11 +46,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const { store, showError, showInfo } = ctx;
   let shownFor: string | null | undefined;
   let data: SetData | null = null;
-  interface Picked { src: SheetSource; 지문: string; 크기: number; 이전: UploadRecord | null; 포함: boolean }
+  /** 저장 전 미리보기의 한 쪽. 그림은 화면에 들어올 때 한 번만 작게 그려 두고, 돌린 각도는 CSS로 보인다(다시 그리지 않음) */
+  interface SheetTile { pk: Picked; page: number; fig: HTMLElement; img: HTMLImageElement; tag: HTMLElement; angle: HTMLElement; btn: HTMLButtonElement; url: string | null; state: 'idle' | 'queued' | 'drawn' | 'failed'; visible: boolean }
+  /** 회전: 쪽마다(0부터) 저장할 때 돌릴 각도. closed: 닫은 파일(그리던 그림은 버린다) */
+  interface Picked { src: SheetSource; 지문: string; 크기: number; 이전: UploadRecord | null; 포함: boolean; 회전: Rotation[]; tiles: SheetTile[]; closed: boolean }
   let picked: Picked[] = []; // 올린 파일들(이름순). 한 번에 이어서 쪽으로 나눈다. 이미 올린 파일은 기본으로 빼 둔다
   const included = () => picked.filter(p => p.포함);
   const totalPages = () => included().reduce((n, p) => n + p.src.pageCount, 0);
-  let rotation: Rotation = store.state.settings.기본회전;
+  let rotation: Rotation = store.state.settings.기본회전; // 모든 쪽에 마지막으로 적용한 각도. 이와 다른 쪽은 따로 돌린 쪽이다
   let running = false;
   let saving = false; // 장 저장 중에는 회전·포함 체크·저장 버튼을 잠근다(같은 파일 이중 저장, 각도 섞임 방지)
   let selected = new Set<number>(); // 한꺼번에 지우려고 고른 장
@@ -60,7 +64,6 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   root.append(el('h2', {}, t('run.title')), el('div', { class: 'band info' }, t('run.notice')), body);
 
   const countBox = el('div', { class: 'row' });
-  const preview = el('canvas', { class: 'preview' });
   const uploadBox = el('div');
   const thumbsTitle = el('h3');
   const thumbsBox = el('div');
@@ -74,10 +77,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   async function reload(): Promise<void> {
     const 폴더 = store.state.current;
-    if (shownFor !== 폴더) clear(tryBox); // 시험 결과는 그 세트의 정답표로 그린 것이다
+    if (shownFor !== 폴더) {
+      clear(tryBox); // 시험 결과는 그 세트의 정답표로 그린 것이다
+      // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다. 같은 세트면(설정을 보고 돌아옴) 쪽마다 돌린 각도와 함께 둔다
+      dropPicked(); fileInput.value = '';
+    }
     shownFor = 폴더;
     clear(body);
-    for (const p of picked) p.src.close(); picked = []; fileInput.value = ''; // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다
     selected = new Set(); lastPick = null; // 장 번호는 세트마다 겹치므로 고른 장도 버린다
     if (!폴더) { data = null; body.append(el('div', { class: 'muted' }, t('common.chooseSet'))); return; }
     let d: SetData;
@@ -113,18 +119,20 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function pickFiles(): Promise<void> {
     const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
     if (!files.length) return;
-    for (const p of picked) p.src.close();
-    picked = [];
+    dropPicked();
+    rotation = store.state.settings.기본회전;
     for (const f of files) {
       try {
         const bytes = await f.arrayBuffer(); // 지문과 열기가 같은 버퍼를 쓴다(큰 스캔을 두 번 읽지 않게)
         const 지문 = await sha256(bytes);
         const 이전 = data?.올린파일.find(u => u.지문 === 지문) ?? null;
-        picked.push({ src: await openSheetSource(f, bytes), 지문, 크기: f.size, 이전, 포함: !이전 });
+        const src = await openSheetSource(f, bytes);
+        const pk: Picked = { src, 지문, 크기: f.size, 이전, 포함: !이전, 회전: Array<Rotation>(src.pageCount).fill(rotation), tiles: [], closed: false };
+        pk.tiles = Array.from({ length: src.pageCount }, (_, i) => makeTile(pk, i + 1));
+        picked.push(pk);
       } catch (e) { showError(t('run.openFailed', { name: f.name, error: (e as Error).message })); }
     }
-    rotation = store.state.settings.기본회전;
-    renderUpload(); await drawPreview();
+    renderUpload();
   }
 
   async function sha256(bytes: ArrayBuffer): Promise<string> {
@@ -132,12 +140,88 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     return [...h].map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  async function drawPreview(): Promise<void> {
-    const first = (included()[0] ?? picked[0])?.src;
-    if (!first) return;
-    const c = await first.render(1, rotation, 0.4);
-    preview.width = c.width; preview.height = c.height;
-    preview.getContext('2d')!.drawImage(c, 0, 0);
+  // ── 저장 전 모든 쪽 미리보기: 첫 장 하나만 보여서 스캐너가 몇 장을 거꾸로 읽어도 저장 전에는 알 수 없었다.
+  //    쪽이 수백 장이어도 느리지 않게 격자에 들어온(곧 들어올) 쪽만 하나씩 작게 그리고, 그린 그림은 JPEG 주소로 바꿔 캔버스 메모리를 비운다 ──
+  const sheetGrid = el('div', { class: 'sheet-grid' });
+  const tileOf = new WeakMap<Element, SheetTile>();
+  const queue: SheetTile[] = [];
+  let pumping = false;
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      const tile = tileOf.get(e.target);
+      if (!tile) continue;
+      tile.visible = e.isIntersecting;
+      if (tile.visible && tile.state === 'idle') { tile.state = 'queued'; queue.push(tile); }
+    }
+    void pump();
+  }, { root: sheetGrid, rootMargin: '240px 0px' });
+
+  async function pump(): Promise<void> {
+    if (pumping) return;
+    pumping = true;
+    try {
+      for (let tile = queue.shift(); tile; tile = queue.shift()) {
+        if (tile.state !== 'queued' || tile.pk.closed) continue;
+        if (!tile.visible) { tile.state = 'idle'; continue; } // 지나쳐 간 쪽은 다시 들어올 때 그린다
+        try { await drawTile(tile); }
+        catch { if (!tile.pk.closed) { tile.state = 'failed'; tile.fig.classList.add('failed'); tile.img.alt = t('run.previewFailed'); } }
+      }
+    } finally { pumping = false; }
+  }
+
+  async function drawTile(tile: SheetTile): Promise<void> {
+    const c = await tile.pk.src.render(tile.page, 0, PREVIEW_SCALE);
+    try {
+      const blob = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.8));
+      if (tile.pk.closed) return;
+      if (!blob) throw new Error(t('pdf.jpegFailed'));
+      tile.url = URL.createObjectURL(blob);
+      tile.img.src = tile.url;
+      tile.state = 'drawn';
+      io.unobserve(tile.fig);
+    } finally { c.width = c.height = 0; }
+  }
+
+  function makeTile(pk: Picked, page: number): SheetTile {
+    const img = el('img', { alt: '', decoding: 'async' });
+    const tagText = el('span'), angle = el('span', { class: 'angle' });
+    const btn = el('button', { class: 'small', onclick: () => { if (saving) return; turn(tile); } }, '↻');
+    const fig = el('figure', { class: 'sheet-tile', title: t('run.pageOfFile', { file: pk.src.name, page }) },
+      el('div', { class: 'sheet-img' }, img), el('figcaption', {}, tagText, angle, btn));
+    const tile: SheetTile = { pk, page, fig, img, tag: tagText, angle, btn, url: null, state: 'idle', visible: false };
+    tileOf.set(fig, tile);
+    showTurn(tile);
+    return tile;
+  }
+
+  /** 쪽마다 돌리기: 시계 방향으로 90°씩. 저장할 때 이 각도로 그린다 */
+  function turn(tile: SheetTile): void {
+    tile.pk.회전[tile.page - 1] = nextRotation(tile.pk.회전[tile.page - 1]!);
+    showTurn(tile); renderRotationNote();
+  }
+
+  function showTurn(tile: SheetTile): void {
+    const r = tile.pk.회전[tile.page - 1]!;
+    for (const a of [90, 180, 270]) tile.img.classList.toggle(`r${a}`, r === a);
+    const own = r !== rotation; // 모든 쪽에 적용한 각도와 다르게 따로 돌린 쪽
+    tile.fig.classList.toggle('turned', own);
+    tile.angle.textContent = own ? `${r}°` : '';
+  }
+
+  /** 닫은 파일의 미리보기는 그리지 않고, 만든 그림 주소를 돌려준다 */
+  function dropPicked(): void {
+    for (const pk of picked) {
+      pk.closed = true; pk.src.close();
+      for (const x of pk.tiles) { io.unobserve(x.fig); if (x.url) URL.revokeObjectURL(x.url); }
+    }
+    picked = []; queue.length = 0; clear(sheetGrid);
+  }
+
+  const rotationNote = el('span', { class: 'band warn' });
+  function renderRotationNote(): void {
+    const own = included().reduce((n, pk) => n + pk.회전.filter(r => r !== rotation).length, 0);
+    rotationNote.textContent = t('run.rotationOwn', { n: own });
+    rotationNote.classList.toggle('hidden', !own);
   }
 
   async function savePages(): Promise<void> {
@@ -145,16 +229,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!included().length) { showError(t('run.noneSelected')); return; }
     const 폴더 = data.폴더, total = totalPages();
     const made: number[] = [];
-    saving = true; saveBtn.disabled = true;
+    saving = true; renderUpload(); // 저장하는 동안 회전·포함 체크·저장 단추를 잠근다
     try {
       // 파일 순서대로, 파일 안에서는 쪽 순서대로 하나의 번호 흐름으로 이어 붙인다
       let jpegs: ArrayBuffer[] = [], thumbs: ArrayBuffer[] = [], n = 0;
       const flush = async () => { if (jpegs.length) { made.push(...await api.addPages(폴더, jpegs, thumbs)); jpegs = []; thumbs = []; uploadStatus.textContent = t('run.savedCount', { n: made.length, total }); } };
-      for (const { src, 지문, 크기 } of included()) {
+      for (const { src, 지문, 크기, 회전 } of included()) {
         const before = made.length;
         for (let p = 1; p <= src.pageCount; p++) {
           n++;
-          const c = await src.render(p, rotation, DPI_SCALE);
+          const c = await src.render(p, 회전[p - 1]!, DPI_SCALE);
           jpegs.push(await canvasToJpeg(c));
           thumbs.push(await canvasToJpeg(shrink(c, THUMB_W), 0.75));
           c.width = c.height = 0; // 200dpi 캔버스(장당 수십 MB)를 GC를 기다리지 않고 비운다
@@ -165,10 +249,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         await api.recordUpload(폴더, { 이름: src.name, 크기, 지문, 장수: src.pageCount, 시작: made[before]!, 끝: made[made.length - 1]! });
       }
       showInfo(t('run.pagesSaved', { from: tag(made[0]!), to: tag(made[made.length - 1]!) }));
-      for (const p of picked) p.src.close(); picked = []; fileInput.value = '';
+      dropPicked(); fileInput.value = '';
       await refresh();
     } catch (e) { showError((e as Error).message); }
-    finally { saving = false; saveBtn.disabled = !included().length; }
+    finally { saving = false; renderUpload(); }
   }
   const saveBtn = el('button', { class: 'primary', onclick: () => void savePages() }, t('run.splitSave'));
 
@@ -177,19 +261,32 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     uploadBox.append(el('div', { class: 'row' }, fileInput), uploadStatus);
     if (!picked.length || !data) return;
     const next = data.pages.length ? Math.max(...data.pages) + 1 : 1;
+    // 격자에는 저장할 파일의 쪽만, 저장될 장 번호 차례로
+    const tiles = included().flatMap(pk => pk.tiles);
+    tiles.forEach((x, k) => { x.tag.textContent = tag(next + k); x.btn.disabled = saving; x.btn.title = x.btn.ariaLabel = t('run.rotatePage', { page: tag(next + k) }); });
+    sheetGrid.replaceChildren(...tiles.map(x => x.fig));
+    for (const x of tiles) if (x.state === 'idle' || x.state === 'queued') io.observe(x.fig);
+    renderRotationNote();
     put(uploadBox,
-      el('div', {}, ...picked.map(p => el('div', { class: 'row' },
+      el('div', { class: 'picked-files' }, ...picked.map(p => el('div', { class: 'row' },
         p.이전
-          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); void drawPreview(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
+          ? el('label', {}, el('input', { type: 'checkbox', checked: p.포함, disabled: saving, onchange: (e: Event) => { if (saving) { renderUpload(); return; } p.포함 = (e.target as HTMLInputElement).checked; renderUpload(); } }), t('run.fileLine', { name: p.src.name, n: p.src.pageCount }))
           : el('span', { class: 'muted' }, t('run.fileLine', { name: p.src.name, n: p.src.pageCount })),
         p.이전 ? el('span', { class: 'band warn' }, t('run.dupFile', { date: p.이전.일시.slice(0, 10), from: tag(p.이전.시작), to: tag(p.이전.끝) })) : null))),
       el('div', { class: 'row' }, t('run.filesRotation', { files: included().length, n: totalPages() }), ...([0, 90, 180, 270] as Rotation[]).map(r =>
-        el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; rotation = r; renderUpload(); void drawPreview(); } }, `${r}°`)),
-        el('span', { class: 'muted' }, t('run.rotationHelp'))),
-      preview,
+        el('button', { class: r === rotation ? 'primary' : '', disabled: saving, onclick: () => { if (saving) return; turnAll(r); } }, `${r}°`)),
+        el('span', { class: 'muted' }, t('run.rotationHelp')), rotationNote),
+      tiles.length ? sheetGrid : null,
       data.pages.length ? el('div', { class: 'band warn' }, t('run.alreadyPages', { n: data.pages.length, next: tag(next) })) : null,
       el('div', { class: 'row' }, saveBtn));
     saveBtn.disabled = saving || !included().length;
+  }
+
+  /** 전체 회전: 따로 돌린 쪽까지 모든 쪽을 이 각도로 */
+  function turnAll(r: Rotation): void {
+    rotation = r;
+    for (const pk of picked) { pk.회전.fill(r); pk.tiles.forEach(showTurn); }
+    renderUpload();
   }
 
   // ── 저장된 장 미리보기·삭제 ──
