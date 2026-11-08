@@ -184,11 +184,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(tableBox);
     const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), ''].map(h => el('th', {}, h)));
     const body = rows.map((r, i) => {
-      const off = { ans: r.유형 === '요소형' || r.유형 === '확장', allow: r.유형 === '요소형' || r.유형 === '확장', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
+      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형', allow: r.유형 === '요소형' || r.유형 === '응답형', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
       const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
       const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
       const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
+      // 빈칸형처럼 행이 여럿인 문항은 한 번에 지울 수 있게(행이 하나면 행 삭제와 같아 단추를 두지 않는다)
+      const sameQuestion = rows.filter(x => x.문항 === r.문항).length;
+      const deleteQuestion = () => {
+        if (!confirm(t('key.deleteQuestionConfirm', { n: r.문항, rows: sameQuestion }))) return;
+        const q = r.문항; rows = rows.filter(x => x.문항 !== q); touch(); renderTable();
+      };
       return el('tr', {},
         el('td', {}, num), el('td', {}, type),
         el('td', {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')),
@@ -198,14 +204,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
         el('td', {}, el('div', { class: 'row' },
           el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
-          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('common.delete')))));
+          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow')),
+          sameQuestion > 1 ? el('button', { class: 'danger', onclick: deleteQuestion }, t('key.deleteQuestion')) : null)));
     });
+    const clearAll = () => { if (!confirm(t('key.clearAllConfirm'))) return; rows = [emptyRow()]; touch(); renderTable(); };
     const addRow = () => {
       const last = rows[rows.length - 1];
       rows.push(last?.유형 === '빈칸형' ? emptyRow(last.문항, '빈칸형') : emptyRow(last ? last.문항 + 1 : 1)); touch(); renderTable();
     };
     tableBox.append(el('table', { class: 'keytable' }, head, ...body),
       el('div', { class: 'row' }, el('button', { onclick: addRow }, t('key.addRow')),
+        el('button', { class: 'danger', disabled: !rows.length, onclick: clearAll }, t('key.clearAll')),
         el('span', { class: 'muted' }, t('key.typesHelp'))));
   }
 

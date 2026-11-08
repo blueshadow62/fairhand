@@ -3,22 +3,22 @@ import type { AnswerKey, Case, GradingRules, QtyUnit, QualUnit } from '../../cor
 import type { KeyDraftResult } from '../../shared/ipc.js';
 import { t } from './i18n.js';
 
-export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '확장';
+export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '응답형';
 export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */ }
 export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */; 채점규칙?: GradingRules /* 없으면 기본값 */ }
 
-export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '확장'];
+export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '응답형'];
 export const emptyRow = (문항 = 1, 유형: UnitType = '단답형'): UnitRow => ({ 문항, 유형, 설명: '', 정답: '', 허용: '', 핵심: '', 요소: '' });
 
 const list = (s: string, sep: RegExp): string[] => s.split(sep).map(x => x.trim()).filter(Boolean);
 
-/** 편집 행 → 정답표. id는 문항마다 행 순서로 1, 2…(요소형은 요소마다), 확장은 E1, E2… */
+/** 편집 행 → 정답표. id는 문항마다 행 순서로 1, 2…(요소형은 요소마다), 응답형(정성)은 E1, E2… */
 export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['확인'], 사례?: Case[]): AnswerKey {
   const seq = new Map<number, number>();
   const nextId = (문항: number) => { const n = (seq.get(문항) ?? 0) + 1; seq.set(문항, n); return `${문항}-${n}`; };
   const 정량: QtyUnit[] = [], 정성: QualUnit[] = [];
   for (const r of rows) {
-    if (r.유형 === '확장') { 정성.push({ id: `E${정성.length + 1}`, 문항: r.문항, 설명: r.설명.trim() }); continue; }
+    if (r.유형 === '응답형') { 정성.push({ id: `E${정성.length + 1}`, 문항: r.문항, 설명: r.설명.trim() }); continue; }
     if (r.유형 === '요소형') {
       list(r.요소, /\r?\n/).forEach((정답, i) => 정량.push({ id: nextId(r.문항), 문항: r.문항, 설명: `요소 ${i + 1}`, 정답, 유형: '요소형' }));
       continue;
@@ -57,7 +57,7 @@ function unitsToRows(정량: QtyUnit[], 정성: QualUnit[]): UnitRow[] {
     }
     rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '' });
   }
-  for (const u of 정성) rows.push({ ...emptyRow(u.문항, '확장'), 설명: u.설명 });
+  for (const u of 정성) rows.push({ ...emptyRow(u.문항, '응답형'), 설명: u.설명 });
   return rows;
 }
 
@@ -80,7 +80,7 @@ export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
     const at = t('form.rowAt', { n: i + 1 });
     if (!Number.isInteger(r.문항) || r.문항 <= 0) e.push(t('form.questionBad', { at }));
     if (r.유형 === '요소형') { if (!list(r.요소, /\r?\n/).length) e.push(t('form.elementsMissing', { at })); }
-    else if (r.유형 !== '확장' && !r.정답.trim()) e.push(t('form.answerEmpty', { at }));
+    else if (r.유형 !== '응답형' && !r.정답.trim()) e.push(t('form.answerEmpty', { at }));
     if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(t('form.keywordsMissing', { at }));
   });
   return e;

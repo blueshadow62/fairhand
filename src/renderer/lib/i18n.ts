@@ -15,7 +15,7 @@ const ko = {
   'common.notConfirmed': '정답표가 아직 확인되지 않았습니다',
 
   // 데이터 값의 표시 이름(값 자체는 한글 그대로 저장된다)
-  'unit.빈칸형': '빈칸형', 'unit.단답형': '단답형', 'unit.문장형': '문장형', 'unit.요소형': '요소형', 'unit.확장': '확장',
+  'unit.빈칸형': '빈칸형', 'unit.단답형': '단답형', 'unit.문장형': '문장형', 'unit.요소형': '요소형', 'unit.응답형': '응답형',
   'verdict.O': 'O', 'verdict.X': 'X', 'verdict.빈칸': '빈칸',
   'hwaksin.확실': '확실', 'hwaksin.추정': '추정', 'hwaksin.불명': '불명',
 
@@ -281,7 +281,12 @@ const ko = {
   'key.up': '위로',
   'key.down': '아래로',
   'key.addRow': '행 추가',
-  'key.typesHelp': '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 1점, 순서 무관. 확장: 응답 여부만 봄.',
+  'key.deleteRow': '행 삭제',
+  'key.deleteQuestion': '문항 삭제',
+  'key.deleteQuestionConfirm': '{n}번 문항의 행 {rows}개를 모두 지울까요?',
+  'key.clearAll': '문항 모두 지우기',
+  'key.clearAllConfirm': '표의 모든 행을 지울까요? 저장하기 전이면 저장하지 않고 나가서 되돌릴 수 있습니다.',
+  'key.typesHelp': '빈칸형: 빈칸마다 한 줄. 단답형: 답 하나. 문장형: 핵심 낱말이 모두 들어 있어야 O. 요소형: 요소마다 1점, 순서 무관. 응답형: 응답 여부만 봄.',
   'key.rule.spelling': '맞춤법이 다른 같은 뜻의 답',
   'key.rule.spellingHelp': "예: '세약서'를 계약서로 볼지",
   'key.rule.broader': '정답보다 넓은 말',
@@ -447,7 +452,7 @@ const en: Record<Key, string> = {
   'common.saveKeyFirst': 'Save the answer key first',
   'common.notConfirmed': 'The answer key is not confirmed yet',
 
-  'unit.빈칸형': 'Blank', 'unit.단답형': 'Short', 'unit.문장형': 'Sentence', 'unit.요소형': 'Elements', 'unit.확장': 'Extended',
+  'unit.빈칸형': 'Blank', 'unit.단답형': 'Short', 'unit.문장형': 'Sentence', 'unit.요소형': 'Elements', 'unit.응답형': 'Response',
   'verdict.O': 'O', 'verdict.X': 'X', 'verdict.빈칸': 'blank',
   'hwaksin.확실': 'sure', 'hwaksin.추정': 'guessed', 'hwaksin.불명': 'unknown',
 
@@ -709,7 +714,12 @@ const en: Record<Key, string> = {
   'key.up': 'Up',
   'key.down': 'Down',
   'key.addRow': 'Add row',
-  'key.typesHelp': 'Blank: one row per blank. Short: one answer. Sentence: all keywords must appear for O. Elements: 1 point each, any order. Extended: only whether the student responded.',
+  'key.deleteRow': 'Delete row',
+  'key.deleteQuestion': 'Delete question',
+  'key.deleteQuestionConfirm': 'Delete all {rows} rows of question {n}?',
+  'key.clearAll': 'Clear all questions',
+  'key.clearAllConfirm': 'Delete every row in the table? Before saving, you can undo this by leaving without saving.',
+  'key.typesHelp': 'Blank: one row per blank. Short: one answer. Sentence: all keywords must appear for O. Elements: 1 point each, any order. Response: only whether the student responded.',
   'key.rule.spelling': 'Same meaning, different spelling',
   'key.rule.spellingHelp': 'e.g. whether a misspelled answer counts',
   'key.rule.broader': 'Broader than the key',
