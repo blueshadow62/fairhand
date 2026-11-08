@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
 import { parseTranscript } from '../src/core/transcript.js';
 import { DataError, type AnswerKey, type Panjeong, type Transcript } from '../src/core/types.js';
-import { planUnitResults, representative, setSheetDone, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
+import { planUnitResults, representative, setSheetDone, uncheckChanged, unitChecked, unitResultsRequest, type UnitResultsRequest } from '../src/core/unit-results.js';
 
 // 픽스처 정답표: 정량 1-1·3-1, 정성 E1
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
@@ -132,4 +132,26 @@ test('setSheetDone: 답안지별에서 확인 완료를 풀면 확인단위도 �
   const u = tr(2, '가나', 'O', { 확인단위: ['1-1'] });
   setSheetDone(u, true);
   assert.deepEqual([u.확인완료, u.확인단위], [true, ['1-1']]);
+});
+
+test('uncheckChanged: 다시 판정이 바꾼 단위의 확인을 빼고 확인 완료를 푼다. 바뀐 단위를 확인하지 않은 장은 그대로', () => {
+  // 답안지별에서 확인 완료한 장: 모든 단위를 확인한 것이라 바뀌지 않은 단위의 확인은 남긴다(문항별에서 바뀐 단위만 미확인)
+  const sheet = uncheckChanged(tr(1, '가나', 'O', { 확인완료: true }), key, ['1-1']);
+  assert.equal(sheet.다시확인, true);
+  assert.deepEqual([sheet.transcript.확인완료, sheet.transcript.확인단위], [false, ['3-1', 'E1']]);
+  assert.deepEqual([unitChecked(sheet.transcript, '1-1'), unitChecked(sheet.transcript, '3-1')], [false, true]);
+  // 문항별에서 단위마다 확인한 장
+  const units = uncheckChanged(tr(2, '가나', 'O', { 확인단위: ['1-1', '3-1'] }), key, ['1-1']);
+  assert.deepEqual([units.다시확인, units.transcript.확인완료, units.transcript.확인단위], [true, false, ['3-1']]);
+  // 남는 확인이 없으면 칸을 두지 않는다. 판정·답·비고는 건드리지 않는다
+  const only = tr(3, '가나', 'X', { 확인완료: true, 확인단위: ['1-1', '3-1', 'E1'], 비고: ['재판정: 1-1 O→X (정답)'] });
+  const none = uncheckChanged(only, key, ['1-1', '3-1', 'E1']);
+  const { 확인단위: _marks, ...rest } = only;
+  assert.deepEqual(none.transcript, { ...rest, 확인완료: false });
+  // 바뀐 단위를 확인하지 않았거나 바뀐 것이 없으면 같은 장을 그대로 돌려준다
+  for (const [t, changed] of [[tr(4, '가나', 'O', { 확인단위: ['3-1'] }), ['1-1']], [tr(5, '가나', 'O'), ['1-1']], [tr(6, '가나', 'O', { 확인완료: true }), []]] as [Transcript, string[]][]) {
+    const r = uncheckChanged(t, key, changed);
+    assert.equal(r.transcript, t);
+    assert.equal(r.다시확인, false);
+  }
 });

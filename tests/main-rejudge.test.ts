@@ -28,11 +28,20 @@ async function setup(confirmed = true) {
   return { dir, set, bridge, key };
 }
 const verdict = async (set: string, page: number, id: string) => (await loadSet(set)).transcripts.find(t => t.page === page)!.정량[id]!.판정;
+const sheet = async (set: string, page: number) => (await loadSet(set)).transcripts.find(t => t.page === page)!;
+/** 검토에서 확인한 것처럼 전사 파일에 확인 표시를 적는다 */
+async function mark(set: string, page: number, patch: { 확인완료?: boolean; 확인단위?: string[] }) {
+  const file = path.join(set, 'transcripts', `p0${page}.json`);
+  await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf-8')), ...patch }), 'utf-8');
+}
 
 test('applyCase: 사례를 기록하고 같은 답을 쓴 장만 바꾸며, 바뀐 판정을 구조로 돌려주고 엑셀을 만든다', async () => {
   const { dir, set, bridge } = await setup();
   try {
+    await mark(set, 2, { 확인완료: true });
     const r = await bridge.applyCase(set, { 단위: '1-1', 답: '가나', 판정: 'X', page: 1 }, () => new Date('2026-11-06T00:00:00Z'));
+    assert.equal((await sheet(set, 2)).확인완료, true); // 선생님이 확인 창에서 보고 정한 판정이라 확인을 풀지 않는다
+    assert.equal(r.다시확인, undefined);
     const { key, transcripts } = await loadSet(set);
     assert.deepEqual(key.사례, [{ 단위: '1-1', 답: '가나', 판정: 'X', 일시: '2026-11-06T00:00:00.000Z', 출처: '검토 p01' }]);
     assert.equal(key.확인?.완료, true); // 사례는 확인을 지우지 않는다
@@ -84,6 +93,26 @@ test('rejudge: 허용에 표기를 더하면 그 표기를 쓴 장이 O로', asy
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('rejudge: 이미 확인한 판정이 바뀐 장은 그 단위의 확인과 확인 완료를 풀고 장 번호를 돌려준다. 바뀌지 않은 장의 확인은 그대로', async () => {
+  const { dir, set, bridge, key } = await setup();
+  try {
+    await mark(set, 1, { 확인완료: true });          // 답안지별에서 확인 완료
+    await mark(set, 2, { 확인완료: true });          // 판정이 바뀌지 않을 장
+    await mark(set, 3, { 확인단위: ['1-1'] });       // 문항별에서 1-1만 확인
+    key.정량[1].허용 = ['열심히'];
+    await writeFile(path.join(set, '정답표.json'), JSON.stringify(key), 'utf-8');
+    const r = await bridge.rejudge(set);
+    assert.deepEqual(r.바뀐장.map(c => c.page), [1, 3]); // p01 3-1 X→O, p03 1-1 X→빈칸
+    assert.deepEqual(r.다시확인, [1, 3]);
+    const p1 = await sheet(set, 1);
+    assert.deepEqual([p1.확인완료, p1.확인단위], [false, ['1-1', 'E1']]); // 바뀐 3-1만 다시 확인할 대상
+    assert.equal((await sheet(set, 2)).확인완료, true);
+    const p3 = await sheet(set, 3);
+    assert.deepEqual([p3.확인완료, p3.확인단위], [false, undefined]);
+    assert.deepEqual((await bridge.rejudge(set)).다시확인, []); // 다시 돌려 바뀐 것이 없으면 0
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 거절', async () => {
   const { dir, set, bridge } = await setup();
   try {
@@ -95,6 +124,7 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
       async transcribe(): Promise<RawResult> { throw new Error('쓰지 않음'); },
     };
     (bridge as any).provider = async () => fake;
+    for (const p of [1, 2]) await mark(set, p, { 확인완료: true });
     const seen: number[] = [];
     const running = bridge.judgeWithModel(set, [1, 2], e => seen.push(e.page));
     await assert.rejects(bridge.startRun(set, {}, () => undefined), /이미 실행 중/);
@@ -105,6 +135,9 @@ test('judgeWithModel: 가짜 제공자 판정으로 바꾸고, 실행 중에는 
     assert.equal(await verdict(set, 1, '3-1'), 'O'); // '열심히'는 글자로 못 정하니 모델 판정대로
     assert.equal(await verdict(set, 2, '1-1'), 'O');
     assert.ok((await loadSet(set)).transcripts.find(t => t.page === 1)!.비고.includes('모델 재판정: 3-1 X→O'));
+    assert.deepEqual(r.다시확인, [1]); // 확인 완료한 p01의 3-1이 바뀌었다
+    assert.deepEqual([(await sheet(set, 1)).확인완료, (await sheet(set, 1)).확인단위], [false, ['1-1', 'E1']]);
+    assert.equal((await sheet(set, 2)).확인완료, true); // 바뀌지 않은 장은 그대로
     assert.equal(bridge.running(), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

@@ -20,6 +20,19 @@ export function setSheetDone(t: Transcript, on: boolean): void {
   if (!on) delete t.확인단위;
 }
 
+/**
+ * 다시 판정(글자 일치·모델)이 판정을 바꾼 단위는 선생님이 본 판정이 아니므로, 그 단위의 확인을 빼고 장의 확인 완료를 푼다.
+ * 확인 완료한 장은 모든 단위를 확인한 것이라(unitChecked) 바뀌지 않은 단위의 확인은 확인단위로 옮겨 두어, 문항별에서 바뀐 단위만 다시 본다.
+ * 바뀐 단위 중 확인한 것이 없으면 그 장을 그대로 돌려준다. 다시확인: 이 장이 다시 확인할 대상이 되었는지
+ */
+export function uncheckChanged(t: Transcript, key: Pick<AnswerKey, '정량' | '정성'>, changed: readonly string[]): { transcript: Transcript; 다시확인: boolean } {
+  if (!changed.some(id => unitChecked(t, id))) return { transcript: t, 다시확인: false };
+  const marks = t.확인완료 === true ? [...new Set([...(t.확인단위 ?? []), ...key.정량.map(u => u.id), ...key.정성.map(u => u.id)])] : t.확인단위 ?? [];
+  const kept = marks.filter(id => !changed.includes(id));
+  const { 확인단위: _, ...rest } = t;
+  return { transcript: { ...rest, 확인완료: false, ...(kept.length ? { 확인단위: kept } : {}) }, 다시확인: true };
+}
+
 /** 가장 많이 쓴 원래 글(앞뒤 공백만 정리). 수가 같으면 가나다순으로 골라 장 순서가 드러나지 않게 한다 */
 export function representative(answers: string[]): string {
   const count = new Map<string, number>();

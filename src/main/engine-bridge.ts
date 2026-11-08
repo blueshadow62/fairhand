@@ -7,7 +7,7 @@ import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
 import { mapUnits, remapCases, remapRegions } from '../core/unit-map.js';
-import { planUnitResults, unitResultsRequest } from '../core/unit-results.js';
+import { planUnitResults, uncheckChanged, unitResultsRequest } from '../core/unit-results.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
 import { CliProvider } from '../engine/cli.js';
 import { CODEX, CodexProvider, codexEnv, codexStatus, locateCodex } from '../engine/codex.js';
@@ -245,11 +245,22 @@ export class EngineBridge {
     return { 바뀐장, ...await this.rebuildSafe(setDir) };
   }
 
+  /**
+   * 다시 판정(규칙·모델)으로 바뀐 장을 저장한다. 선생님이 보지 않은 판정이 '확인됨'으로 남지 않게, 이미 확인한 단위가 바뀌었으면
+   * 그 확인을 풀고 장 번호를 다시확인에 더한다. 사례 기록·문항별 묶음 판정은 선생님이 정한 판정이라 이 길을 쓰지 않는다
+   */
+  private async saveRejudged(setDir: string, key: AnswerKey, t: Transcript, changes: Change[], 다시확인: number[]): Promise<void> {
+    const u = uncheckChanged(t, key, changes.map(c => c.단위));
+    await saveTranscript(setDir, u.transcript);
+    if (u.다시확인) 다시확인.push(t.page);
+  }
+
   /** 결정적 재판정을 돌려 바뀐 장만 저장하고 엑셀을 다시 만든다 */
   private async rejudgeWith(setDir: string, key: AnswerKey, transcripts: Transcript[]): Promise<RejudgeResult> {
     const r = rejudgeAll(key, transcripts);
-    for (const c of r.changed) await saveTranscript(setDir, r.transcripts.find(t => t.page === c.page)!);
-    return { 바뀐장: r.changed.map(c => ({ page: c.page, 변경: changeText(c.changes) })), ...await this.rebuildSafe(setDir) };
+    const 다시확인: number[] = [];
+    for (const c of r.changed) await this.saveRejudged(setDir, key, r.transcripts.find(t => t.page === c.page)!, c.changes, 다시확인);
+    return { 바뀐장: r.changed.map(c => ({ page: c.page, 변경: changeText(c.changes) })), 다시확인, ...await this.rebuildSafe(setDir) };
   }
 
   async rejudge(setDir: string): Promise<RejudgeResult> {
@@ -335,13 +346,13 @@ export class EngineBridge {
       const provider = await this.provider();
       const effort = await this.effort();
       const rules = await loadRules();
-      const 바뀐장: RejudgeResult['바뀐장'] = [], failed: JudgeResult['failed'] = [];
+      const 바뀐장: RejudgeResult['바뀐장'] = [], failed: JudgeResult['failed'] = [], 다시확인: number[] = [];
       let done = 0;
       for (const t of todo) {
         if (ac.signal.aborted) break;
         try {
           const r = await judgePage(provider, key, rules, t, ac.signal, effort);
-          if (r.changes.length) { await saveTranscript(setDir, r.transcript); 바뀐장.push({ page: t.page, 변경: changeText(r.changes) }); }
+          if (r.changes.length) { await this.saveRejudged(setDir, key, r.transcript, r.changes, 다시확인); 바뀐장.push({ page: t.page, 변경: changeText(r.changes) }); }
           onProgress({ page: t.page, done: ++done, total: todo.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
         } catch (e) {
           if (e instanceof EngineError && e.kind === 'cancelled') break;
@@ -351,7 +362,7 @@ export class EngineBridge {
           if (e instanceof EngineError && ['signed-out', 'not-installed', 'needs-update'].includes(e.kind)) break;
         }
       }
-      return { 바뀐장, failed, ...await this.rebuildSafe(setDir) };
+      return { 바뀐장, failed, 다시확인, ...await this.rebuildSafe(setDir) };
     } finally { this.current = null; }
   }
 

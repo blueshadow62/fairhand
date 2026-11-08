@@ -41,7 +41,8 @@ export interface SaveKeyResult { key: AnswerKey; 정리: { 사례: { 옮김: num
 export interface ProgressEvent { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string }
 export interface RunResult { ok: number[]; failed: { page: number; error: string }[]; skipped: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface KeyDraftResult { 정량: AnswerKey['정량']; 정성: AnswerKey['정성']; 주의: string[] }
-export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]; 엑셀?: string; 엑셀오류?: string }
+/** 다시확인: 다시 판정(규칙·모델)이 이미 확인한 판정을 바꿔 확인을 푼 장. 다시 판정만 채운다 */
+export interface RejudgeResult { 바뀐장: { page: number; 변경: string[] }[]; 다시확인?: number[]; 엑셀?: string; 엑셀오류?: string }
 export interface JudgeResult extends RejudgeResult { failed: { page: number; error: string }[] }
 /** 사례 기록 결과. 판정변경: 바뀐 장마다 그 단위의 이전·이후(되돌리기에 쓴다), 이전사례: 이 기록이 바꿔 쓴 같은 답의 사례 */
 export interface CaseResult extends RejudgeResult { 판정변경: CaseChange[]; 이전사례?: Case }

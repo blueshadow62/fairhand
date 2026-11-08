@@ -390,6 +390,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(judgeBox);
     const text = r.바뀐장.length ? t('key.changedPages', { n: r.바뀐장.length, list: r.바뀐장.map(c => `${tag(c.page)}(${c.변경.join(', ')})`).join(', ') }) : t('key.noChangedPages');
     put(judgeBox, el('div', { class: 'band info' }, [text, extra].filter(Boolean).join('\n')),
+      r.다시확인?.length ? el('div', { class: 'band warn' }, t('key.recheckPages', { n: r.다시확인.length })) : null,
       r.failed?.length ? el('div', { class: 'band error' }, t('key.failedPages', { list: r.failed.map(f => `${tag(f.page)} ${f.error}`).join(' / ') })) : null,
       r.엑셀오류 ? el('div', { class: 'band warn' }, t('common.excelFailed', { error: r.엑셀오류 })) : null);
   }
