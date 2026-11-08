@@ -4,8 +4,8 @@
 
 A desktop tool for teachers that transcribes scanned handwritten short-answer/essay answer sheets (PDF) question by question, compares them with an answer key, and writes the results to Excel.
 
-- Transcription runs through the teacher's own locally installed Claude Code or Codex (their own subscription login), or an API key (Anthropic or Gemini). Accuracy depends on the AI tool; the developer recommends Claude.
-- We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent with the image to the AI provider's servers (Anthropic for Claude, OpenAI for Codex, Google for Gemini). The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
+- Transcription runs through the teacher's own locally installed Claude Code or Codex (their own subscription login), or an API key (Anthropic, OpenAI or Gemini). Accuracy depends on the AI tool; the developer recommends Claude.
+- We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent with the image to the AI provider's servers (Anthropic for Claude, OpenAI for Codex and the OpenAI API, Google for Gemini). The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
 
 ## Install
 ### Windows
