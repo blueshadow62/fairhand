@@ -1,4 +1,4 @@
-import { DEFAULT_EFFORT, DEFAULT_GEMINI_MODEL, DEFAULT_MODEL, EFFORTS, GEMINI_MODELS, MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus } from '../../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_GEMINI_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus } from '../../shared/ipc.js';
 import { applyTheme, reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
@@ -114,18 +114,22 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     useMarks.set(p.id, { text: useText, card });
     card.append(el('div', { class: 'row' },
       el('label', {}, el('input', { type: 'radio', name: 'using', checked: 사용중 === p.id, onchange: () => { 사용중 = p.id; dirty = true; markInUse(); } }), useText),
-      nameInput, el('span', { class: 'muted' }, t(p.종류 === 'cli' ? 'settings.kind.cli' : p.종류 === 'codex' ? 'settings.kind.codex' : p.종류 === 'gemini' ? 'settings.kind.gemini' : 'settings.kind.api')),
+      nameInput, el('span', { class: 'muted' }, t(`settings.kind.${p.종류}`)),
       p.id === DEFAULT_ID ? null : el('button', { class: 'danger', onclick: () => {
         if (!confirm(t('settings.deleteProfileConfirm', { name: p.이름 }))) return;
         profiles = profiles.filter(x => x.id !== p.id); if (사용중 === p.id) 사용중 = DEFAULT_ID; dirty = true; renderProfiles();
       } }, t('common.delete'))), status);
     // 모델·노력: 프로필마다 고른다(전사·초안·재판정에 같이 쓰임). Codex 모델은 정해진 목록이 없어 이름을 직접 적는다
-    const codex = p.종류 === 'codex', gemini = p.종류 === 'gemini';
+    const codex = p.종류 === 'codex', gemini = p.종류 === 'gemini', openai = p.종류 === 'openai';
     let modelCtl: HTMLElement;
     if (gemini) {
       const gemSel = el('select', { onchange: () => { p.모델 = gemSel.value; dirty = true; } },
         ...GEMINI_MODELS.map(m => el('option', { value: m, selected: (p.모델 ?? DEFAULT_GEMINI_MODEL) === m }, t(m === GEMINI_MODELS[0] ? 'settings.gemini.model.argon' : 'settings.gemini.model.flash'))));
       modelCtl = gemSel;
+    } else if (openai) {
+      const oaSel = el('select', { onchange: () => { p.모델 = oaSel.value; dirty = true; } },
+        ...OPENAI_MODELS.map(m => el('option', { value: m, selected: (p.모델 ?? DEFAULT_OPENAI_MODEL) === m }, t(m === OPENAI_MODELS[0] ? 'settings.openai.model.astra' : 'settings.openai.model.sol'))));
+      modelCtl = oaSel;
     } else if (codex) {
       const modelInput = el('input', { value: p.모델 ?? '', placeholder: t('settings.codex.modelPlaceholder'), onchange: () => { const v = modelInput.value.trim(); if (v) p.모델 = v; else delete p.모델; dirty = true; } });
       modelInput.size = 22;
@@ -137,7 +141,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     }
     const effortSel = el('select', { onchange: () => { p.노력 = effortSel.value as EffortLevel; dirty = true; } },
       ...EFFORTS.map(e => el('option', { value: e, selected: (p.노력 ?? DEFAULT_EFFORT) === e }, t(`settings.effort.${e}` as Parameters<typeof t>[0]))));
-    card.append(el('div', { class: 'row' }, t('settings.model'), modelCtl, t('settings.effort'), effortSel), el('div', { class: 'muted' }, t(codex ? 'settings.codex.modelHelp' : gemini ? 'settings.gemini.modelHelp' : 'settings.modelHelp')));
+    card.append(el('div', { class: 'row' }, t('settings.model'), modelCtl, t('settings.effort'), effortSel), el('div', { class: 'muted' }, t(codex ? 'settings.codex.modelHelp' : gemini ? 'settings.gemini.modelHelp' : openai ? 'settings.openai.modelHelp' : 'settings.modelHelp')));
 
     if (p.종류 === 'cli' || codex) {
       const autoFound = el('span', { class: 'muted' }, t('settings.autoFind'));
@@ -171,9 +175,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       if (store.state.settings.프로필.some(x => x.id === p.id)) void check(); else status.textContent = t('settings.unsavedProfile');
     } else {
       const showSecret = () => guard(async () => { status.textContent = secretText(await api.secretView(p.id)); });
-      const keyInput = el('input', { type: 'password', autocomplete: 'off', placeholder: gemini ? 'AIza…' : 'sk-ant-…' });
+      const keyInput = el('input', { type: 'password', autocomplete: 'off', placeholder: gemini ? 'AIza…' : openai ? 'sk-…' : 'sk-ant-…' });
       keyInput.size = 40;
-      card.append(...(gemini ? [el('div', { class: 'band warn' }, t('settings.gemini.privacy'))] : []),
+      card.append(...(gemini ? [el('div', { class: 'band warn' }, t('settings.gemini.privacy'))] : openai ? [el('div', { class: 'band info' }, t('settings.openai.privacy'))] : []),
         el('div', { class: 'row' }, keyInput,
           el('button', { onclick: () => guard(async () => {
             const v = keyInput.value; keyInput.value = ''; // 값은 화면 상태에 남기지 않는다
@@ -182,8 +186,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           }) }, t('common.save')),
           el('button', { onclick: () => guard(async () => { if (dirty) await persist(); status.textContent = t('settings.testing'); const r = await api.secretTest(p.id); status.textContent = r.message; if (!r.ok) showError(r.message); }) }, t('settings.test')),
           el('button', { class: 'danger', onclick: () => guard(async () => { if (!confirm(t('settings.clearKeyConfirm'))) return; await api.secretClear(p.id); await showSecret(); }) }, t('settings.clearKey')),
-          ...(gemini ? [el('button', { onclick: () => guard(() => api.openExternal('geminiKey')) }, t('settings.gemini.getKey'))] : [])),
-        el('div', { class: 'muted' }, t(gemini ? 'settings.gemini.keyHelp' : 'settings.keyHelp')));
+          ...(gemini || openai ? [el('button', { onclick: () => guard(() => api.openExternal(gemini ? 'geminiKey' : 'openaiKey')) }, t('settings.getKey'))] : [])),
+        el('div', { class: 'muted' }, t(gemini ? 'settings.gemini.keyHelp' : openai ? 'settings.openai.keyHelp' : 'settings.keyHelp')));
       void showSecret();
     }
     return card;
@@ -195,7 +199,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     for (const p of profiles) profileBox.append(profileCard(p));
     markInUse();
     const newName = el('input', { placeholder: t('settings.newProfileName') });
-    const newKind = el('select', {}, el('option', { value: 'cli' }, t('settings.kind.cli')), el('option', { value: 'codex' }, t('settings.kind.codex')), el('option', { value: 'gemini' }, t('settings.kind.gemini')), el('option', { value: 'api' }, t('settings.kind.api')));
+    const newKind = el('select', {}, el('option', { value: 'cli' }, t('settings.kind.cli')), el('option', { value: 'codex' }, t('settings.kind.codex')), el('option', { value: 'gemini' }, t('settings.kind.gemini')), el('option', { value: 'openai' }, t('settings.kind.openai')), el('option', { value: 'api' }, t('settings.kind.api')));
     profileBox.append(el('div', { class: 'row' }, newName, newKind, el('button', { onclick: () => {
       const 이름 = newName.value.trim(); if (!이름) { showError(t('settings.newProfileNameMissing')); return; }
       const 종류 = newKind.value as Profile['종류'];

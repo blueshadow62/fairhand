@@ -21,7 +21,7 @@ export interface RawResult { output: unknown; inputTokens?: number; outputTokens
 export interface StructuredRequest { system: string; user: string; imageJpegBase64?: string; images?: string[]; schema: Record<string, unknown>; effort: Effort }
 /** 요청의 그림 전부(한 장 + 여러 장), 보내는 순서대로 */
 export const requestImages = (req: StructuredRequest): string[] => [...(req.imageJpegBase64 ? [req.imageJpegBase64] : []), ...(req.images ?? [])];
-export interface StructuredProvider { readonly id: 'cli' | 'api' | 'codex' | 'gemini'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
+export interface StructuredProvider { readonly id: 'cli' | 'api' | 'codex' | 'gemini' | 'openai'; complete(req: StructuredRequest, signal: AbortSignal): Promise<RawResult> }
 export interface TranscribeProvider extends StructuredProvider { transcribe(input: TranscribeInput, signal: AbortSignal): Promise<RawResult> }
 
 export function transcribeRequest(input: TranscribeInput): StructuredRequest {
@@ -68,6 +68,8 @@ export function userFacingMessage(e: unknown): string {
   // Gemini는 로그인이 아니라 API 키로 쓰고, 무료 등급 한도가 낮아 안내를 따로 둔다
   if (e.who === 'Gemini' && e.kind === 'signed-out') return 'Gemini API 키가 없거나 틀렸습니다. 설정에서 키를 확인해 주세요.';
   if (e.who === 'Gemini' && e.kind === 'rate-limit') return 'Gemini API 사용 한도에 닿았습니다. 잠시 뒤 다시 하거나 Google AI Studio에서 결제 등급을 확인해 주세요.';
+  if (e.who === 'OpenAI' && e.kind === 'signed-out') return 'OpenAI API 키가 없거나 틀렸습니다. 설정에서 키를 확인해 주세요.';
+  if (e.who === 'OpenAI' && e.kind === 'rate-limit') return 'OpenAI API 사용 한도에 닿았습니다. 잠시 뒤 다시 하거나 OpenAI 플랫폼에서 사용 한도를 확인해 주세요.';
   switch (e.kind) {
     case 'not-installed': return `${e.who}가 설치되어 있지 않습니다. 설정에서 설치 안내를 보세요.`;
     case 'needs-update': return `${e.who}가 너무 오래된 버전입니다. 업데이트한 뒤 다시 해 주세요.`;

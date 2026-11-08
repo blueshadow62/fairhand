@@ -28,7 +28,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(statusBox);
     const s = store.state.settings;
     const profile = s.프로필.find(p => p.id === s.사용중);
-    const profileLine = el('div', {}, profile ? t('home.profile', { name: profile.이름, kind: profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : profile.종류 === 'gemini' ? 'Gemini API' : 'API' }) : t('home.profileNone'));
+    const profileLine = el('div', {}, profile ? t('home.profile', { name: profile.이름, kind: profile.종류 === 'cli' ? 'Claude Code' : profile.종류 === 'codex' ? 'Codex' : profile.종류 === 'gemini' ? 'Gemini API' : profile.종류 === 'openai' ? 'OpenAI API' : 'API' }) : t('home.profileNone'));
     const detail = el('div', { class: 'muted' }, profile ? t('home.checking') : '');
     statusBox.append(el('h3', {}, t('home.status')),
       el('div', {}, s.학기폴더 ? t('home.semester', { path: s.학기폴더 }) : t('home.semesterNone')),

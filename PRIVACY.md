@@ -1,7 +1,7 @@
 # 개인정보 안내
 
 ## PC 밖으로 나가는 것
-- 답안지 그림(쪽 단위)과 정답표. 전사를 위해 사용 중인 AI 프로필의 제공자 서버로 전송됩니다. Claude(Claude Code 구독·API 키)는 Anthropic, Codex(ChatGPT 구독)는 OpenAI, Gemini(API 키)는 Google입니다.
+- 답안지 그림(쪽 단위)과 정답표. 전사를 위해 사용 중인 AI 프로필의 제공자 서버로 전송됩니다. Claude(Claude Code 구독·API 키)는 Anthropic, Codex(ChatGPT 구독)와 OpenAI API 키는 OpenAI, Gemini(API 키)는 Google입니다.
 - 답안지에 학생 이름이 적혀 있으면 그림과 함께 전송됩니다. 그래서 답안지에는 학년·반·번호만 쓰기를 권합니다.
 
 ## PC 밖으로 나가지 않는 것
@@ -11,6 +11,7 @@
 ## 전송된 자료의 처리
 - Anthropic API로 보낸 자료는 기본적으로 모델 학습에 쓰이지 않습니다(Anthropic 상용 약관). 보관 기간 등 세부는 Anthropic 안내를 확인하세요.
 - Codex(ChatGPT 구독)로 보낸 자료는 ChatGPT 계정의 데이터 설정을 따릅니다. 개인 요금제(Plus·Pro 등)는 설정 > 데이터 제어의 '모두를 위한 모델 개선'을 끄지 않으면 모델 학습에 쓰일 수 있습니다. 기업·교육용 요금제(Business·Enterprise·Edu)는 기본적으로 학습에 쓰지 않습니다. 세부는 OpenAI 안내를 확인하세요.
+- OpenAI API로 보낸 자료는 기본적으로 모델 학습에 쓰이지 않으며, 남용 감시를 위해 최대 30일 보관될 수 있습니다(OpenAI API 데이터 안내). 이 프로그램은 응답을 OpenAI에 저장하지 않게(store: false) 요청합니다. ChatGPT 구독(Codex)과는 계정·결제·데이터 설정이 따로입니다.
 - Gemini API로 보낸 자료는 결제를 연결한 유료 등급에서는 Google 제품 개선에 쓰이지 않습니다. 무료 등급은 Google이 제품 개선에 쓰고 사람이 읽을 수 있으며, 약관상 개인정보를 보내면 안 됩니다(이용은 18세 이상). 학생 자료에는 유료 등급 키를 쓰세요.
 - 학교의 개인정보 처리 규정에 따라 사용 가능 여부를 확인한 뒤 쓰세요.
 

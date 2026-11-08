@@ -1,4 +1,4 @@
-import { DEFAULT_GEMINI_MODEL, type SetInfo, type Settings, type Theme } from '../shared/ipc.js';
+import { DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_MODEL, type SetInfo, type Settings, type Theme } from '../shared/ipc.js';
 import { api } from './lib/api.js';
 import { el } from './lib/el.js';
 import { setLanguage, t } from './lib/i18n.js';
@@ -113,8 +113,10 @@ async function start(): Promise<void> {
     const p = s.프로필.find(x => x.id === s.사용중);
     if (!p) { badgeName.textContent = t('app.badge.none'); badgeStatus.textContent = t('app.badge.hint'); return; }
     const short = p.종류 === 'codex' ? (p.모델 ?? t('app.badge.codexDefault')) : p.종류 === 'gemini' ? (p.모델 ?? DEFAULT_GEMINI_MODEL)
+      : p.종류 === 'openai' ? (p.모델 ?? DEFAULT_OPENAI_MODEL)
       : (p.모델 ?? 'claude-opus-5-5') === 'claude-sonnet-5-5' ? 'Sonnet 5.5' : 'Opus 5.5';
-    badgeName.textContent = `${p.이름} · ${t(p.종류 === 'cli' ? 'app.badge.cli' : p.종류 === 'codex' ? 'app.badge.codex' : p.종류 === 'gemini' ? 'app.badge.gemini' : 'app.badge.api')} · ${short}`;
+    const kind = p.종류 === 'cli' ? 'app.badge.cli' : p.종류 === 'codex' ? 'app.badge.codex' : p.종류 === 'gemini' ? 'app.badge.gemini' : p.종류 === 'openai' ? 'app.badge.openai' : 'app.badge.api';
+    badgeName.textContent = `${p.이름} · ${t(kind)} · ${short}`;
     badgeStatus.textContent = t('home.checking');
     try {
       const text = p.종류 === 'cli' || p.종류 === 'codex' ? settingsScreen.cliStatusText(await api.cliStatus(p.id)) : (await api.secretView(p.id)).저장됨 ? t('home.apiKeySaved') : t('home.apiKeyNone');

@@ -52,6 +52,14 @@ test('parseSettings: Gemini 프로필은 목록의 모델만, 실행 파일·로
   assert.equal(s.프로필.find(p => p.id === 'h')!.모델, undefined);
 });
 
+test('parseSettings: OpenAI 프로필은 목록의 모델만, 실행 파일·로그인 폴더는 두지 않는다', () => {
+  const s = parseSettings({ 프로필: [
+    { id: 'o', 이름: 'GPT', 종류: 'openai', 모델: 'gpt-6.1-sol', 노력: 'max', cliPath: 'C:\\x\\a.exe', configDir: 'C:\\x' },
+    { id: 'p', 이름: 'GPT2', 종류: 'openai', 모델: 'gpt-4o' }] }, 'win32');
+  assert.deepEqual(s.프로필.find(p => p.id === 'o'), { id: 'o', 이름: 'GPT', 종류: 'openai', 모델: 'gpt-6.1-sol', 노력: 'max' });
+  assert.equal(s.프로필.find(p => p.id === 'p')!.모델, undefined); // 목록 밖 모델은 버리고 기본 모델을 쓴다
+});
+
 test('applyPatch: id 중복·빈 이름은 DataError, 사용중은 목록 안에서만', () => {
   const cur = defaultSettings();
   assert.throws(() => applyPatch(cur, { 프로필: [DEFAULT_PROFILE, { id: 'cli-default', 이름: 'x', 종류: 'cli' }] }), DataError);

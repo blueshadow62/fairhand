@@ -16,10 +16,13 @@ export const DEFAULT_EFFORT: EffortLevel = 'medium';
 /** Gemini API 모델(2026-11 Google 모델 목록 기준). 맨 앞이 기본. 이전 세대는 다른 모델로 넘겨지므로 목록에 두지 않는다 */
 export const GEMINI_MODELS = ['gemini-4-argon', 'gemini-3.8-flash'] as const;
 export const DEFAULT_GEMINI_MODEL: string = GEMINI_MODELS[0];
-/** 종류: cli = Claude Code(구독), api = Anthropic API 키, codex = Codex(ChatGPT 구독), gemini = Gemini API 키.
- *  모델: cli·api는 MODELS, gemini는 GEMINI_MODELS 중 하나, codex는 Codex 모델 이름(비우면 Codex 기본 모델).
- *  configDir: cli는 CLAUDE_CONFIG_DIR, codex는 CODEX_HOME. API 키(api·gemini)는 설정이 아니라 비밀 저장소에 둔다 */
-export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api' | 'codex' | 'gemini'; cliPath?: string; configDir?: string; 모델?: ModelId | string; 노력?: EffortLevel }
+/** OpenAI API 모델(2026-11 OpenAI 모델 목록 기준, 둘 다 그림 입력·양식 강제·노력 low~max). 맨 앞이 기본(정확), 둘째는 비슷한 결과를 1/5 값에 */
+export const OPENAI_MODELS = ['gpt-6-astra', 'gpt-6.1-sol'] as const;
+export const DEFAULT_OPENAI_MODEL: string = OPENAI_MODELS[0];
+/** 종류: cli = Claude Code(구독), api = Anthropic API 키, codex = Codex(ChatGPT 구독), gemini = Gemini API 키, openai = OpenAI API 키.
+ *  모델: cli·api는 MODELS, gemini는 GEMINI_MODELS, openai는 OPENAI_MODELS 중 하나, codex는 Codex 모델 이름(비우면 Codex 기본 모델).
+ *  configDir: cli는 CLAUDE_CONFIG_DIR, codex는 CODEX_HOME. API 키(api·gemini·openai)는 설정이 아니라 비밀 저장소에 둔다 */
+export interface Profile { id: string; 이름: string; 종류: 'cli' | 'api' | 'codex' | 'gemini' | 'openai'; cliPath?: string; configDir?: string; 모델?: ModelId | string; 노력?: EffortLevel }
 export type Language = 'ko' | 'en';
 /** 화면 색. 값은 styles.css의 :root[data-theme]와 짝이다. 맨 앞이 기본 */
 export const THEMES = ['sky', 'dawn', 'dark'] as const;
@@ -40,7 +43,7 @@ export type UpdateStatus =
   | { kind: 'disabled'; reason: 'dev' | 'off' | 'manual' } | { kind: 'idle' } | { kind: 'checking' } | { kind: 'none'; version: string }
   | { kind: 'available'; version: string } | { kind: 'downloading'; percent: number } | { kind: 'downloaded'; version: string } | { kind: 'error'; message: string };
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
-export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'privacy' | 'guide' | 'releases';
+export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'openaiKey' | 'privacy' | 'guide' | 'releases';
 export type LeaveChoice = 'save' | 'discard' | 'stay';
 
 export const CHANNELS = {
