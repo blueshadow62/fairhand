@@ -1,4 +1,5 @@
 import { DEFAULT_EFFORT, DEFAULT_GEMINI_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus } from '../../shared/ipc.js';
+import { priceVars } from '../../shared/prices.js';
 import { applyTheme, reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el } from '../lib/el.js';
@@ -231,7 +232,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     }
     const effortSel = el('select', { onchange: () => { p.노력 = effortSel.value as EffortLevel; void commit(); } },
       ...EFFORTS.map(e => el('option', { value: e, selected: (p.노력 ?? DEFAULT_EFFORT) === e }, t(`settings.effort.${e}` as Parameters<typeof t>[0]))));
-    card.append(el('div', { class: 'row' }, t('settings.model'), modelCtl, t('settings.effort'), effortSel), modelNote, el('div', { class: 'muted' }, t(codex ? 'settings.codex.modelHelp' : gemini ? 'settings.gemini.modelHelp' : openai ? 'settings.openai.modelHelp' : 'settings.modelHelp')));
+    card.append(el('div', { class: 'row' }, t('settings.model'), modelCtl, t('settings.effort'), effortSel), modelNote, el('div', { class: 'muted' }, t(codex ? 'settings.codex.modelHelp' : gemini ? 'settings.gemini.modelHelp' : openai ? 'settings.openai.modelHelp' : 'settings.modelHelp', priceVars())));
 
     if (p.종류 === 'cli' || codex) {
       const autoFound = el('span', { class: 'muted' }, t('settings.autoFind'));

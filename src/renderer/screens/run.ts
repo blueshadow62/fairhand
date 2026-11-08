@@ -8,9 +8,8 @@ import type { MaskRect, UploadRecord } from '../../core/types.js';
 import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, type Rotation, type SheetSource } from '../pdf-pages.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
+import { costUsd, priceOf } from '../../shared/prices.js';
 
-// API 요금 추정(백만 토큰당 달러). 실제 청구와 다를 수 있다
-const PRICE_IN = 5, PRICE_OUT = 25;
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
 const DEFAULT_MASK: MaskRect = { x: 0.74, y: 0.07, w: 0.26, h: 0.05 };
 const BATCH = 10; // 한 번에 너무 큰 IPC 전송을 피한다
@@ -336,13 +335,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!data || running) return;
     const 폴더 = data.폴더;
     const profile = store.state.settings.프로필.find(p => p.id === store.state.settings.사용중);
-    const isApi = profile?.종류 === 'api';
+    const price = priceOf(profile); // 실제 청구와 다를 수 있는 추정. 구독과 단가를 모르는 API는 보이지 않는다
     running = true; renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
     const started = Date.now();
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
       const sec = Math.round((Date.now() - started) / 1000);
-      const cost = isApi ? t('run.costEstimate', { cost: ((inTok * PRICE_IN + outTok * PRICE_OUT) / 1e6).toFixed(2) }) : '';
+      const cost = price ? t('run.costEstimate', { cost: costUsd(price, inTok, outTok).toFixed(2) }) : '';
       progressText.textContent = t('run.progress', { done, total, sec, in: inTok, out: outTok, cost });
       progressBar.max = Math.max(total, 1); progressBar.value = done;
     };
