@@ -42,6 +42,8 @@ export interface Transcript {
   정성: Record<string, { 응답: boolean; 답: string }>;
   비고: string[];
   확인완료?: boolean;
+  /** 문항별 검토에서 확인한 단위 id. 모든 단위를 확인하면 확인완료도 켠다 */
+  확인단위?: string[];
   전사정보?: TranscribeInfo;
 }
 
