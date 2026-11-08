@@ -1,7 +1,7 @@
 {
   "name": "geulnun",
   "productName": "글눈",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "손글씨 서·논술형 답안지 전사·채점 도구",
   "private": true,
   "license": "Apache-2.0",

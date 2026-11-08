@@ -18,7 +18,7 @@ test('build 절: 이름·아이디·Windows NSIS 사용자별 설치·GitHub 배
   assert.equal(b.nsis.installerLanguages[0], 'ko_KR');
   assert.deepEqual(b.publish, { provider: 'github', owner: 'blueshadow62', repo: 'fairhand', releaseType: 'draft' });
   assert.equal(b.directories.output, 'release');
-  assert.equal(pkg.version, '0.2.9');
+  assert.equal(pkg.version, '0.2.10');
 });
 
 test('build 절: 앱이 읽는 파일은 들어가고, 네이티브 부품·개발 파일은 빠진다', () => {
