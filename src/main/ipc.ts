@@ -163,6 +163,7 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.makeDefaultSemester, async () => { const p = await makeDefaultSemester(app.getPath('documents')); await d.settings.save({ 학기폴더: p }); return p; });
   h(CHANNELS.updateStatus, async () => d.updater.status());
   h(CHANNELS.checkUpdate, () => d.updater.check());
+  h(CHANNELS.downloadUpdate, () => d.updater.download());
   h(CHANNELS.installUpdate, async () => d.updater.install());
   h(CHANNELS.buildCumulative, async () => buildAllCumulative(await semester(), await roster(), { version: d.version }));
 }

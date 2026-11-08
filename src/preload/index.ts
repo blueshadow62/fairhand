@@ -11,7 +11,7 @@ const CHANNELS = {
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   setNameMask: 'set:name-mask', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
-  updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
+  updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
 } as const;
 
@@ -70,6 +70,7 @@ const api: GeulnunApi = {
   judgeWithModel: (폴더, opts) => call(CHANNELS.judgeWithModel, 폴더, opts),
   updateStatus: () => call(CHANNELS.updateStatus),
   checkUpdate: () => call(CHANNELS.checkUpdate),
+  downloadUpdate: () => call(CHANNELS.downloadUpdate),
   installUpdate: () => call(CHANNELS.installUpdate),
   createSampleSet: () => call(CHANNELS.createSampleSet),
   makeDefaultSemester: () => call(CHANNELS.makeDefaultSemester),

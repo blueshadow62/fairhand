@@ -1,6 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { reduce, scheduleChecks, startUpdater, statusText } from '../src/main/update.js';
+
+/** electron-updater 대신: 확인하면 9.9.9가 있다고 하고, 받으라고 하면 바로 다 받는다 */
+class FakeUpdater extends EventEmitter {
+  autoDownload = true; autoInstallOnAppQuit = true; logger: unknown = {};
+  calls: string[] = [];
+  async checkForUpdates() { this.calls.push('check'); this.emit('checking-for-update'); this.emit('update-available', { version: '9.9.9' }); return null; }
+  async downloadUpdate() { this.calls.push('download'); this.emit('download-progress', { percent: 50 }); this.emit('update-downloaded', { version: '9.9.9' }); return []; }
+  quitAndInstall(silent: boolean, runAfter: boolean) { this.calls.push(`install ${silent} ${runAfter}`); }
+}
+const winUpdater = (fake: FakeUpdater, busy = () => false, seen: string[] = []) =>
+  startUpdater({ enabled: () => true, packaged: true, platform: 'win32', busy, loadUpdater: async () => fake as never, onStatus: s => seen.push(s.kind), log: () => undefined });
+
+test('startUpdater: 확인은 새 버전이 있다고만 알리고, 내려받아 설치를 눌러야 받은 뒤 바로 설치한다', async () => {
+  const fake = new FakeUpdater(); const seen: string[] = [];
+  const u = winUpdater(fake, () => false, seen);
+  try {
+    await u.check();
+    assert.equal(fake.autoDownload, false);
+    assert.deepEqual(u.status(), { kind: 'available', version: '9.9.9' });
+    await u.check(); // 이미 찾았으면 다시 묻지 않고, 받지도 않는다
+    assert.deepEqual(fake.calls, ['check']);
+    await u.download();
+    assert.deepEqual(fake.calls, ['check', 'download', 'install true true']);
+    assert.deepEqual(seen, ['checking', 'available', 'downloading', 'downloading', 'downloaded']); // 0%로 먼저 잠근 뒤 50%
+  } finally { u.stop(); }
+});
+
+test('startUpdater: 전사 중에 다 받으면 설치를 미루고, 다시 시작해 적용을 눌러야 설치한다', async () => {
+  const fake = new FakeUpdater();
+  const u = winUpdater(fake, () => true);
+  try {
+    await u.download(); // 찾기 전에는 받지 않는다
+    assert.deepEqual(fake.calls, []);
+    await u.check(); await u.download();
+    assert.deepEqual(u.status(), { kind: 'downloaded', version: '9.9.9' });
+    assert.deepEqual(fake.calls, ['check', 'download']);
+    u.install();
+    assert.deepEqual(fake.calls, ['check', 'download', 'install true true']);
+  } finally { u.stop(); }
+});
 
 test('reduce: 확인 → 있음 → 내려받기 → 받음, 오류는 조용한 상태, 끄면 disabled', () => {
   let s = reduce({ kind: 'idle' }, { type: 'check' }); assert.equal(s.kind, 'checking');

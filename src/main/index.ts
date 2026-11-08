@@ -36,7 +36,7 @@ app.whenReady().then(async () => {
   const bridge = new EngineBridge({ settings, secrets, version: app.getVersion(), maskJpeg: maskJpegNative });
   let settingsCache = await settings.load();
   const origSave = settings.save.bind(settings);
-  const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, log: log.write,
+  const updater = startUpdater({ enabled: () => settingsCache.자동업데이트, packaged: app.isPackaged, busy: () => bridge.running(), log: log.write,
     onStatus: s => win?.webContents.send(CHANNELS.updateStatus, s) });
   settings.save = async (patch) => { // 그림 프로토콜이 학기 폴더를, 업데이트가 켜짐 여부를 동기로 알아야 해서
     settingsCache = await origSave(patch);

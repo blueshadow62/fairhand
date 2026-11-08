@@ -55,7 +55,7 @@ export const CHANNELS = {
   saveTranscript: 'review:save', buildResult: 'review:build-result', buildCumulative: 'review:build-cumulative',
   setNameMask: 'set:name-mask', matchRoster: 'roster:match',
   applyCase: 'case:apply', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
-  updateStatus: 'update:status', checkUpdate: 'update:check', installUpdate: 'update:install',
+  updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
 } as const;
 
@@ -115,6 +115,8 @@ export interface GeulnunApi {
   updateStatus(): Promise<UpdateStatus>;
   /** 자동업데이트가 꺼져 있거나 개발 실행이면 아무것도 하지 않는다 */
   checkUpdate(): Promise<void>;
+  /** 확인에서 찾은 새 버전을 내려받고, 다 받으면 다시 시작해 설치한다(전사 중이면 설치는 미룬다) */
+  downloadUpdate(): Promise<void>;
   /** 받아 둔 새 버전으로 다시 시작 */
   installUpdate(): Promise<void>;
   onUpdate(cb: (s: UpdateStatus) => void): () => void;
