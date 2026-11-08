@@ -177,11 +177,22 @@ export class EngineBridge {
     let old: AnswerKey | null = null;
     try { old = (await loadSet(setDir)).key; } catch { /* 없거나 깨진 정답표는 새로 쓴다 */ }
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
-    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다
-    delete key.이름가림;
+    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
+    // 문항별 검토의 신원 영역도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask로만 바꾼다
+    delete key.이름가림; delete key.신원가림;
     if (old?.이름가림) key.이름가림 = old.이름가림;
+    if (old?.신원가림) key.신원가림 = old.신원가림;
     await saveKeyFile(setDir, key);
     return key;
+  }
+
+  /** 문항별 검토 그림 보기의 신원 영역. null이면 기본 영역으로. 화면에 칠하는 데만 쓰고 AI에는 보내지 않아 전사 중에도 바꾼다 */
+  async setIdentityMask(setDir: string, rect: MaskRect | null): Promise<AnswerKey> {
+    const { key } = await loadSet(setDir);
+    delete key.신원가림;
+    const next = parseKey(JSON.stringify(rect ? { ...key, 신원가림: rect } : key), '신원 영역 설정');
+    await saveKeyFile(setDir, next);
+    return next;
   }
 
   /** 이름 칸 가리기 설정. null이면 끈다 */

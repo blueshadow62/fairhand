@@ -324,7 +324,18 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .item-review .answer-row .answer { flex: 1 1 160px; min-width: 0; }
 .item-review .qual-list { margin-top: 8px; border: 1px solid var(--line-2); border-radius: var(--r); }
 .item-review .qual-list .answer-row { padding-left: 10px; }
-@media (max-width: 1200px) { .item-review { --units-w: 200px; } }
+.item-review .answer-row.viewing { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+/* 그림 보기(오른쪽 칸): 열려 있을 때만 셋째 칸을 만든다 */
+.item-review.viewing { --units-w: 200px; grid-template-columns: var(--units-w) minmax(0, 1fr) minmax(300px, 42%); }
+.item-review .item-viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--viewer-bg); }
+.item-review .item-viewer .viewer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; background: var(--viewer-bar); border-bottom: 1px solid var(--line); }
+.item-review .item-viewer .viewer-bar .close { margin-left: auto; font-size: 18px; }
+.item-review .item-viewer .zoom { min-width: 42px; text-align: center; font-size: var(--fs-m); }
+.item-review .item-viewer .view-help { padding: 6px 10px; background: var(--viewer-bar); border-bottom: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-s); line-height: 1.45; }
+.item-review .sheet-wrap { flex: 1; min-height: 0; overflow: auto; }
+.item-review canvas.sheet { display: block; background: #fff; }
+.item-review canvas.sheet.editing { cursor: crosshair; touch-action: none; }
+@media (max-width: 1200px) { .item-review { --units-w: 200px; } .item-review.viewing { --units-w: 180px; } }
 
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
 .screen[data-tab="settings"] > section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); padding: var(--sp-4) 18px; margin-bottom: var(--sp-4); }

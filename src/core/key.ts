@@ -1,4 +1,4 @@
-import { DataError, type AnswerKey, type GradingRules } from './types.js';
+import { DataError, type AnswerKey, type GradingRules, type MaskRect } from './types.js';
 
 export const DEFAULT_RULES: GradingRules = { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' };
 const RULE_VALUES: Record<string, string[]> = { 맞춤법: ['인정', '불인정'], 넓은말: ['인정', '불인정'], 핵심어: ['모두', '하나라도'] };
@@ -45,11 +45,22 @@ export function keyProblems(k: unknown): string[] {
       if (typeof c?.답 !== 'string' || !c.답.trim()) p.push(`사례 ${i + 1}: 답이 비었습니다`);
     });
   }
-  if (o.이름가림 !== undefined) {
-    const m = o.이름가림, ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
-    if (!m || ![m.x, m.y, m.w, m.h].every(ok) || m.w <= 0 || m.h <= 0 || m.x + m.w > 1 + 1e-9 || m.y + m.h > 1 + 1e-9) p.push('이름가림 영역이 쪽을 벗어나거나 잘못되었습니다');
-  }
+  const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+  const badMask = (m: any) => !m || ![m.x, m.y, m.w, m.h].every(ok) || m.w <= 0 || m.h <= 0 || m.x + m.w > 1 + 1e-9 || m.y + m.h > 1 + 1e-9;
+  for (const f of ['이름가림', '신원가림']) if (o[f] !== undefined && badMask(o[f])) p.push(`${f} 영역이 쪽을 벗어나거나 잘못되었습니다`);
   return p;
+}
+
+/** 문항별 검토의 그림 보기에서 칠하는 기본 영역: 쪽 위 15%(머리 줄의 학년·반·번호·이름이 드는 자리) */
+export const DEFAULT_IDENTITY_MASK: Readonly<MaskRect> = Object.freeze({ x: 0, y: 0, w: 1, h: 0.15 });
+export const identityMask = (k: AnswerKey): MaskRect => k.신원가림 ?? DEFAULT_IDENTITY_MASK;
+
+/** 렌더러가 보낸 가림 영역에서 네 수만 꺼낸다(다른 칸이 정답표에 들어가지 않게). 범위는 keyProblems가 본다. null·undefined는 끄기 */
+export function maskRectArg(raw: unknown): MaskRect | null {
+  if (raw === null || raw === undefined) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof raw !== 'object' || ![o.x, o.y, o.w, o.h].every(v => typeof v === 'number')) throw new DataError('가릴 영역 값이 잘못되었습니다');
+  return { x: o.x as number, y: o.y as number, w: o.w as number, h: o.h as number };
 }
 
 export function parseKey(text: string, where = '정답표.json'): AnswerKey {

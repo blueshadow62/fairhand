@@ -516,6 +516,18 @@ const ko = {
   'item.confirmed': '{n}장을 확인했습니다.',
   'item.nothingNew': '이미 확인한 답입니다.',
   'item.caseFailed': '판정은 저장했지만 사례를 기록하지 못했습니다: {error}',
+  'item.viewImage': '그림 보기',
+  'item.viewClose': '그림 닫기',
+  'item.zoomIn': '확대',
+  'item.zoomOut': '축소',
+  'item.maskEdit': '가릴 영역 고치기',
+  'item.maskDefault': '기본 영역으로(쪽 위 15%)',
+  'item.maskHelp': "칠한 곳은 학생 정보 자리라 가려 둡니다. 양식이 달라 학생 정보가 보이면 '가릴 영역 고치기'를 누르세요.",
+  'item.maskEditHelp': '그림 위를 끌어 가릴 영역을 다시 잡습니다. 놓으면 이 세트의 모든 장에 저장합니다. 끄는 동안에도 칠한 곳은 가려 둡니다.',
+  'item.maskSaved': '가릴 영역을 저장했습니다.',
+  'item.maskReset': '가릴 영역을 기본(쪽 위 15%)으로 되돌렸습니다.',
+  'item.maskLabel': '학생 정보 가림',
+  'item.imageFailed': '그림을 불러오지 못했습니다.',
 } as const;
 
 export type Key = keyof typeof ko;
@@ -1026,6 +1038,18 @@ const en: Record<Key, string> = {
   'item.confirmed': 'Checked {n} sheet(s).',
   'item.nothingNew': 'These answers are already checked.',
   'item.caseFailed': 'The verdicts are saved, but the precedent was not recorded: {error}',
+  'item.viewImage': 'View image',
+  'item.viewClose': 'Close the image',
+  'item.zoomIn': 'Zoom in',
+  'item.zoomOut': 'Zoom out',
+  'item.maskEdit': 'Change the hidden area',
+  'item.maskDefault': 'Default area (top 15% of the page)',
+  'item.maskHelp': "The shaded area hides student details. If your answer sheet shows student details outside it, press 'Change the hidden area'.",
+  'item.maskEditHelp': 'Drag on the image to set the hidden area again. When you release, the area is saved for all sheets in this set. The shaded areas stay hidden while you drag.',
+  'item.maskSaved': 'Hidden area saved.',
+  'item.maskReset': 'Hidden area set back to the default (top 15% of the page).',
+  'item.maskLabel': 'Student details hidden',
+  'item.imageFailed': 'Could not load the image.',
 };
 
 export const DICT: Record<Language, Record<Key, string>> = { ko, en };

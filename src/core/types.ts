@@ -30,6 +30,8 @@ export interface AnswerKey {
   사례?: Case[];
   /** 있으면 전사 때 이 영역을 가린 사본을 보낸다 */
   이름가림?: MaskRect;
+  /** 문항별 검토의 그림 보기에서 칠할 학생 정보 영역. 없으면 DEFAULT_IDENTITY_MASK(key.ts) */
+  신원가림?: MaskRect;
 }
 
 export interface TranscribeInfo { 엔진: 'cli' | 'api' | 'codex' | 'gemini' | 'openai' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
