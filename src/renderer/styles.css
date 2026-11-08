@@ -251,6 +251,9 @@ label.upload input:focus { box-shadow: none; }
 .thumb figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thumb figcaption button { min-height: 24px; padding: 0 8px; flex: none; }
 canvas.preview { display: block; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); max-width: 100%; margin: var(--sp-2) 0; }
+/* 전사 칸 머리: 쓸 AI(이름·종류·모델과 구독/API)와 전사할 장 수를 전사 단추 위에 옅은 상자로 묶는다 */
+.run-ai { padding: 10px 14px; margin-bottom: var(--sp-3); border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface-2); }
+.run-ai .row { margin: 0 0 2px; }
 
 /* ── 검토: 장 목록 | 답안지 그림 | 전사 편집 세 단 ── */
 /* 전사 칸 너비는 나눔선으로 바꾼다(--editor-w). 전사 칸은 --editor-min보다, 그림 칸은 --viewer-min보다 좁아지지 않는다 */

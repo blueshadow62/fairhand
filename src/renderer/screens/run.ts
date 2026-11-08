@@ -9,6 +9,9 @@ import { byNaturalName, canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, t
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
+import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
+import { pendingPages } from '../lib/sheets.js';
+import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
 const DEFAULT_MASK: MaskRect = { x: 0.74, y: 0.07, w: 0.26, h: 0.05 };
@@ -391,8 +394,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       showResult(await api.startRun(폴더, opts));
     } catch (e) { showError((e as Error).message); }
     finally {
-      clearInterval(timer); off(); tick(); running = false; renderRun(); renderThumbs(); renderPrivacy();
-      if (store.state.current === 폴더) { data = await api.readSet(폴더).catch(() => data); renderCounts(); }
+      clearInterval(timer); off(); tick(); running = false;
+      // 전사할 장 수와 장 그림의 학생 표시가 이번 전사를 반영하게 새로 읽은 뒤 그린다
+      if (store.state.current === 폴더) data = await api.readSet(폴더).catch(() => data);
+      renderCounts(); renderRun(); renderThumbs(); renderPrivacy();
       await store.refreshSets().catch(() => undefined);
     }
   }
@@ -408,12 +413,29 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     resultBox.append(box);
   }
 
+  /** 전사에 쓸 AI(이름·종류·모델, 구독인지 API인지). 어느 프로필로 도는지가 왼쪽 아래 작은 글에만 있었다 */
+  function aiLine(): HTMLElement {
+    const s = store.state.settings;
+    const p = s.프로필.find(x => x.id === s.사용중);
+    // 채점 실행에는 떠나기 확인이 없어 goTo가 설정 화면을 바로(동기) 그린다. 그다음 AI 프로필 탭을 고른다
+    const open = el('button', { class: 'small', onclick: () => { ctx.goTo('settings'); showSettingsTab('ai'); } }, t('run.ai.settings'));
+    if (!p) return el('div', { class: 'row' }, el('span', { class: 'band warn' }, t('run.ai.none')), open);
+    const sub = isSubscription(p.종류);
+    return el('div', {},
+      el('div', { class: 'row' }, el('span', { class: 'muted' }, t('run.ai')),
+        el('strong', {}, badgeLabel(p.이름, t(kindKey(p.종류)), modelLabel(p, t('app.badge.codexDefault')))),
+        el('span', { class: `band ${sub ? 'info' : 'warn'}` }, t(sub ? 'run.ai.subscription' : 'run.ai.api')), open),
+      el('div', { class: 'muted' }, t(sub ? 'run.ai.subscriptionHelp' : priceOf(p) ? 'run.ai.apiHelp' : 'run.ai.apiNoPrice')));
+  }
+
   function renderRun(): void {
     clear(runBox);
     if (!data) return;
     const confirmed = data.key.확인?.완료 === true;
     tryInput.disabled = running || trying || !confirmed;
+    const pending = pendingPages(data.pages, data.transcripts).length;
     put(runBox,
+      el('div', { class: 'run-ai' }, aiLine(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending }))),
       el('div', { class: 'row' },
         el('button', { class: 'primary', disabled: running || trying || !confirmed || !data.pages.length, onclick: () => void run({ force: false }) }, t('run.start')),
         el('button', { class: 'danger', disabled: !running, onclick: () => api.cancelRun().catch(e => showError(e.message)) }, t('run.cancel')),
