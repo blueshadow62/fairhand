@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
-import { nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../lib/sheets.js';
+import { coversSaved, nextRotation, pendingPages, SHEET_ACCEPT, sheetKind } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
 
 // 지금 쓰는 답안지 양식에서 이름 칸이 들어오는 자리(3학년·2학년 스캔으로 확인). 다른 양식은 미리보기에서 다시 잡는다
@@ -80,7 +80,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (shownFor !== 폴더) {
       clear(tryBox); // 시험 결과는 그 세트의 정답표로 그린 것이다
       // 고른 파일은 고른 때의 세트 기준이라 세트가 바뀌면 버린다. 같은 세트면(설정을 보고 돌아옴) 쪽마다 돌린 각도와 함께 둔다
-      dropPicked(); fileInput.value = ''; uploadStatus.textContent = '';
+      dropPicked(); fileInput.value = ''; uploadStatus.textContent = ''; justSaved = [];
     }
     shownFor = 폴더;
     clear(body);
@@ -97,7 +97,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'card' }, el('h3', {}, t('run.privacy')), privacyBox),
       // 전체를 전사하기 전에 시험하는 일이라 학생 정보 보호(이름 가림이 시험에도 쓰인다) 다음, 전사 앞에 둔다
       el('div', { class: 'card' }, el('h3', {}, t('run.try.title')), el('div', { class: 'muted' }, t('run.try.help')), el('div', { class: 'row' }, tryInput), tryBox),
-      el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox), resultBox);
+      runCard, resultBox);
     renderUpload(); renderThumbs(); renderPrivacy(); renderRun();
   }
 
@@ -116,14 +116,16 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   fileInput.addEventListener('change', () => void pickFiles());
   const uploadStatus = el('div', { class: 'muted' });
   const uploadCard = el('div', { class: 'card upload-card' }, el('h3', {}, t('run.upload')), uploadBox);
+  const runCard = el('div', { class: 'card' }, el('h3', {}, t('run.transcribe')), runBox);
   let pickSeq = 0; // 고르는 동안 다시 고르거나 끌어다 놓으면 앞의 고르기는 그만둔다
+  let justSaved: number[] = []; // 마지막으로 저장한 장. 저장한 자리에서 바로 전사하게 한다
 
   async function pickFiles(): Promise<void> {
     const files = [...(fileInput.files ?? [])].sort(byNaturalName); // 스캐너 파일명(001, 002…) 순서대로
     if (!files.length) return;
     if (saving) return; // 저장하는 파일을 닫으면 저장이 중간에 멈춘다(저장 중에는 고르기 칸도 잠근다)
     const seq = ++pickSeq;
-    uploadStatus.textContent = ''; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
+    uploadStatus.textContent = ''; justSaved = []; // 지난 저장의 '3/3장 저장'이 새로 고른 파일의 상태처럼 보였다
     dropPicked();
     rotation = store.state.settings.기본회전;
     for (const f of files) {
@@ -284,6 +286,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         await api.recordUpload(폴더, { 이름: src.name, 크기, 지문, 장수: src.pageCount, 시작: made[before]!, 끝: made[made.length - 1]! });
       }
       showInfo(t('run.pagesSaved', { from: tag(made[0]!), to: tag(made[made.length - 1]!) }));
+      justSaved = [...made];
       dropPicked(); fileInput.value = '';
       await refresh();
     } catch (e) { showError((e as Error).message); }
@@ -295,6 +298,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(uploadBox);
     fileInput.disabled = saving;
     uploadBox.append(el('div', { class: 'row' }, fileInput, el('span', { class: 'muted' }, t('run.dropHint'))), uploadStatus);
+    const fresh = data ? justSaved.filter(p => data!.pages.includes(p)) : []; // 그사이 지운 장은 뺀다
+    if (fresh.length) uploadBox.append(newPagesRow(fresh));
     if (!picked.length || !data) return;
     const next = data.pages.length ? Math.max(...data.pages) + 1 : 1;
     // 격자에는 저장할 파일의 쪽만, 저장될 장 번호 차례로
@@ -316,6 +321,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       data.pages.length ? el('div', { class: 'band warn' }, t('run.alreadyPages', { n: data.pages.length, next: tag(next) })) : null,
       el('div', { class: 'row' }, saveBtn));
     saveBtn.disabled = saving || !included().length;
+  }
+
+  /** 저장한 자리에서 그 장만 바로 전사한다. '전사 시작'이 화면 맨 아래에 있어 장을 저장한 뒤 한참 내려가야 했다 */
+  function newPagesRow(pages: number[]): HTMLElement {
+    const confirmed = data?.key.확인?.완료 === true;
+    return el('div', { class: 'row' },
+      el('button', { class: 'primary', disabled: running || trying || !confirmed, onclick: () => {
+        runCard.scrollIntoView({ block: 'center', behavior: 'smooth' }); // 진행 막대는 전사 칸에 있다
+        void run({ pages, force: false });
+      } }, t('run.transcribeNew', { n: pages.length })),
+      el('span', { class: 'muted' }, confirmed ? t('run.transcribeNewHelp', { from: tag(pages[0]!), to: tag(pages[pages.length - 1]!) }) : t('common.notConfirmed')));
   }
 
   /** 전체 회전: 따로 돌린 쪽까지 모든 쪽을 이 각도로 */
@@ -491,13 +507,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const f = tryInput.files?.[0]; tryInput.value = '';
     if (!f || !data || running || trying) return;
     const { 폴더, key } = data; // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
-    trying = true; renderRun();
+    trying = true; renderRun(); renderUpload();
     clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('run.try.running')));
     try {
       const tr = await api.tryPage(폴더, await fileToJpeg(f, store.state.settings.기본회전));
       clear(tryBox); tryBox.append(transcriptTable(key, tr));
     } catch (e) { clear(tryBox); showError((e as Error).message); }
-    finally { trying = false; renderRun(); }
+    finally { trying = false; renderRun(); renderUpload(); }
   }
 
   // ── 전사 ──
@@ -507,11 +523,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let redoOpen = false;
 
   async function run(opts: { pages?: number[]; force?: boolean }): Promise<void> {
-    if (!data || running) return;
+    if (!data || running || trying) return;
     const 폴더 = data.폴더;
     const profile = store.state.settings.프로필.find(p => p.id === store.state.settings.사용중);
     const price = priceOf(profile); // 실제 청구와 다를 수 있는 추정. 구독과 단가를 모르는 API는 보이지 않는다
-    running = true; renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
+    if (coversSaved(justSaved, opts.pages)) justSaved = []; // 전사한 뒤에는 '새로 저장한 N장 전사하기'가 할 일이 없다
+    running = true; renderUpload(); renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
     const started = Date.now();
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
@@ -534,7 +551,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       clearInterval(timer); off(); tick(); running = false;
       // 전사할 장 수와 장 그림의 학생 표시가 이번 전사를 반영하게 새로 읽은 뒤 그린다
       if (store.state.current === 폴더) data = await api.readSet(폴더).catch(() => data);
-      renderCounts(); renderRun(); renderThumbs(); renderPrivacy();
+      renderCounts(); renderUpload(); renderRun(); renderThumbs(); renderPrivacy();
       await store.refreshSets().catch(() => undefined);
     }
   }
