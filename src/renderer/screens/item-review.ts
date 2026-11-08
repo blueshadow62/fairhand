@@ -37,6 +37,16 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   let busy = false; // 저장과 엑셀 생성이 두 벌 돌지 않게 기다리는 동안 단추를 잠근다
   const open = new Set<string>(); // 펼친 묶음: 단위 + 정규 답
 
+  // 판정마다 다시 그려도 키보드 초점이 같은 묶음·같은 줄의 같은 단추로 돌아오게, 단추마다 바뀌지 않는 data-focus를 단다(장 번호 대신 익명 번호).
+  // 기다리는 동안 단추가 잠겨 초점이 빠져도 기억해 두었다가 잠금이 풀린 뒤 돌려준다
+  let keepFocus: string | null = null;
+  const holdFocus = (): void => { const a = document.activeElement; if (a instanceof HTMLElement && root.contains(a) && a.dataset.focus) keepFocus = a.dataset.focus; };
+  function restoreFocus(): void {
+    if (!keepFocus || busy) return;
+    const k = keepFocus; keepFocus = null;
+    [...root.querySelectorAll<HTMLElement>('[data-focus]')].find(x => x.dataset.focus === k)?.focus({ preventScroll: true });
+  }
+
   function render(d: SetData | null): void {
     if (d?.폴더 !== data?.폴더) { open.clear(); unitId = null; closeViewer(false); }
     data = d;
@@ -71,17 +81,19 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   setZoom(1);
 
   function renderViewBar(): void {
+    holdFocus();
     clear(viewBar);
     canvas.classList.toggle('editing', editing);
     if (!view) return;
     put(viewBar, el('strong', {}, t('item.answerN', { n: view.n })),
-      el('button', { class: 'small', 'aria-label': t('item.zoomOut'), title: t('item.zoomOut'), onclick: () => setZoom(zoom - 0.25) }, '−'), zoomText,
-      el('button', { class: 'small', 'aria-label': t('item.zoomIn'), title: t('item.zoomIn'), onclick: () => setZoom(zoom + 0.25) }, '+'),
-      el('button', { class: 'small', onclick: () => setZoom(1) }, t('review.fit')),
-      el('button', { class: `small${editing ? ' active' : ''}`, 'aria-pressed': String(editing), onclick: () => { editing = !editing; dragging = null; renderViewBar(); draw(); } }, t('item.maskEdit')),
-      editing ? el('button', { class: 'small', onclick: () => void saveMask(null) }, t('item.maskDefault')) : null,
-      el('button', { class: 'small close', 'aria-label': t('item.viewClose'), title: t('item.viewClose'), onclick: () => closeViewer() }, '×'));
+      el('button', { class: 'small', 'data-focus': 'vb:out', 'aria-label': t('item.zoomOut'), title: t('item.zoomOut'), onclick: () => setZoom(zoom - 0.25) }, '−'), zoomText,
+      el('button', { class: 'small', 'data-focus': 'vb:in', 'aria-label': t('item.zoomIn'), title: t('item.zoomIn'), onclick: () => setZoom(zoom + 0.25) }, '+'),
+      el('button', { class: 'small', 'data-focus': 'vb:fit', onclick: () => setZoom(1) }, t('review.fit')),
+      el('button', { class: `small${editing ? ' active' : ''}`, 'data-focus': 'vb:edit', 'aria-pressed': String(editing), onclick: () => { editing = !editing; dragging = null; renderViewBar(); draw(); } }, t('item.maskEdit')),
+      editing ? el('button', { class: 'small', 'data-focus': 'vb:default', onclick: () => void saveMask(null) }, t('item.maskDefault')) : null,
+      el('button', { class: 'small close', 'data-focus': 'vb:close', 'aria-label': t('item.viewClose'), title: t('item.viewClose'), onclick: () => closeViewer() }, '×'));
     viewHelp.textContent = t(editing ? 'item.maskEditHelp' : 'item.maskHelp');
+    restoreFocus();
   }
 
   function openViewer(page: number, n: number): void {
@@ -138,25 +150,28 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   });
 
   function renderUnits(): void {
+    holdFocus();
     clear(units);
     if (!data) return;
     const d = data, sums = unitSummaries(d.key, d.transcripts), p = progress(d.key, d.transcripts);
-    const only = el('input', { type: 'checkbox', checked: onlyUnchecked, onchange: () => { onlyUnchecked = only.checked; renderUnits(); } });
+    const only = el('input', { type: 'checkbox', 'data-focus': 'only', checked: onlyUnchecked, onchange: () => { onlyUnchecked = only.checked; renderUnits(); } });
     units.append(el('div', { class: 'filters' },
       el('div', {}, t('item.progress', { units: p.단위, unitsTotal: p.단위전체, pages: p.장, pagesTotal: p.장전체 })),
       el('label', {}, only, t('item.onlyUnchecked'))));
     const shown = sums.filter(s => !onlyUnchecked || !unitDone(s));
-    if (!shown.length) { units.append(el('div', { class: 'unit-empty muted' }, t(sums.length ? 'item.allDone' : 'item.noUnits'))); return; }
+    if (!shown.length) { units.append(el('div', { class: 'unit-empty muted' }, t(sums.length ? 'item.allDone' : 'item.noUnits'))); restoreFocus(); return; }
     for (const s of shown) {
       const on = s.id === unitId, done = unitDone(s);
-      units.append(el('button', { class: `unit${on ? ' active' : ''}${done ? ' done' : ''}`, 'aria-current': on ? 'true' : null, onclick: () => pick(s.id) },
+      units.append(el('button', { class: `unit${on ? ' active' : ''}${done ? ' done' : ''}`, 'data-focus': `unit:${s.id}`, 'aria-current': on ? 'true' : null, onclick: () => pick(s.id) },
         el('span', { class: 'line' }, el('strong', {}, s.id), el('span', { class: 'desc', title: s.설명 }, s.설명)),
         el('span', { class: 'meta' }, t('item.unitChecked', { done: s.확인, total: s.전체 }), done ? ' ✓' : null,
           s.갈림 ? el('span', { class: 'tag-warn', title: t('item.splitCountTitle') }, t('item.splitCount', { n: s.갈림 })) : null)));
     }
+    restoreFocus();
   }
 
   function renderGroups(): void {
+    holdFocus();
     const scroll = groups.scrollTop; // 판정을 넣은 뒤 다시 그려도 보던 자리에 머문다
     clear(groups);
     if (!data) return;
@@ -171,22 +186,23 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     if (qty) for (const g of sortGroups(groupAnswers(d.transcripts, qty.id))) groups.append(groupBox(qty, g, labels, byPage));
     else groups.append(el('div', { class: 'qual-list' }, ...[...labels].sort(([, a], [, b]) => a - b).map(([page, n]) => qualRow(qual!, byPage.get(page)!, n))));
     groups.scrollTop = scroll;
+    restoreFocus();
   }
 
   function head(u: QtyUnit | QualUnit, isQty: boolean, allChecked: boolean): HTMLElement {
     const 유형 = isQty ? (u as QtyUnit).유형 : '응답형';
-    const cases = el('input', { type: 'checkbox', checked: deps.recordCases(), onchange: () => deps.setRecordCases(cases.checked) });
+    const cases = el('input', { type: 'checkbox', 'data-focus': 'cases', checked: deps.recordCases(), onchange: () => deps.setRecordCases(cases.checked) });
     return el('div', { class: 'ir-head' },
       el('div', { class: 'row' }, el('strong', { class: 'unit-id' }, u.id), 유형 ? el('span', { class: 'muted' }, t(`unit.${유형}`)) : null,
         unitPoints(u) === 1 ? null : el('span', { class: 'muted' }, t('review.points', { n: unitPoints(u) })),
-        el('button', { class: 'primary', disabled: busy || allChecked, title: t('item.confirmAllTitle'), onclick: () => void send(u.id, data!.transcripts.map(x => ({ page: x.page }))) }, t('item.confirmAll')),
+        el('button', { class: 'primary', 'data-focus': 'all', disabled: busy || allChecked, title: t('item.confirmAllTitle'), onclick: () => void send(u.id, data!.transcripts.map(x => ({ page: x.page }))) }, t('item.confirmAll')),
         isQty ? el('label', { title: t('item.recordCasesTitle') }, cases, t('item.recordCases')) : null),
       el('div', { class: 'ir-desc' }, u.설명),
       isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null);
   }
 
-  const verdictButtons = (current: Panjeong | null, title: 'item.groupVerdict' | 'item.rowVerdict', onPick: (v: Panjeong) => void): HTMLElement =>
-    el('div', { class: 'verdicts', role: 'group' }, ...VERDICTS.map(v => el('button', { class: `v-${v}${v === current ? ' on' : ''}`, 'aria-pressed': String(v === current),
+  const verdictButtons = (current: Panjeong | null, title: 'item.groupVerdict' | 'item.rowVerdict', focus: string, onPick: (v: Panjeong) => void): HTMLElement =>
+    el('div', { class: 'verdicts', role: 'group' }, ...VERDICTS.map(v => el('button', { class: `v-${v}${v === current ? ' on' : ''}`, 'data-focus': `${focus}:${v}`, 'aria-pressed': String(v === current),
       disabled: busy, title: t(title), onclick: () => onPick(v) }, t(`verdict.${v}`))));
 
   const checkMark = (tr: Transcript, 단위: string): HTMLElement =>
@@ -199,36 +215,36 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       : g.확인 ? el('span', {}, t('item.unitChecked', { done: g.확인, total: g.장.length })) : el('span', { class: 'muted' }, t('item.unchecked'));
     const box = el('div', { class: `group${g.갈림 ? ' mixed' : ''}` },
       el('div', { class: 'group-head' },
-        el('button', { class: 'twisty', 'aria-expanded': String(isOpen), title: t(isOpen ? 'item.collapse' : 'item.expand'), 'aria-label': t(isOpen ? 'item.collapse' : 'item.expand'),
+        el('button', { class: 'twisty', 'data-focus': `tw:${g.정규}`, 'aria-expanded': String(isOpen), title: t(isOpen ? 'item.collapse' : 'item.expand'), 'aria-label': t(isOpen ? 'item.collapse' : 'item.expand'),
           onclick: () => { if (isOpen) open.delete(k); else open.add(k); renderGroups(); } }, isOpen ? '▼' : '▶'),
         el('div', { class: 'answer' }, g.정규 ? g.대표 : el('span', { class: 'muted' }, t('item.emptyAnswer'))),
         el('div', { class: 'group-meta' }, el('span', {}, t('item.sheets', { n: g.장.length })),
           el('span', {}, VERDICTS.filter(v => g.판정[v]).map(v => `${t(`verdict.${v}`)} ${g.판정[v]}`).join(' · ')),
           g.갈림 ? el('span', { class: 'tag-warn', title: t('item.splitTitle') }, t('item.split')) : null, status),
-        verdictButtons(same, 'item.groupVerdict', v => void send(u.id, g.장.map(page => ({ page, 판정: v }))))));
+        verdictButtons(same, 'item.groupVerdict', `gv:${g.정규}`, v => void send(u.id, g.장.map(page => ({ page, 판정: v }))))));
     if (!isOpen) return box;
     // 줄 순서와 번호는 장 번호가 아니라 익명 번호(단위마다 다른 해시 순)
     box.append(el('div', { class: 'group-rows' }, ...[...g.장].sort((a, b) => labels.get(a)! - labels.get(b)!).map(page => {
-      const tr = byPage.get(page)!, v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim();
+      const tr = byPage.get(page)!, v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), n = labels.get(page)!;
       return el('div', { class: `answer-row${view?.page === page ? ' viewing' : ''}` },
-        el('span', { class: 'anon' }, t('item.answerN', { n: labels.get(page)! })),
+        el('span', { class: 'anon' }, t('item.answerN', { n })),
         el('div', { class: 'answer' }, own === g.대표 ? '' : own), // 대표 답과 글자가 다를 때만 원래 글을 보인다
         checkMark(tr, u.id),
-        verdictButtons(v.판정, 'item.rowVerdict', p => void send(u.id, [{ page, 판정: p }])),
-        el('button', { class: 'small view', onclick: () => openViewer(page, labels.get(page)!) }, t('item.viewImage')));
+        verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
+        el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')));
     })));
     return box;
   }
 
   function qualRow(u: QualUnit, tr: Transcript, n: number): HTMLElement {
     const v = tr.정성[u.id] ?? { 응답: false, 답: '' };
-    const cb = el('input', { type: 'checkbox', checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
+    const cb = el('input', { type: 'checkbox', 'data-focus': `qr:${n}`, checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
     return el('div', { class: `answer-row${view?.page === tr.page ? ' viewing' : ''}` },
       el('span', { class: 'anon' }, t('item.answerN', { n })),
       el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
       el('label', {}, cb, t('review.responded')),
       checkMark(tr, u.id),
-      el('button', { class: 'small view', onclick: () => openViewer(tr.page, n) }, t('item.viewImage')));
+      el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(tr.page, n) }, t('item.viewImage')));
   }
 
   async function send(단위: string, 항목: UnitResultItem[]): Promise<void> {
