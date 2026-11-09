@@ -396,8 +396,9 @@ export class EngineBridge {
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
       const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), roster = await this.rosterOrNull(), 위치 = await this.positions();
+      const 동시 = (await this.deps.settings.load()).동시장수;
       const meter = runMeter(); // 장마다 걸린 시간·토큰(다음 전사의 예상 시간·비용에 쓴다)
-      const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster, 위치 });
+      const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster, 위치, 동시 });
       await this.recordRun(profile, meter.stat);
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }

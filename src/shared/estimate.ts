@@ -24,11 +24,12 @@ export function addRun(prev: RunStat | undefined, run: RunStat): RunStat {
   return s;
 }
 
-/** 진행 알림 중 재는 데 쓰는 칸. 건너뛴 장(이미 전사함)과 실패한 장(error)은 시간·토큰에 넣지 않는다 */
-export interface MeterEvent { skipped?: boolean; error?: string; inputTokens?: number; outputTokens?: number }
+/** 진행 알림 중 재는 데 쓰는 칸. 건너뛴 장(이미 전사함)과 실패한 장(error)은 시간·토큰에 넣지 않는다. ms: 그 장의 처리 시간 */
+export interface MeterEvent { skipped?: boolean; error?: string; inputTokens?: number; outputTokens?: number; ms?: number }
 
 /**
- * 전사 진행 알림으로 장마다 걸린 시간과 토큰을 잰다. 전사는 한 장씩 차례로 하므로 앞 알림(처음에는 만든 때)부터 이 알림까지가 그 장의 시간이다.
+ * 전사 진행 알림으로 장마다 걸린 시간과 토큰을 잰다. 알림에 그 장의 처리 시간(ms)이 실려 있으면 그것을 쓴다(여러 장을 동시에 하면 알림 사이 간격이 장당 시간이 아니다).
+ * 없으면(한 장씩 차례로 하던 때의 알림) 앞 알림(처음에는 만든 때)부터 이 알림까지를 그 장의 시간으로 본다.
  * 처리: 건너뛰지 않은 장(실패 포함) 수. 남은 장을 셀 때 쓴다
  */
 export function runMeter(now: () => number = Date.now): { add(e: MeterEvent): void; readonly stat: RunStat; readonly 처리: number } {
@@ -42,7 +43,7 @@ export function runMeter(now: () => number = Date.now): { add(e: MeterEvent): vo
       if (!e.skipped) {
         처리++;
         if (!e.error) {
-          stat.장++; stat.초 += Math.max(0, t - last) / 1000;
+          stat.장++; stat.초 += Math.max(0, typeof e.ms === 'number' ? e.ms : t - last) / 1000;
           if (typeof e.inputTokens === 'number' && typeof e.outputTokens === 'number') { stat.토큰장++; stat.입력 += e.inputTokens; stat.출력 += e.outputTokens; }
         }
       }
@@ -54,19 +55,22 @@ export function runMeter(now: () => number = Date.now): { add(e: MeterEvent): vo
 /** 예상: 초(걸릴 시간), 비용(단가를 아는 API의 달러), 근거장(기록에 든 장 수) */
 export interface Estimate { 초: number; 비용?: number; 근거장: number }
 
-/** 기록의 장당 평균으로 pages장의 시간과 비용을 어림한다. 기록이 없거나 할 장이 없으면 null. 비용은 단가와 토큰 기록이 있을 때만 */
-export function estimateRun(stat: RunStat | undefined, pages: number, price: Price | null): Estimate | null {
+/**
+ * 기록의 장당 평균으로 pages장의 시간과 비용을 어림한다. 기록이 없거나 할 장이 없으면 null. 비용은 단가와 토큰 기록이 있을 때만.
+ * 동시: 한꺼번에 전사하는 장 수. 장마다 걸리는 시간이 비슷하다고 보고 ⌈pages/동시⌉ 장만큼 걸린다고 어림한다(비용은 장 수 그대로)
+ */
+export function estimateRun(stat: RunStat | undefined, pages: number, price: Price | null, 동시 = 1): Estimate | null {
   if (!stat || stat.장 <= 0 || pages <= 0) return null;
   const 비용 = price && stat.토큰장 > 0 ? costUsd(price, stat.입력 / stat.토큰장 * pages, stat.출력 / stat.토큰장 * pages) : undefined;
-  return { 초: stat.초 / stat.장 * pages, ...(비용 === undefined ? {} : { 비용 }), 근거장: Math.round(stat.장) };
+  return { 초: stat.초 / stat.장 * Math.ceil(pages / Math.max(1, 동시)), ...(비용 === undefined ? {} : { 비용 }), 근거장: Math.round(stat.장) };
 }
 
 /**
  * 전사 중 남은 시간과 다 했을 때의 비용: 이번 실행에서 잰 장당 평균으로. toDo는 이번에 실제로 전사할 장 수(건너뛸 장 제외),
- * 지금까지 쓴 비용(spent)에 남은 장의 어림을 더한다. 아직 끝난 장이 없으면 null
+ * 지금까지 쓴 비용(spent)에 남은 장의 어림을 더한다. 동시는 estimateRun과 같다. 아직 끝난 장이 없으면 null
  */
-export function projectRemaining(meter: { stat: RunStat; 처리: number }, toDo: number, price: Price | null, spent = 0): { 남은초: number; 총비용?: number } | null {
-  const est = estimateRun(meter.stat, Math.max(0, toDo - meter.처리), price);
+export function projectRemaining(meter: { stat: RunStat; 처리: number }, toDo: number, price: Price | null, spent = 0, 동시 = 1): { 남은초: number; 총비용?: number } | null {
+  const est = estimateRun(meter.stat, Math.max(0, toDo - meter.처리), price, 동시);
   if (meter.stat.장 <= 0) return null;
   const 총비용 = price && meter.stat.토큰장 > 0 ? spent + (est?.비용 ?? 0) : undefined;
   return { 남은초: est?.초 ?? 0, ...(총비용 === undefined ? {} : { 총비용 }) };

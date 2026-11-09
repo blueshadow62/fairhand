@@ -22,6 +22,24 @@ test('runMeter: 성공한 장만 앞 알림부터 걸린 시간을 재고 토큰
   assert.equal(m.처리, 3);
 });
 
+test('runMeter: 알림에 그 장의 처리 시간(ms)이 있으면 알림 사이 간격 대신 그것을 쓴다(동시 전사)', () => {
+  let now = 0;
+  const m = runMeter(() => now);
+  now = 30000; m.add({ ms: 30000 });
+  now = 31000; m.add({ ms: 29000 }); // 동시에 돌아 1초 뒤에 끝났지만 그 장은 29초 걸렸다
+  assert.equal(m.stat.초, 59);
+});
+
+test('estimateRun·projectRemaining: 동시에 n장씩 하면 ⌈장 수/n⌉장만큼의 시간, 비용은 장 수 그대로', () => {
+  assert.equal(estimateRun(stat10, 30, null, 3)!.초, 400); // 10묶음 × 40초
+  assert.equal(estimateRun(stat10, 7, null, 3)!.초, 120); // 3묶음
+  assert.ok(Math.abs(estimateRun(stat10, 30, OPUS, 3)!.비용! - 0.84) < 1e-9);
+  let now = 0;
+  const m = runMeter(() => now);
+  now = 40000; m.add({ ms: 40000 });
+  assert.equal(projectRemaining(m, 7, null, 0, 3)!.남은초, 80); // 남은 6장은 2묶음 × 40초
+});
+
 test('addRun: 더하고, STAT_PAGES장을 넘으면 같은 비율로 줄여 장당 평균은 그대로 두고 최근 기록의 무게를 키운다', () => {
   assert.deepEqual(addRun(undefined, stat10), stat10);
   const b = addRun({ 장: 30, 초: 1200, 토큰장: 30, 입력: 90000, 출력: 24000 }, { 장: 10, 초: 200, 토큰장: 0, 입력: 0, 출력: 0 });

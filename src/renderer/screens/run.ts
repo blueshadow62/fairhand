@@ -1,4 +1,4 @@
-import type { ProgressEvent, RunResult, SetData } from '../../shared/ipc.js';
+import { CONCURRENCY_CHOICES, type ProgressEvent, type RunResult, type SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl, thumbUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
@@ -680,12 +680,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     running = true; renderUpload(); renderRun(); renderThumbs(); renderPrivacy(); clear(resultBox);
     const started = Date.now();
     const meter = runMeter();
+    const 동시 = store.state.settings.동시장수; // 메인은 시작할 때의 설정값으로 돈다
     let inTok = 0, outTok = 0, done = 0, total = opts.pages?.length ?? data.pages.length;
     const tick = () => {
       const sec = Math.round((Date.now() - started) / 1000);
       const spent = price ? costUsd(price, inTok, outTok) : 0;
       const cost = price ? t('run.costEstimate', { cost: spent.toFixed(2) }) : '';
-      progressText.textContent = t('run.progress', { done, total, sec, in: inTok, out: outTok, cost }) + liveEstimateText(meter, toDo, price, spent);
+      progressText.textContent = t('run.progress', { done, total, sec, in: inTok, out: outTok, cost }) + liveEstimateText(meter, toDo, price, spent, 동시);
       progressBar.max = Math.max(total, 1); progressBar.value = done;
     };
     const timer = setInterval(tick, 1000);
@@ -746,13 +747,22 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     return el('div', {}, el('label', {}, box, t('run.positions')), el('div', { class: 'muted' }, t('run.positionsHelp')));
   }
 
+  /** 설정 '동시에 전사할 장 수'(바로 저장). 돌고 있는 전사는 시작할 때의 값을 쓰므로 전사 중에는 바꾸지 않는다 */
+  function concurrencyRow(): HTMLElement {
+    const sel = el('select', { disabled: running || trying, onchange: () => void (async () => {
+      try { store.update({ settings: await api.saveSettings({ 동시장수: Number(sel.value) }) }); renderRun(); } // 예상 시간 줄을 새 값으로
+      catch (e) { sel.value = String(store.state.settings.동시장수); showError((e as Error).message); }
+    })() }, ...CONCURRENCY_CHOICES.map(n => el('option', { value: String(n), selected: store.state.settings.동시장수 === n }, String(n))));
+    return el('div', {}, el('div', { class: 'row' }, t('run.concurrency'), sel), el('div', { class: 'muted' }, t('run.concurrencyHelp')));
+  }
+
   function renderRun(): void {
     clear(runBox);
     if (!data) return;
     const confirmed = data.key.확인?.완료 === true;
     tryInput.disabled = running || trying || !confirmed;
     const pending = pendingPages(data.pages, data.transcripts).length;
-    const s = store.state.settings, estimate = running ? '' : estimateLine(s.프로필.find(p => p.id === s.사용중), s.전사기록, pending);
+    const s = store.state.settings, estimate = running ? '' : estimateLine(s.프로필.find(p => p.id === s.사용중), s.전사기록, pending, s.동시장수);
     put(runBox,
       el('div', { class: 'run-ai' }, aiLine(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending })),
         estimate ? el('div', { class: 'muted' }, estimate) : null),
@@ -764,6 +774,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       // 처음 쓰는 사람에게는 '전사 시작' 하나면 되어 답 위치 받기와 다시 전사할 장은 접어 둔다. 전사 칸을 다시 그려도 사용자가 연 상태는 그대로
       el('details', { class: 'advanced', open: redoOpen, ontoggle: (e: Event) => { redoOpen = (e.target as HTMLDetailsElement).open; } },
         el('summary', {}, t('run.advanced'), el('span', { class: 'muted' }, t('run.advancedHint'))),
+        concurrencyRow(),
         positionsRow(),
         el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
           el('button', { disabled: running || trying || !confirmed, onclick: () => {

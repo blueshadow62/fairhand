@@ -28,8 +28,11 @@ export async function transcribePage(provider: TranscribeProvider, input: Omit<T
 
 export interface TranscribeOptions {
   effort?: Effort;
-  /** skipped: 이미 전사해 건너뛴 장, error: 실패한 장. 걸린 시간을 잴 때 둘을 뺀다 */
-  onProgress?: (e: { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string; skipped?: boolean }) => void;
+  /**
+   * skipped: 이미 전사해 건너뛴 장, error: 실패한 장. 걸린 시간을 잴 때 둘을 뺀다.
+   * ms: 그 장을 처리하는 데 걸린 시간. 여러 장을 동시에 하면 알림 사이 간격이 장당 시간이 아니라서 따로 싣는다
+   */
+  onProgress?: (e: { page: number; done: number; total: number; inputTokens?: number; outputTokens?: number; error?: string; skipped?: boolean; ms?: number }) => void;
   outDir?: string;
   force?: boolean;
   maskJpeg?: JpegMasker;
@@ -37,34 +40,46 @@ export interface TranscribeOptions {
   roster?: Student[] | null;
   /** 정량 단위마다 답의 세로 위치도 받는다(설정 '답 위치 받기') */
   위치?: boolean;
+  /** 동시에 전사할 장 수(기본 1). 장마다 따로 요청하고 따로 저장하므로 서로 영향이 없다 */
+  동시?: number;
 }
 
 const exists = (p: string) => access(p).then(() => true, () => false);
+
+/** 로그인·설치·버전 문제는 다음 장도 똑같이 실패하므로 새 장을 더 시작하지 않는다 */
+const FATAL: ReadonlySet<string> = new Set(['signed-out', 'not-installed', 'needs-update']);
 
 export async function transcribeSet(provider: TranscribeProvider, setDir: string, key: AnswerKey, rules: Rules, pages: number[], signal: AbortSignal, opts: TranscribeOptions = {})
   : Promise<{ ok: number[]; failed: { page: number; error: string }[]; skipped: number[] }> {
   const outDir = opts.outDir ?? path.join(setDir, 'transcripts');
   const ok: number[] = [], failed: { page: number; error: string }[] = [], skipped: number[] = [];
-  let done = 0;
-  for (const page of pages) {
-    if (signal.aborted) break;
+  let done = 0, next = 0, stop = false;
+  const one = async (page: number): Promise<void> => {
     const name = transcriptFileName(page);
-    if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length, skipped: true }); continue; }
+    if (!opts.force && await exists(path.join(outDir, name))) { skipped.push(page); done++; opts.onProgress?.({ page, done, total: pages.length, skipped: true }); return; }
+    const started = Date.now();
     try {
       const image = (await imageToSend(await readFile(path.join(setDir, 'pages', pageImageName(page))), key, opts.maskJpeg)).toString('base64');
       const r = await transcribePage(provider, { imageJpegBase64: image, key, rules, page, effort: opts.effort, 위치: opts.위치 }, signal);
       const judged = rejudgeTranscript(key, r.transcript).transcript; // 사례·정답 정확 일치는 저장 전에 맞춘다
       await writeJsonAtomic(outDir, name, opts.roster ? matchRoster(judged, key, opts.roster).transcript : judged); // 잠긴 파일이면 사람 말 오류(검토 저장과 같은 길)
       ok.push(page); done++;
-      opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
+      opts.onProgress?.({ page, done, total: pages.length, inputTokens: r.inputTokens, outputTokens: r.outputTokens, ms: Date.now() - started });
     } catch (e) {
-      if (e instanceof EngineError && e.kind === 'cancelled') break;
+      if (e instanceof EngineError && e.kind === 'cancelled') { stop = true; return; }
       const error = userFacingMessage(e);
       failed.push({ page, error }); done++;
       opts.onProgress?.({ page, done, total: pages.length, error });
-      // 로그인·설치·버전 문제는 다음 장도 똑같이 실패하므로 멈춘다
-      if (e instanceof EngineError && ['signed-out', 'not-installed', 'needs-update'].includes(e.kind)) break;
+      if (e instanceof EngineError && FATAL.has(e.kind)) stop = true;
     }
-  }
-  return { ok, failed, skipped };
+  };
+  // 일꾼 n개가 장 순서대로 하나씩 맡고, 끝나면 다음 장을 맡는다(n이 1이면 예전처럼 한 장씩 차례로)
+  const worker = async (): Promise<void> => {
+    while (!stop && !signal.aborted && next < pages.length) await one(pages[next++]!);
+  };
+  const n = Math.max(1, Math.min(Math.floor(opts.동시 ?? 1) || 1, pages.length));
+  await Promise.all(Array.from({ length: n }, worker));
+  // 동시에 하면 끝나는 순서가 장 순서와 달라 장 번호 순으로 돌려준다
+  const asc = (a: number, b: number) => a - b;
+  return { ok: ok.sort(asc), failed: failed.sort((a, b) => a.page - b.page), skipped: skipped.sort(asc) };
 }

@@ -25,6 +25,14 @@ test('estimateLine: 이 AI 설정의 장당 기록으로 시간(단가를 아는
   assert.deepEqual([estimateLine(cli, stats, 0), estimateLine(undefined, stats, 5)], ['', '']);
 });
 
+test('estimateLine·liveEstimateText: 동시에 전사할 장 수만큼 나눠 어림한다(비용은 그대로)', () => {
+  assert.equal(estimateLine(api, stats, 30, 3), '예상: 약 7분 · 비용 약 $0.84 (이 AI 설정으로 최근 전사한 10장 기준)'); // 10묶음 × 40초
+  let now = 0;
+  const m = runMeter(() => now);
+  now = 40000; m.add({ ms: 40000 });
+  assert.equal(liveEstimateText(m, 7, null, 0, 3), ' · 남은 시간 약 1분'); // 남은 6장은 2묶음 × 40초
+});
+
 test('liveEstimateText: 첫 장이 끝나면 남은 시간과(API는) 다 했을 때의 비용, 끝난 장이나 남은 장이 없으면 빈 글', () => {
   let now = 0;
   const m = runMeter(() => now);

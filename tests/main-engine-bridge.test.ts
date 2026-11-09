@@ -27,7 +27,9 @@ async function setup() {
   await rm(path.join(set, 'transcripts'), { recursive: true, force: true });
   await (await import('node:fs/promises')).mkdir(path.join(set, 'pages'), { recursive: true });
   for (const p of [1, 2, 3]) await writeFile(path.join(set, 'pages', `p0${p}.jpg`), JPEG);
-  const bridge = new EngineBridge({ settings: new SettingsStore(path.join(dir, 'settings.json')), secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
+  const settings = new SettingsStore(path.join(dir, 'settings.json'));
+  await settings.save({ 동시장수: 1 }); // 아래 시험들은 한 장씩 차례로 도는 진행·중단 순서를 본다. 동시 전사는 따로 시험한다
+  const bridge = new EngineBridge({ settings, secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
   (bridge as any).provider = async () => fakeProvider(); // 실제 CLI/API 대신
   return { dir, set, bridge };
 }
@@ -95,6 +97,28 @@ test('startRun·tryPage: 설정 답 위치 받기를 전사 요청에 넘긴다(
     await bridge.tryPage(set, JPEG);
     await bridge.startRun(set, { pages: [1] }, () => undefined);
     assert.deepEqual(asked, [false, true, true]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('startRun: 설정의 동시 장 수만큼 한꺼번에 전사한다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    await new SettingsStore(path.join(dir, 'settings.json')).save({ 동시장수: 3 });
+    let inFlight = 0, max = 0;
+    const slow: TranscribeProvider = { ...fakeProvider(), async transcribe(input) {
+      inFlight++; max = Math.max(max, inFlight);
+      await new Promise(res => setTimeout(res, 30));
+      inFlight--;
+      return { output: out(input.page), model: 'fake' };
+    } };
+    (bridge as any).provider = async () => slow;
+    const r = await bridge.startRun(set, {}, () => undefined);
+    assert.deepEqual(r.ok, [1, 2, 3]);
+    assert.equal(max, 3);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

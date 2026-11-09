@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DataError } from '../core/types.js';
 import type { RunStat } from '../shared/estimate.js';
-import { DEFAULT_ANSWER_POSITIONS, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
+import { CONCURRENCY_CHOICES, DEFAULT_ANSWER_POSITIONS, DEFAULT_CONCURRENCY, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type EffortLevel, type ModelId, type Profile, type Rotation, type Settings, type Theme } from '../shared/ipc.js';
 
 export const DEFAULT_PROFILE: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
 const ROTATIONS: Rotation[] = [0, 90, 180, 270];
@@ -18,7 +18,7 @@ const optAbs = (v: unknown, platform: NodeJS.Platform): string | undefined => {
 const isCliFile = (p: string, platform: NodeJS.Platform): boolean => platform !== 'win32' || /\.(exe|cmd)$/i.test(p);
 
 export function defaultSettings(): Settings {
-  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true, 자동설치: false, 화면색: THEMES[0], 답위치: DEFAULT_ANSWER_POSITIONS };
+  return { 학기폴더: null, 명단: null, 기본회전: 0, 프로필: [{ ...DEFAULT_PROFILE }], 사용중: DEFAULT_PROFILE.id, 언어: 'ko', 자동업데이트: true, 자동설치: false, 화면색: THEMES[0], 답위치: DEFAULT_ANSWER_POSITIONS, 동시장수: DEFAULT_CONCURRENCY };
 }
 
 function parseProfile(v: unknown, platform: NodeJS.Platform): Profile | null {
@@ -78,6 +78,7 @@ export function parseSettings(raw: unknown, platform: NodeJS.Platform = process.
     자동설치: raw.자동설치 === true, // 묻지 않고 받는 것은 사용자가 켰을 때만
     화면색: (THEMES as readonly unknown[]).includes(raw.화면색) ? (raw.화면색 as Theme) : THEMES[0],
     답위치: typeof raw.답위치 === 'boolean' ? raw.답위치 : DEFAULT_ANSWER_POSITIONS,
+    동시장수: (CONCURRENCY_CHOICES as readonly unknown[]).includes(raw.동시장수) ? (raw.동시장수 as number) : DEFAULT_CONCURRENCY,
     ...(전사기록 ? { 전사기록 } : {}),
   });
 }

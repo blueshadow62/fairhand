@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DEFAULT_PROFILE, SettingsStore, applyPatch, defaultSettings, parseSettings } from '../src/main/settings.js';
 import { DataError } from '../src/core/types.js';
-import { DEFAULT_ANSWER_POSITIONS } from '../src/shared/ipc.js';
+import { DEFAULT_ANSWER_POSITIONS, DEFAULT_CONCURRENCY } from '../src/shared/ipc.js';
 
 test('parseSettings: 비었거나 깨진 값은 기본값, 모르는 회전은 0', () => {
   assert.deepEqual(parseSettings(undefined), defaultSettings());
@@ -43,6 +43,15 @@ test('parseSettings: 답 위치 받기는 기본값(꺼짐)을 따르고 true·f
   assert.equal(parseSettings({ 답위치: 'yes' }).답위치, false);
   assert.equal(parseSettings({ 답위치: true }).답위치, true);
   assert.equal(applyPatch(applyPatch(defaultSettings(), { 답위치: true }), { 언어: 'en' }).답위치, true);
+});
+
+test('parseSettings: 동시에 전사할 장 수는 1~4만 받고, 없거나 틀리면 기본값(3)', () => {
+  assert.equal(DEFAULT_CONCURRENCY, 3);
+  assert.equal(parseSettings({}).동시장수, 3);
+  assert.equal(parseSettings({ 동시장수: 1 }).동시장수, 1);
+  assert.equal(parseSettings({ 동시장수: 4 }).동시장수, 4);
+  for (const v of [0, 5, 2.5, '2', null]) assert.equal(parseSettings({ 동시장수: v }).동시장수, 3);
+  assert.equal(applyPatch(applyPatch(defaultSettings(), { 동시장수: 2 }), { 언어: 'en' }).동시장수, 2);
 });
 
 test('parseSettings: Codex 프로필은 실행 파일·로그인 폴더와 명령줄에 안전한 모델 이름만 남긴다', () => {
