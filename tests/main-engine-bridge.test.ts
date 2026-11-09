@@ -122,6 +122,45 @@ test('startRun: 설정의 동시 장 수만큼 한꺼번에 전사한다', async
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('setEffort: 세트의 노력 단계를 정답표에 적고 null이면 지운다. 틀린 값은 거절하고, 문항 설정 저장으로는 지워지지 않는다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const on = await bridge.setEffort(set, 'high');
+    assert.equal(on.노력, 'high');
+    const { 노력: _dropped, ...rebuilt } = on; // 문항 설정 화면이 조립한 정답표에는 이 칸이 없다
+    assert.equal((await bridge.saveKey(set, rebuilt)).key.노력, 'high');
+    assert.equal((await bridge.saveKey(set, { ...on, 노력: 'low' })).key.노력, 'high'); // 문항 설정 저장으로는 바꾸지 못한다
+    await assert.rejects(bridge.setEffort(set, 'turbo'), (e: unknown) => e instanceof DataError && /노력/.test(e.message));
+    assert.equal((await bridge.setEffort(set, null)).노력, undefined);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('startRun·tryPage·judgeWithModel: 세트의 노력 단계가 있으면 그 값으로, 없으면 프로필 값으로 요청하고 예상 기록도 그 노력으로 쌓는다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const asked: string[] = [];
+    const p: TranscribeProvider = { ...fakeProvider(),
+      async transcribe(input) { asked.push(input.effort); return { output: out(input.page), model: 'fake' }; },
+      async complete(req: StructuredRequest) { asked.push(`재판정:${req.effort}`); return { output: out(1), model: 'fake' }; } };
+    (bridge as any).provider = async () => p;
+    await bridge.setEffort(set, 'high');
+    await bridge.startRun(set, {}, () => undefined);
+    await bridge.tryPage(set, JPEG);
+    await bridge.judgeWithModel(set, [1], () => undefined);
+    assert.deepEqual(asked, ['high', 'high', 'high', 'high', '재판정:high']);
+    const rec = (await new SettingsStore(path.join(dir, 'settings.json')).load()).전사기록;
+    assert.deepEqual([rec?.['cli||high']?.장, rec?.['cli||medium']], [4, undefined]); // 기본 프로필(Claude Code, 노력 기본값)이지만 세트 값으로 쌓는다
+    await bridge.setEffort(set, null);
+    asked.length = 0;
+    await bridge.tryPage(set, JPEG);
+    assert.deepEqual(asked, ['medium']); // 세트 값이 없으면 프로필 값(기본 medium)
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('cancel: 중단하면 끝낸 장은 남고 나머지는 멈춘다', async () => {
   const { dir, set, bridge } = await setup();
   try {

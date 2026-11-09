@@ -1,4 +1,4 @@
-import { DataError, type AnswerKey, type GradingRules, type MaskRect } from './types.js';
+import { DataError, KEY_EFFORTS, type AnswerKey, type GradingRules, type MaskRect } from './types.js';
 
 export const DEFAULT_RULES: GradingRules = { 맞춤법: '인정', 넓은말: '불인정', 핵심어: '모두' };
 const RULE_VALUES: Record<string, string[]> = { 맞춤법: ['인정', '불인정'], 넓은말: ['인정', '불인정'], 핵심어: ['모두', '하나라도'] };
@@ -48,6 +48,7 @@ export function keyProblems(k: unknown): string[] {
   const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
   const badMask = (m: any) => !m || ![m.x, m.y, m.w, m.h].every(ok) || m.w <= 0 || m.h <= 0 || m.x + m.w > 1 + 1e-9 || m.y + m.h > 1 + 1e-9;
   for (const f of ['이름가림', '신원가림']) if (o[f] !== undefined && badMask(o[f])) p.push(`${f} 영역이 쪽을 벗어나거나 잘못되었습니다`);
+  if (o.노력 !== undefined && !(KEY_EFFORTS as readonly unknown[]).includes(o.노력)) p.push(`노력 값이 잘못됨 (${String(o.노력)}). ${KEY_EFFORTS.join('·')} 중 하나여야 합니다`);
   if (o.답영역 !== undefined) {
     if (!o.답영역 || typeof o.답영역 !== 'object' || Array.isArray(o.답영역)) p.push('답영역은 단위 id를 키로 하는 객체여야 합니다');
     else for (const [id, m] of Object.entries(o.답영역)) {

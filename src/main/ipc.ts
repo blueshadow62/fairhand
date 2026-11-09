@@ -96,6 +96,7 @@ export function registerIpc(d: IpcDeps): void {
   });
   h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<SaveKeyResult> => d.bridge.saveKey(await setDir(폴더), raw));
   h(CHANNELS.setNameMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setNameMask(await setDir(폴더), rect as MaskRect | null));
+  h(CHANNELS.setEffort, async (폴더: string, effort: unknown): Promise<AnswerKey> => d.bridge.setEffort(await setDir(폴더), effort)); // 값은 bridge의 정답표 검사가 본다
   h(CHANNELS.setIdentityMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setIdentityMask(await setDir(폴더), maskRectArg(rect)));
   h(CHANNELS.setAnswerRegion, async (폴더: string, 단위: unknown, rect: unknown): Promise<AnswerKey> => d.bridge.setAnswerRegion(await setDir(폴더), 단위, maskRectArg(rect)));
   h(CHANNELS.matchRoster, async (폴더: string) => d.bridge.matchRosterAll(await setDir(폴더)));

@@ -48,6 +48,9 @@ export class EngineBridge {
   /** 사용 중 프로필의 노력 단계(없으면 high) */
   async effort(): Promise<Effort> { return (await this.profile()).노력 ?? DEFAULT_EFFORT; }
 
+  /** 이 세트를 전사·재판정할 때 쓸 노력 단계: 세트에 정한 값, 없으면 프로필 값 */
+  private async effortFor(key: AnswerKey): Promise<Effort> { return key.노력 ?? await this.effort(); }
+
   /** 설정 '답 위치 받기': 전사할 때 정량 단위마다 답의 세로 위치도 받는다(전사와 시험 한 장이 같은 지시문을 쓰게) */
   private async positions(): Promise<boolean> { return (await this.deps.settings.load()).답위치; }
 
@@ -165,12 +168,12 @@ export class EngineBridge {
     const { key } = await this.confirmedSet(setDir);
     const image = (await imageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
     return this.exclusive(async signal => {
-      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), 위치 = await this.positions();
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effortFor(key), 위치 = await this.positions();
       const meter = runMeter(); // 시험 한 장도 같은 일이라 예상 기록에 더한다(전사 시작 전에 예상을 보이려고 먼저 해 보는 경우가 많다)
       // 저장하지 않는 시험이라 장 번호는 쓰이지 않지만, 전사 검사가 1 이상을 요구한다(0으로 물으면 모델이 0을 돌려줘 늘 실패했다)
       const { transcript, inputTokens, outputTokens } = await transcribePage(provider, { imageJpegBase64: image, key, rules, page: 1, effort, 위치 }, signal);
       meter.add({ inputTokens, outputTokens });
-      await this.recordRun(profile, meter.stat);
+      await this.recordRun({ ...profile, 노력: effort }, meter.stat); // 예상 기록은 실제로 쓴 노력 단계별로 나눠 쌓는다
       const roster = await this.rosterOrNull();
       return roster ? matchRoster(transcript, key, roster).transcript : transcript;
     });
@@ -193,10 +196,10 @@ export class EngineBridge {
 
   /** 정답표 저장. 채점 내용이 바뀌었으면 확인을 지운다(화면만 믿지 않는다). 채점규칙·사례만 바뀐 저장은 확인 유지 */
   async saveKey(setDir: string, raw: unknown): Promise<SaveKeyResult> {
-    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다.
+    // 문항 설정 화면은 정답표를 새로 조립해 저장한다. 그 저장으로 가림이 꺼져 이름이 나가면 안 되므로 setNameMask로만 바꾼다(세트의 노력 단계도 같은 까닭으로 setEffort로만).
     // 문항별 검토의 신원 영역·답 칸도 그 화면이 모르는 칸이라 같은 까닭으로 setIdentityMask·setAnswerRegion으로만 바꾼다. 그래서 이 칸들은 받지 않는다.
     // 정답표에서 지운 단위를 가리키는 사례는 검사 전에 버린다(그대로 두면 단위를 지운 저장이 막힌다)
-    const { 이름가림: _name, 신원가림: _identity, 답영역: _regions, ...o } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+    const { 이름가림: _name, 신원가림: _identity, 답영역: _regions, 노력: _effort, ...o } = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
     const ids = new Set(Array.isArray(o.정량) ? o.정량.map((u: any) => u?.id) : []);
     if (Array.isArray(o.사례)) o.사례 = o.사례.filter((c: any) => ids.has(c?.단위));
     const key = parseKey(JSON.stringify(o), '정답표.json');
@@ -205,6 +208,7 @@ export class EngineBridge {
     if (old && contentSig(old) !== contentSig(key) && key.확인?.완료) key.확인 = { 완료: false };
     if (old?.이름가림) key.이름가림 = old.이름가림;
     if (old?.신원가림) key.신원가림 = old.신원가림;
+    if (old?.노력) key.노력 = old.노력;
     // 문항 설정은 단위 id를 행 순서로 다시 매긴다. 옛 id로 적힌 답 칸·사례는 같은 뜻의 새 id로 옮기고, 옮길 곳이 없으면 지운다.
     // 화면은 세트를 열 때 읽은 사례를 보낸다. 그사이 검토에서 쌓인 사례가 지워지지 않게 파일의 사례를 기준으로 합친다
     const map = mapUnits(old ?? { 정량: [], 정성: [] }, key);
@@ -245,6 +249,17 @@ export class EngineBridge {
     const { key } = await loadSet(setDir);
     delete key.이름가림;
     const next = parseKey(JSON.stringify(rect ? { ...key, 이름가림: rect } : key), '이름 칸 가리기 설정');
+    await saveKeyFile(setDir, next);
+    return next;
+  }
+
+  /** 이 세트의 노력 단계. null이면 지워 프로필 값을 따른다. 돌고 있는 전사는 시작할 때의 값을 쓰므로 전사 중에는 바꾸지 않는다 */
+  async setEffort(setDir: string, effort: unknown): Promise<AnswerKey> {
+    if (this.current) throw new DataError('전사가 실행 중입니다. 끝나거나 중단된 뒤 바꾸세요');
+    const { key } = await loadSet(setDir);
+    delete key.노력;
+    // 값 검사는 정답표 검사(keyProblems)가 한다
+    const next = parseKey(JSON.stringify(effort === null || effort === undefined ? key : { ...key, 노력: effort }), '세트 노력 단계 설정');
     await saveKeyFile(setDir, next);
     return next;
   }
@@ -363,7 +378,7 @@ export class EngineBridge {
       const todo = transcripts.filter(t => !pages || pages.includes(t.page));
       if (!todo.length) throw new DataError('다시 판정할 전사가 없습니다');
       const provider = await this.provider();
-      const effort = await this.effort();
+      const effort = await this.effortFor(key);
       const rules = await loadRules();
       const 바뀐장: RejudgeResult['바뀐장'] = [], failed: JudgeResult['failed'] = [], 다시확인: number[] = [];
       let done = 0;
@@ -395,11 +410,11 @@ export class EngineBridge {
       const { key } = await this.confirmedSet(setDir);
       const pages = opts.pages ?? await listPages(setDir);
       if (!pages.length) throw new DataError('pages 폴더에 답안지 그림이 없습니다. 답안지 PDF를 먼저 올리세요');
-      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effort(), roster = await this.rosterOrNull(), 위치 = await this.positions();
+      const provider = await this.provider(), profile = await this.profile(), rules = await loadRules(), effort = await this.effortFor(key), roster = await this.rosterOrNull(), 위치 = await this.positions();
       const 동시 = (await this.deps.settings.load()).동시장수;
       const meter = runMeter(); // 장마다 걸린 시간·토큰(다음 전사의 예상 시간·비용에 쓴다)
       const r = await transcribeSet(provider, setDir, key, rules, pages, ac.signal, { force: opts.force, onProgress: e => { meter.add(e); onProgress(e); }, effort, maskJpeg: this.deps.maskJpeg, roster, 위치, 동시 });
-      await this.recordRun(profile, meter.stat);
+      await this.recordRun({ ...profile, 노력: effort }, meter.stat);
       const result: RunResult = { ...r };
       try { result.엑셀 = (await rebuildResult(setDir, await this.roster(), { version: this.deps.version })).엑셀; }
       catch (e) { result.엑셀오류 = e instanceof Error ? e.message : String(e); }

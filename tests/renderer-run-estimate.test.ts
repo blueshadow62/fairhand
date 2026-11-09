@@ -4,7 +4,7 @@ import { runMeter } from '../src/shared/estimate.js';
 import type { Profile } from '../src/shared/ipc.js';
 import { PRICES } from '../src/shared/prices.js';
 import { t } from '../src/renderer/lib/i18n.js';
-import { durationText, estimateLine, liveEstimateText } from '../src/renderer/lib/run-estimate.js';
+import { durationText, estimateLine, liveEstimateText, withSetEffort } from '../src/renderer/lib/run-estimate.js';
 
 const api: Profile = { id: 'p', 이름: 'API', 종류: 'api', 모델: 'claude-opus-5-5' };
 const cli: Profile = { id: 'cli-default', 이름: 'Claude Code', 종류: 'cli' };
@@ -23,6 +23,14 @@ test('estimateLine: 이 AI 설정의 장당 기록으로 시간(단가를 아는
   assert.equal(estimateLine({ ...cli, 노력: 'high' }, stats, 10), t('run.est.unknown')); // 노력이 다르면 다른 기록
   assert.equal(estimateLine(cli, undefined, 10), t('run.est.unknown'));
   assert.deepEqual([estimateLine(cli, stats, 0), estimateLine(undefined, stats, 5)], ['', '']);
+});
+
+test('withSetEffort: 세트에 노력 단계를 정했으면 그 값의 예상 기록을 찾는다', () => {
+  assert.deepEqual(withSetEffort(cli, 'high'), { ...cli, 노력: 'high' });
+  assert.equal(withSetEffort(cli, undefined), cli);
+  assert.equal(withSetEffort(undefined, 'high'), undefined);
+  assert.equal(estimateLine(withSetEffort(cli, 'high'), stats, 10), t('run.est.unknown')); // high로 전사한 기록이 아직 없다
+  assert.equal(estimateLine(withSetEffort(cli, undefined), stats, 10), '예상: 약 8분 (이 AI 설정으로 최근 전사한 4장 기준)');
 });
 
 test('estimateLine·liveEstimateText: 동시에 전사할 장 수만큼 나눠 어림한다(비용은 그대로)', () => {

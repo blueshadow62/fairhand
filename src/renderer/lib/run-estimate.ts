@@ -1,5 +1,5 @@
 import { estimateRun, projectRemaining, statKey, type RunStat } from '../../shared/estimate.js';
-import type { Profile } from '../../shared/ipc.js';
+import type { EffortLevel, Profile } from '../../shared/ipc.js';
 import { priceOf, type Price } from '../../shared/prices.js';
 import { t } from './i18n.js';
 
@@ -9,6 +9,9 @@ export function durationText(sec: number): string {
   const min = Math.round(sec / 60);
   return min < 90 ? t('run.est.minutes', { n: min }) : t('run.est.hours', { h: Math.floor(min / 60), m: min % 60 });
 }
+
+/** 세트에 노력 단계를 정했으면 그 값으로 바꾼 프로필. 예상 기록은 노력 단계별로 쌓이므로 세트에서 쓸 값으로 찾는다 */
+export const withSetEffort = (p: Profile | undefined, 노력: EffortLevel | undefined): Profile | undefined => (p && 노력 ? { ...p, 노력 } : p);
 
 /**
  * 전사 시작 전의 예상 한 줄: 이 AI 설정으로 최근 전사한 장당 시간(단가를 아는 API면 비용)으로 어림한다.

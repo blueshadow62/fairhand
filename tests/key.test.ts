@@ -14,6 +14,13 @@ test('parseKey: 픽스처를 읽고 단위 수를 센다', () => {
   assert.equal(isConfirmed(k), false);
 });
 
+test('keyProblems: 세트의 노력 단계는 없거나 low~max만 받는다', () => {
+  const k = parseKey(readFileSync(FX, 'utf-8'));
+  assert.equal(k.노력, undefined);
+  for (const 노력 of ['low', 'medium', 'high', 'xhigh', 'max']) assert.deepEqual(keyProblems({ ...k, 노력 }), []);
+  for (const 노력 of ['turbo', '', 3, null]) assert.ok(keyProblems({ ...k, 노력 }).some(p => p.includes('노력')), String(노력));
+});
+
 test('배점: 만점은 배점의 합(없으면 1점), 0 이하·글자·100 넘는 배점은 정답표 오류', () => {
   const k = parseKey(readFileSync(FX, 'utf-8'));
   assert.equal(fullScore({ ...k, 정량: k.정량.map(u => ({ ...u, 배점: 0.1 })), 정성: k.정성.map(u => ({ ...u, 배점: 0.2 })) }), 0.4);

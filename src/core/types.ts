@@ -37,7 +37,16 @@ export interface AnswerKey {
    * 단위 안이 아니라 여기 두는 까닭: 문항 설정 저장은 단위를 새로 조립하고, 확인 표시를 지우는 기준은 정량·정성만 본다
    */
   답영역?: Record<string, MaskRect>;
+  /**
+   * 이 세트를 전사할 때 쓸 노력 단계. 없으면 AI 프로필의 노력 단계를 쓴다(요소형이 많은 세트만 높이는 데 쓴다).
+   * 문항 설정 저장은 이 칸을 모르므로 이름가림처럼 따로 바꾼다(setEffort)
+   */
+  노력?: KeyEffort;
 }
+
+/** 노력 단계(낮음~최대). 정답표에 적을 수 있는 값이다. AI 프로필의 노력 단계(shared/ipc.ts EFFORTS)와 같은 값 */
+export const KEY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type KeyEffort = typeof KEY_EFFORTS[number];
 
 export interface TranscribeInfo { 엔진: 'cli' | 'api' | 'codex' | 'gemini' | 'openai' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
 

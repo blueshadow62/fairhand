@@ -1,4 +1,4 @@
-import { CONCURRENCY_CHOICES, type ProgressEvent, type RunResult, type SetData } from '../../shared/ipc.js';
+import { CONCURRENCY_CHOICES, DEFAULT_EFFORT, EFFORTS, type EffortLevel, type ProgressEvent, type RunResult, type SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api, imageUrl, thumbUrl } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
@@ -10,7 +10,7 @@ import { attachRectDrag } from '../lib/rect-drag.js';
 import { parsePageSpec, tag } from '../lib/screen-utils.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { runMeter } from '../../shared/estimate.js';
-import { estimateLine, liveEstimateText } from '../lib/run-estimate.js';
+import { estimateLine, liveEstimateText, withSetEffort } from '../lib/run-estimate.js';
 import { badgeLabel, isSubscription, kindKey, modelLabel } from '../lib/badge.js';
 import { appendFiles, coversSaved, dropSlot, hasFile, moveBefore, nextRotation, pendingPages, saveRanges, SHEET_ACCEPT, sheetKind, sortByName } from '../lib/sheets.js';
 import { showSettingsTab } from './settings.js';
@@ -747,6 +747,23 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     return el('div', {}, el('label', {}, box, t('run.positions')), el('div', { class: 'muted' }, t('run.positionsHelp')));
   }
 
+  /**
+   * 이 세트의 노력 단계(정답표에 바로 저장). 비우면 AI 프로필의 노력 단계를 따른다.
+   * 돌고 있는 전사는 시작할 때의 값을 쓰므로 전사 중에는 바꾸지 않는다. renderRun 안에서만 부른다(data가 있다)
+   */
+  function effortRow(): HTMLElement {
+    const d = data!;
+    const s = store.state.settings, p = s.프로필.find(x => x.id === s.사용중);
+    const label = (e: EffortLevel) => t(`settings.effort.${e}` as Parameters<typeof t>[0]);
+    const sel = el('select', { disabled: running || trying, onchange: () => void (async () => {
+      try { d.key = await api.setEffort(d.폴더, (sel.value || null) as EffortLevel | null); renderRun(); } // 예상 시간 줄을 새 값의 기록으로
+      catch (e) { sel.value = d.key.노력 ?? ''; showError((e as Error).message); }
+    })() },
+      el('option', { value: '', selected: !d.key.노력 }, t('run.effortProfile', { level: label(p?.노력 ?? DEFAULT_EFFORT) })),
+      ...EFFORTS.map(e => el('option', { value: e, selected: d.key.노력 === e }, label(e))));
+    return el('div', {}, el('div', { class: 'row' }, t('run.effort'), sel), el('div', { class: 'muted' }, t('run.effortHelp')));
+  }
+
   /** 설정 '동시에 전사할 장 수'(바로 저장). 돌고 있는 전사는 시작할 때의 값을 쓰므로 전사 중에는 바꾸지 않는다 */
   function concurrencyRow(): HTMLElement {
     const sel = el('select', { disabled: running || trying, onchange: () => void (async () => {
@@ -762,9 +779,9 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const confirmed = data.key.확인?.완료 === true;
     tryInput.disabled = running || trying || !confirmed;
     const pending = pendingPages(data.pages, data.transcripts).length;
-    const s = store.state.settings, estimate = running ? '' : estimateLine(s.프로필.find(p => p.id === s.사용중), s.전사기록, pending, s.동시장수);
+    const s = store.state.settings, estimate = running ? '' : estimateLine(withSetEffort(s.프로필.find(p => p.id === s.사용중), data.key.노력), s.전사기록, pending, s.동시장수);
     put(runBox,
-      el('div', { class: 'run-ai' }, aiLine(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending })),
+      el('div', { class: 'run-ai' }, aiLine(), effortRow(), el('div', {}, t('run.pending', { n: pending, done: data.pages.length - pending })),
         estimate ? el('div', { class: 'muted' }, estimate) : null),
       el('div', { class: 'row' },
         el('button', { class: 'primary', disabled: running || trying || !confirmed || !data.pages.length, onclick: () => void run({ force: false }) }, t('run.start')),
