@@ -270,7 +270,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'muted' }, t(codex ? 'settings.codex.configDirHelp' : 'settings.configDirHelp')));
       card.append(
         el('div', { class: 'band info' }, t(codex ? 'settings.codex.howto' : 'settings.cli.howto')),
-        ...(codex ? [el('div', { class: 'band warn' }, t('settings.codex.privacy'))] : []),
+        el('div', { class: 'band warn' }, t(codex ? 'settings.codex.privacy' : 'settings.cli.privacy')),
         el('div', { class: 'row' },
           el('button', { onclick: () => guard(async () => {
             await synced();
