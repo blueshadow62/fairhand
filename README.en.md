@@ -6,6 +6,7 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 
 - Transcription runs through the teacher's own locally installed Claude Code or Codex (their own subscription login), or an API key (Anthropic, OpenAI or Gemini). Accuracy depends on the AI tool; the developer recommends Claude.
 - We recommend that answer sheets carry only grade, class and number. If a name is written on the sheet, it is sent with the image to the AI provider's servers (Anthropic for Claude, OpenAI for Codex and the OpenAI API, Google for Gemini). The roster (names) is used only on the PC. See [PRIVACY.md](PRIVACY.md) (Korean).
+- The checklist of mandatory criteria for learning-support software is available on [EduZip (에듀집)](https://edzip.kr/learning-sw/6af57631f6157ba37081cb53) (Korean).
 
 ## Install
 ### Windows
