@@ -2,10 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseKey } from '../src/core/key.js';
-import { addCase, findCase, normalizeAnswer, pagesWithSameAnswer, rejudgeAll, rejudgeTranscript, removeCase } from '../src/core/rejudge.js';
+import { addCase, decide, essayMarks, essayTextMarks, findCase, keyMatch, normalizeAnswer, pagesWithSameAnswer, rejudgeAll, rejudgeTranscript, removeCase } from '../src/core/rejudge.js';
 import type { AnswerKey, Transcript } from '../src/core/types.js';
 
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
+
+test('decide(논술형): 글 속에 정답 문장·용어(허용)가 그대로 있으면 O, 비었거나 못 찾으면 모델 판정을 둔다(X·빈칸을 덮지 않음)', () => {
+  const essayKey: AnswerKey = { ...key, 정량: [
+    { id: '5-1', 문항: 5, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형', 종류: '인용' },
+    { id: '5-2', 문항: 5, 설명: '용어 1', 정답: '학습자 중심', 허용: ['학습자중심'], 유형: '논술형', 종류: '용어' }] };
+  assert.deepEqual(decide(essayKey, '5-1', '그래서 배움은 삶이다 라고 했다'), { 판정: 'O', 근거: '정답' });
+  assert.deepEqual(decide(essayKey, '5-2', '학습자중심 수업'), { 판정: 'O', 근거: '허용' });
+  assert.equal(decide(essayKey, '5-1', ''), null); // 빈칸으로 바꾸지 않는다
+  assert.equal(decide(essayKey, '5-1', '배움이 곧 삶'), null); // 바꿔 쓴 것은 모델 판정대로
+});
 const t = (page: number, 답: Record<string, [string, 'O' | 'X' | '빈칸']>, 비고: string[] = []): Transcript => ({
   page, 학년: 3, 반: 1, 번호: page, 이름: null, 식별확신: '확실',
   정량: Object.fromEntries(Object.entries(답).map(([id, [a, v]]) => [id, { 답: a, 판정: v }])),
@@ -57,4 +67,63 @@ test('addCase·removeCase·findCase: 같은 단위·답은 교체, 지우면 없
   assert.equal(findCase(k, '1-1', '은영')?.판정, 'O');
   assert.equal(findCase(k, '3-1', '은영'), undefined);
   assert.equal(removeCase(k, '1-1', '은영').사례!.length, 0);
+});
+
+test('essayMarks: 논술형 답에서 정답·허용 표기가 그대로 들어 있는 곳을 나누고, 이으면 NFC 답 그대로다', () => {
+  const quote = { id: '5-1', 문항: 5, 설명: '인용 1', 정답: '배움은 삶이다.', 유형: '논술형' as const, 종류: '인용' as const };
+  const term = { id: '5-2', 문항: 5, 설명: '용어 1', 정답: '학습자 중심', 허용: ['학습자중심', '중심'], 유형: '논술형' as const, 종류: '용어' as const };
+  const join = (ps: { text: string }[]) => ps.map(p => p.text).join('');
+  // 줄바꿈·여러 칸 띄어쓰기는 한 칸으로 보고 찾되, 표시는 원래 글 그대로(사이의 줄바꿈까지 한 조각)
+  const a = '그래서 배움은\n  삶이다 라고 했다.';
+  const pa = essayMarks(quote, a);
+  assert.deepEqual(pa, [{ text: '그래서 ' }, { text: '배움은\n  삶이다', 근거: '정답' }, { text: ' 라고 했다.' }]);
+  assert.equal(join(pa), a);
+  // 허용 표기, 같은 표기가 두 번, 정답 안에 든 허용('중심')은 정답 하나로
+  const b = '학습자중심 수업과 학습자 중심 평가, 학습자중심';
+  assert.deepEqual(essayMarks(term, b).filter(p => p.근거).map(p => [p.text, p.근거]), [['학습자중심', '허용'], ['학습자 중심', '정답'], ['학습자중심', '허용']]);
+  assert.equal(join(essayMarks(term, b)), b);
+  // 못 찾으면 한 조각, 빈 답은 조각 없음, 바꿔 쓴 것은 칠하지 않는다
+  assert.deepEqual(essayMarks(quote, '배움이 곧 삶'), [{ text: '배움이 곧 삶' }]);
+  assert.deepEqual(essayMarks(quote, ''), []);
+  // 자모로 나뉜(NFD) 글도 NFC로 맞춰 찾는다
+  const nfd = '배움은 삶이다'.normalize('NFD');
+  assert.deepEqual(essayMarks(quote, nfd), [{ text: '배움은 삶이다', 근거: '정답' }]);
+  // 논술형이 아니면 나누지 않고 글도 바꾸지 않는다
+  const short = { id: '1-1', 문항: 1, 설명: '단답', 정답: '가나', 유형: '단답형' as const };
+  assert.deepEqual(essayMarks(short, '가나 다'), [{ text: '가나 다' }]);
+  // keyMatch(판정과 같은 기준)가 맞다고 한 답에는 그 근거의 조각이 있다
+  for (const [u, s] of [[quote, a], [term, b], [term, '중심 잡기'], [quote, '배움은 삶이다!!']] as const) {
+    const m = keyMatch(u, s);
+    assert.ok(m && essayMarks(u, s).some(p => p.근거 === m), `${u.id} ${s}`);
+  }
+});
+
+test('essayTextMarks: 글 전체에 여러 단위의 정답·허용 표기와 AI가 찾은 부분(답)을 나눠 표시하고, 이으면 NFC 글 그대로다', () => {
+  const quote = { id: '5-1', 문항: 5, 설명: '인용 1', 정답: '배움은 삶이다.', 유형: '논술형' as const, 종류: '인용' as const };
+  const term = { id: '5-2', 문항: 5, 설명: '용어 1', 정답: '학습자 중심', 허용: ['학습자중심'], 유형: '논술형' as const, 종류: '용어' as const };
+  const 글 = '나는 생각한다.\n배움은  삶이다 라고.\n그래서 학습자중심 수업이 좋다.';
+  const ps = essayTextMarks([quote, term], 글, { '5-1': '배움은 삶이다 라고', '5-2': '학습자중심 수업' });
+  assert.deepEqual(ps, [
+    { text: '나는 생각한다.\n' },
+    { text: '배움은  삶이다', 근거: '정답', 단위: '5-1', 시작: true, 찾음: ['5-1'] },
+    { text: ' 라고', 찾음: ['5-1'] }, // 답(찾은 부분)이 표기보다 길면 나머지에 밑줄만
+    { text: '.\n그래서 ' },
+    { text: '학습자중심', 근거: '허용', 단위: '5-2', 시작: true, 찾음: ['5-2'] },
+    { text: ' 수업', 찾음: ['5-2'] },
+    { text: '이 좋다.' },
+  ]);
+  assert.equal(ps.map(p => p.text).join(''), 글);
+  // 답이 글에 없거나 비었으면 밑줄이 없다. 논술형이 아닌 단위는 보지 않는다
+  const short = { id: '1-1', 문항: 1, 설명: '단답', 정답: '생각', 유형: '단답형' as const };
+  assert.ok(!essayTextMarks([quote, short], 글, { '5-1': '배움이 곧 삶', '1-1': '생각' }).some(p => p.찾음 || p.단위 === '1-1'));
+  // 표기가 겹치면 앞 단위가 먼저, 따로 찾은 표기는 붙어 있어도 나눈다(단위 표시는 표기마다 한 번)
+  const inner = { ...quote, id: '5-3', 정답: '삶이다' };
+  assert.deepEqual(essayTextMarks([inner, quote], 글).filter(p => p.근거).map(p => [p.text, p.단위]), [['삶이다', '5-3']]);
+  const twice = { ...term, 정답: '중심', 허용: [] };
+  assert.deepEqual(essayTextMarks([twice], '중심중심'), [{ text: '중심', 근거: '정답', 단위: '5-2', 시작: true }, { text: '중심', 근거: '정답', 단위: '5-2', 시작: true }]);
+  // 찾은 부분이 표기 한가운데서 끝나면 표기가 나뉘어도 단위 표시는 첫 조각에만
+  const split = essayTextMarks([quote], 글, { '5-1': '생각한다. 배움은' });
+  assert.deepEqual(split.filter(p => p.근거).map(p => [p.text, p.시작 === true, p.찾음 ?? []]), [['배움은', true, ['5-1']], ['  삶이다', false, []]]);
+  assert.deepEqual(essayTextMarks([quote], ''), []);
+  assert.equal(essayTextMarks([quote], 글.normalize('NFD')).map(p => p.text).join(''), 글);
 });

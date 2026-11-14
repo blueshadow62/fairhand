@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeName, semesterTag, titleTag, classTag, dateTag, setFolderName, resultFileName, cumulativeFileName, keyExportName } from '../src/core/names.js';
+import { safeName, semesterTag, titleTag, classTag, dateTag, setFolderName, resultFileName, cumulativeFileName, keyExportName, isResultFileName } from '../src/core/names.js';
 import type { AnswerKey } from '../src/core/types.js';
 
 const k: AnswerKey = { 세트: 's', 글: '알바생 자르기(장강명)', 학기: '2026 2학기', 대상: { 학년: 3, 반: [3, 1] }, 정량: [], 정성: [] };
@@ -27,4 +27,10 @@ test('파일·폴더 이름 조립', () => {
   assert.equal(resultFileName(k, d), '2026-2학기_3학년_1·3반_알바생자르기_채점결과_2026-11-05.xlsx');
   assert.equal(cumulativeFileName('2026 2학기', 3, d), '2026-2학기_3학년_누가기록_2026-11-05.xlsx');
   assert.equal(keyExportName(k), '2026-2학기_3학년_알바생자르기_정답표.json');
+});
+
+test('isResultFileName: 채점결과 엑셀만, 엑셀의 잠금 파일·누가기록·사본은 아니다', () => {
+  assert.equal(isResultFileName(resultFileName(k, d)), true);
+  for (const name of [`~$${resultFileName(k, d)}`, cumulativeFileName('2026 2학기', 3, d), '2026-2학기_3학년_1·3반_알바생자르기_채점결과_2026-11-05 - 복사본.xlsx', '채점결과.xlsx', `${resultFileName(k, d)}.tmp`])
+    assert.equal(isResultFileName(name), false, name);
 });

@@ -82,3 +82,11 @@ test('scoreOne: 합계 = 판정 O 수 + 응답 true 수', () => {
   assert.deepEqual([r.정량, r.정성, r.합계], [1, 1, 2]);
   assert.equal(r.답['E1'], '샘플 답 원문');
 });
+
+test('scoreOne: 배점이 있으면 맞은(응답한) 단위의 배점만큼, 없으면 1점', () => {
+  const weighted = { ...key, 정량: key.정량.map(u => ({ ...u, 배점: 2.5 })), 정성: key.정성.map(u => ({ ...u, 배점: 0.1 })) };
+  const plain = scoreOne(key, ts[0]!), r = scoreOne(weighted, ts[0]!);
+  assert.equal(r.정량, plain.정량 * 2.5);
+  assert.equal(r.정성, Math.round(plain.정성 * 0.1 * 100) / 100);
+  assert.equal(r.합계, Math.round((r.정량 + r.정성) * 100) / 100);
+});

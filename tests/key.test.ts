@@ -14,6 +14,31 @@ test('parseKey: 픽스처를 읽고 단위 수를 센다', () => {
   assert.equal(isConfirmed(k), false);
 });
 
+test('keyProblems: 세트의 노력 단계는 없거나 low~max만 받는다', () => {
+  const k = parseKey(readFileSync(FX, 'utf-8'));
+  assert.equal(k.노력, undefined);
+  for (const 노력 of ['low', 'medium', 'high', 'xhigh', 'max']) assert.deepEqual(keyProblems({ ...k, 노력 }), []);
+  for (const 노력 of ['turbo', '', 3, null]) assert.ok(keyProblems({ ...k, 노력 }).some(p => p.includes('노력')), String(노력));
+});
+
+test('배점: 만점은 배점의 합(없으면 1점), 0 이하·글자·100 넘는 배점은 정답표 오류', () => {
+  const k = parseKey(readFileSync(FX, 'utf-8'));
+  assert.equal(fullScore({ ...k, 정량: k.정량.map(u => ({ ...u, 배점: 0.1 })), 정성: k.정성.map(u => ({ ...u, 배점: 0.2 })) }), 0.4);
+  const bad = (배점: unknown) => keyProblems({ ...k, 정량: [{ ...k.정량[0]!, 배점 }] }).some(p => p.includes('배점'));
+  assert.equal(bad(2), false);
+  assert.equal(bad(0), true);
+  assert.equal(bad('2'), true);
+  assert.equal(bad(101), true);
+});
+
+test('논술형 단위는 종류(인용·용어)가 있어야 한다', () => {
+  const k = parseKey(readFileSync(FX, 'utf-8'));
+  const essay = (종류: unknown) => keyProblems({ ...k, 정량: [{ id: '9-1', 문항: 9, 설명: 'x', 정답: 'y', 유형: '논술형', 종류 }] }).some(p => p.includes('종류'));
+  assert.equal(essay('인용'), false);
+  assert.equal(essay('용어'), false);
+  assert.equal(essay(undefined), true);
+});
+
 test('parseKey: 학기가 없으면 DataError', () => {
   assert.throws(() => parseKey('{"대상":{"학년":3,"반":[1]},"정량":[],"정성":[]}', 'x.json'),
     (e: unknown) => e instanceof DataError && /x\.json/.test(e.message) && /학기/.test(e.message));

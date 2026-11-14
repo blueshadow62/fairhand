@@ -9,3 +9,15 @@ export function leaveDialogOptions(lang: Language): { type: 'question'; message:
 
 export const LEAVE_CHOICES: readonly LeaveChoice[] = ['save', 'discard', 'stay'];
 export const leaveChoice = (buttonIndex: number): LeaveChoice => LEAVE_CHOICES[buttonIndex] ?? 'stay';
+
+export type PickKind = 'roster' | 'exe' | 'json';
+
+/**
+ * 파일 고르기 창의 형식 거르기. AI 도구(exe)는 Windows만 .exe·.cmd로 거른다: 맥·리눅스의 실행 파일은 확장자가 없어
+ * 거르면 고를 수가 없다. 공식 설치 위치(~/.local/bin)가 숨김 폴더라 실행 파일을 고를 때는 숨김 파일도 보인다.
+ */
+export function pickFileOptions(kind: PickKind, platform: NodeJS.Platform): { properties: ('openFile' | 'showHiddenFiles')[]; filters: { name: string; extensions: string[] }[] } {
+  if (kind === 'roster') return { properties: ['openFile'], filters: [{ name: '명단', extensions: ['xlsx', 'csv'] }] };
+  if (kind === 'json') return { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] };
+  return { properties: ['openFile', 'showHiddenFiles'], filters: platform === 'win32' ? [{ name: '실행 파일', extensions: ['exe', 'cmd'] }] : [] };
+}

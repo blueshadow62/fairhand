@@ -1,7 +1,7 @@
-import { rename, rm, writeFile } from 'node:fs/promises';
+import { readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildCumulative, writeCumulativeXlsx, type SetSummary } from '../core/cumulative.js';
-import { cumulativeFileName, resultFileName } from '../core/names.js';
+import { cumulativeFileName, isResultFileName, resultFileName } from '../core/names.js';
 import { buildRows } from '../core/score.js';
 import { loadSet, saveTranscript } from '../core/setio.js';
 import { DataError, type AnswerKey, type Student, type Transcript } from '../core/types.js';
@@ -29,6 +29,14 @@ export async function rebuildResult(setDir: string, roster: Student[] | null, de
   try { await writeResultXlsx(key, rows, unmatched, out, { 채점일시: stamp(now()), 프로그램버전: deps.version, 전사정보 }); }
   catch (e) { throw friendlyFsError(e, '엑셀 파일'); }
   return { 엑셀: out };
+}
+
+/** 세트 폴더에서 가장 최근에 쓴 채점결과 엑셀(검토에서 저장할 때마다 다시 만든다). 날짜가 다른 파일이 여럿 남아 있어 수정 시각으로 고른다. 없으면 null */
+export async function latestResult(setDir: string): Promise<string | null> {
+  const files = (await readdir(setDir).catch(() => [] as string[])).filter(isResultFileName).map(n => path.join(setDir, n));
+  const dated = await Promise.all(files.map(async file => ({ file, t: (await stat(file).catch(() => null))?.mtimeMs ?? -1 })));
+  dated.sort((a, b) => b.t - a.t || b.file.localeCompare(a.file));
+  return dated[0]?.file ?? null;
 }
 
 /** 전사는 반드시 저장한다. 엑셀이 열려 있어 못 쓰면 그 사실만 알린다(검토 화면의 저장). */

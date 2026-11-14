@@ -4,8 +4,8 @@
 
 ## 출력 필드(스키마의 영문 이름 ↔ 이 규칙의 말)
 - `page` 쪽 번호(요청에 적힌 값 그대로) · `grade` 학년 · `class` 반 · `number` 번호 · `name` 이름 · `id_confidence` 식별확신("확실"/"추정"/"불명")
-- `quant` 정량: 채점 단위 id마다 `{answer: 답, verdict: 판정("O"/"X"/"빈칸")}`
-- `qual` 정성: 확장 질문 id마다 `{responded: 응답 여부, answer: 답}`
+- `quant` 정량 목록: 채점 단위마다 항목 하나 `{id: 단위 id, answer: 답, verdict: 판정("O"/"X"/"빈칸")}`
+- `qual` 정성 목록: 확장 질문마다 항목 하나 `{id: 단위 id, responded: 응답 여부, answer: 답}`
 - `notes` 비고: 문자열 목록
 
 ## 학생 식별

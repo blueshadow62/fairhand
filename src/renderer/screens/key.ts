@@ -1,13 +1,15 @@
-import type { AnswerKey, Case, GradingRules, Transcript } from '../../core/types.js';
+import type { AnswerKey, Case, GradingRules } from '../../core/types.js';
 import type { RejudgeResult } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
 import { api } from '../lib/api.js';
 import { clear, el, put } from '../lib/el.js';
 import { locale, t } from '../lib/i18n.js';
 import { makeGuard, makeLeaveGuard, parsePageSpec, tag } from '../lib/screen-utils.js';
+import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
-import { pdfPageJpeg, type Rotation } from '../pdf-pages.js';
-import { draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { answerChangeNotice, cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rejudgeQuestion, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
+import { caseConflict } from '../../core/cases.js';
+import { changedUnitIds } from '../../core/unit-map.js';
 
 function defaultSemester(d = new Date()): string {
   const m = d.getMonth() + 1;
@@ -17,15 +19,68 @@ function defaultSemester(d = new Date()): string {
 
 const newMeta = (): KeyMeta => ({ 글: '', 학기: defaultSemester(), 학년: 1, 반: [], 인원: {} });
 
-/** 한 장 시험 결과 표(저장하지 않음) */
-export function transcriptTable(key: AnswerKey, tr: Transcript): HTMLElement {
-  const box = el('div', { class: 'card' }, el('h3', {}, t('key.trialTitle')),
-    el('div', {}, t('key.trialStudent', { grade: tr.학년 ?? '?', cls: tr.반 ?? '?', no: tr.번호 ?? '?', name: tr.이름 ?? '-', conf: t(`hwaksin.${tr.식별확신}`) })));
-  box.append(el('table', {}, el('tr', {}, el('th', {}, t('key.col.unit')), el('th', {}, t('key.col.answer')), el('th', {}, t('key.col.student')), el('th', {}, t('key.col.verdict'))),
-    ...key.정량.map(u => { const v = tr.정량[u.id]; const p = v?.판정 ?? '빈칸'; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.정답), el('td', {}, v?.답 ?? ''), el('td', { class: `v-${p}` }, t(`verdict.${p}`))); }),
-    ...key.정성.map(u => { const v = tr.정성[u.id]; return el('tr', {}, el('td', {}, u.id), el('td', {}, u.설명), el('td', {}, v?.답 ?? ''), el('td', {}, v?.응답 ? t('key.responded') : t('key.noResponse'))); })));
-  if (tr.비고.length) box.append(el('div', { class: 'band warn' }, t('key.remarks', { notes: tr.비고.join(' / ') })));
-  return box;
+/**
+ * 다른 화면이 세트를 열 때 보내는 window 사건. 세트를 읽어 store.current로 정하는 일은 문항 설정 화면이 한다.
+ * 그 화면이 그려진 뒤에만 들으므로 보낸 쪽은 heard로 들었는지 안다. then은 세트를 연 뒤에 부른다(시작 화면이 세트를 연 다음 채점 실행·검토로 간다)
+ */
+export const OPEN_SET_EVENT = 'geulnun:open-set';
+export interface OpenSetRequest { 폴더: string; then?: () => void; heard?: boolean }
+/** 문항 설정 화면이 들었으면 true. false면 아직 그려지지 않은 것이라 그 화면으로 가서 그린 뒤 다시 보낸다 */
+export function requestOpenSet(req: OpenSetRequest): boolean {
+  window.dispatchEvent(new CustomEvent(OPEN_SET_EVENT, { detail: req }));
+  return req.heard === true;
+}
+
+/**
+ * 글 칸(설명·정답·허용·핵심)은 1280 창에서 80px 남짓이라 쓴 글이 잘린다. 누르고 있는 동안 글 길이만큼 오른쪽 칸 위로 넓혀 다 보이게 한다.
+ * 오른쪽 칸도 입력란이라 글이 칸에 들면 넓히지 않는다(덮인 칸을 누르면 넓힌 입력란이 눌린다). 표는 고정 배치라 칸 너비는 그대로이고,
+ * 표 오른쪽 끝은 넘지 않는다(넘으면 화면에 가로 막대가 생긴다)
+ */
+function widen(input: HTMLInputElement): HTMLInputElement {
+  const fit = () => {
+    input.style.removeProperty('width');
+    const table = input.closest('table');
+    const wide = !!table && document.activeElement === input && input.scrollWidth > input.clientWidth;
+    input.classList.toggle('wide', wide);
+    if (!wide) return;
+    const room = table.getBoundingClientRect().right - input.getBoundingClientRect().left - 6;
+    input.style.width = `${Math.min(input.scrollWidth + 14, room)}px`; // scrollWidth에는 오른쪽 안쪽 여백·테두리와 커서 자리가 들지 않는다
+  };
+  for (const type of ['focus', 'input', 'blur']) input.addEventListener(type, fit);
+  return input;
+}
+
+/**
+ * 요소 칸(줄마다 하나)은 누르면 쓴 줄이 다 보이게 길어진다. 요소 칸을 쓰는 요소형에서는 정답·허용·핵심이 꺼져 있으므로
+ * 그 위로 넓혀 요소 하나가 한 줄에 들게 한다. 띄워서(absolute) 늘리므로 아래 행이 밀리지 않아, 칸을 떠나며 누른 단추가 자리를 옮기지 않는다
+ */
+function growElements(area: HTMLTextAreaElement): HTMLElement {
+  const wrap = el('div', { class: 'grow-elements' }, area);
+  let base = 0;
+  const size = () => {
+    const scroll = area.scrollTop;
+    area.style.height = `${base}px`; // 지운 줄만큼 줄어들게 접힌 높이에서 다시 잰다
+    const cs = getComputedStyle(area), border = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    area.style.height = `${Math.max(base, Math.min(Math.ceil(area.scrollHeight + border), Math.round(innerHeight * 0.45)))}px`;
+    area.scrollTop = scroll;
+  };
+  area.addEventListener('focus', () => {
+    const box = area.getBoundingClientRect();
+    const answer = area.closest('tr')?.children[3]?.querySelector('input'); // 정답 칸
+    base = box.height;
+    wrap.style.height = `${base}px`;
+    wrap.classList.add('open');
+    area.style.width = `${Math.round(box.right - Math.min(box.left, answer?.getBoundingClientRect().left ?? box.left))}px`;
+    size();
+    area.scrollIntoView({ block: 'nearest' }); // 창 아래쪽 칸이면 늘어난 부분이 저장 막대에 가리지 않게
+  });
+  area.addEventListener('input', () => { if (wrap.classList.contains('open')) size(); });
+  area.addEventListener('blur', () => {
+    wrap.classList.remove('open'); wrap.style.removeProperty('height');
+    for (const p of ['width', 'height']) area.style.removeProperty(p);
+    area.scrollTop = 0;
+  });
+  return wrap;
 }
 
 export function mount(root: HTMLElement, ctx: Ctx): void {
@@ -36,18 +91,29 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let 확인: AnswerKey['확인'] | undefined;
   let 사례: Case[] = [];          // 정답표에서 그대로 보존(폼으로 고치지 않음)
   let dirty = false;
-  let editing = false;
-  let 전사수 = 0;              // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
+  let editing = false;           // 편집 화면이 열려 있는지(새 세트 또는 고른 세트)
+  let 전사수 = 0;
+  let savedKey: AnswerKey | null = null; // 파일에 있는 정답표. 저장 전에 단위 id의 뜻이 바뀌는지 견준다
 
   const guard = makeGuard(showError);
-  const touch = () => { if (!dirty) { dirty = true; renderStatus(); } };
+  // 채점 실행에서 전사한 뒤 돌아왔을 수 있어, 전사 뒤 새로 읽는 세트 목록의 수를 먼저 본다
+  const transcribed = (): number => store.state.sets.find(s => s.폴더 === 폴더)?.전사수 ?? 전사수;
+  /**
+   * 행을 끼우거나 지우면 단위 id가 다시 매겨진다. 전사는 단위 id로 답을 적어 두었고 저장해도 옮기지 않으므로,
+   * 이미 전사한 장이 있는데 같은 id의 뜻이 바뀌면 저장 전에 묻는다. 그만두면 false
+   */
+  function unitChangesOk(next: AnswerKey): boolean {
+    const changed = savedKey ? changedUnitIds(savedKey, next) : [];
+    const n = transcribed();
+    return !changed.length || !n || confirm(t('key.unitMeaningConfirm', { units: changed.join(', '), n }));
+  }
+  const touch = () => { if (!dirty) { dirty = true; renderStatus(); } renderStart(); };
 
   const listBox = el('div', { class: 'setlist' });
   const editor = el('div');
-  const statusBox = el('div');
+  const saveBar = el('div', { class: 'key-savebar' });
   const tableBox = el('div');
   const cautionBox = el('div');
-  const tryBox = el('div');
   root.append(el('h2', {}, t('key.title')), el('div', { class: 'split' }, el('div', {}, listBox), editor));
 
   // 나가기 경로의 저장은 재판정을 묻지 않는다(운영체제 대화상자 → 브라우저 confirm → 긴 재판정이 연달아 뜨지 않게)
@@ -87,7 +153,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   function openNew(): void {
     resetDraft();
-    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; dirty = false; editing = true;
+    폴더 = null; meta = newMeta(); rows = [emptyRow()]; 확인 = undefined; 사례 = []; 전사수 = 0; savedKey = null; dirty = false; editing = true; startPicked = false;
     store.update({ current: null });
     renderEditor();
   }
@@ -97,7 +163,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       const d = await api.readSet(name);
       const r = keyToRows(d.key);
       resetDraft();
-      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; dirty = false; editing = true;
+      폴더 = name; meta = r.meta; rows = r.rows; 확인 = d.key.확인; 사례 = d.key.사례 ?? []; 전사수 = d.transcripts.length; savedKey = d.key; dirty = false; editing = true;
       store.update({ current: name });
       renderEditor();
       sourceArea.value = await api.readSourceText(name).catch(() => '');
@@ -131,6 +197,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     })());
     return el('label', { class: 'upload' }, kind === '문제' ? t('key.uploadProblem') : t('key.uploadSource'), input);
   }
+  const problemUpload = uploadInput('문제', problemArea), sourceUpload = uploadInput('지문', sourceArea);
   // 초안 수정 채팅: 현재 표 + 지시를 보내 고친 표를 받는다
   const chatLog = el('div', { class: 'chat-log' });
   const chatInput = el('input', { placeholder: t('key.chatPlaceholder'), class: 'chat-input' });
@@ -146,7 +213,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function sendChat(): Promise<void> {
     const 지시 = chatInput.value.trim();
     if (!지시) return;
-    if (!rows.some(r => r.정답 || r.요소 || r.설명)) { showError(t('key.chatNoRows')); return; }
+    if (!rowsHaveContent(rows)) { showError(t('key.chatNoRows')); return; }
     if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
     chatInput.value = ''; chatLine('me', 지시);
     const thinking = el('div', { class: 'chat-msg ai muted' }, t('key.chatThinking')); chatLog.append(thinking);
@@ -168,44 +235,121 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!meta.글.trim()) { showError(t('key.titleMissing')); return; }
     if (!problemArea.value.trim() && !uploaded.문제.length) { showError(t('key.problemOrFileMissing')); return; }
     if (!sourceArea.value.trim() && !uploaded.지문.length && !confirm(t('key.noSourceConfirm'))) return;
-    if (rows.some(r => r.정답 || r.요소 || r.설명) && !confirm(t('key.replaceTableConfirm'))) return;
+    if (rowsHaveContent(rows) && !confirm(t('key.replaceTableConfirm'))) return;
     draftBtn.disabled = true; draftBtn.textContent = t('key.drafting');
     try {
       const d = await api.draftKey({ 글: meta.글, 문제: problemArea.value, 지문: sourceArea.value.trim() || undefined, 문제그림: uploaded.문제, 지문그림: uploaded.지문 });
       rows = draftToRows(d); touch(); renderTable();
       clear(cautionBox);
       if (d.주의.length) cautionBox.append(el('div', { class: 'band warn' }, t('key.draftCaution', { notes: d.주의.join(' / ') })));
+      showTab('questions'); // 초안을 넣은 표와 주의를 바로 확인하게
       showInfo(t('key.draftDone'));
     } catch (e) { showError((e as Error).message); }
     finally { draftBtn.disabled = false; draftBtn.textContent = t('key.makeDraft'); }
   }
 
+  // ── 칸 안의 탭: 문항 표·AI 초안·채점 규칙이 한 화면에 이어져 길이가 2,200px를 넘었다('한 장 채점해 보기'는 답안지를 올리는 일이라 채점 실행으로 옮겼다).
+  //    같은 실행 안에서는 마지막에 고른 탭을 유지한다(세트를 바꾸거나 언어를 바꿔 다시 불러와도) ──
+  type KeyTab = 'questions' | 'draft' | 'rules';
+  const KEY_TABS: KeyTab[] = ['questions', 'draft', 'rules'];
+  const TAB_PREF = 'geulnun.key.tab';
+  let tab: KeyTab = (() => { try { const v = sessionStorage.getItem(TAB_PREF); return KEY_TABS.find(k => k === v) ?? 'questions'; } catch { return 'questions'; } })();
+  const tabLabel: Record<KeyTab, string> = { questions: t('key.questions'), draft: t('key.tab.draft'), rules: t('key.tab.rules') };
+  const tabButtons = new Map<KeyTab, HTMLButtonElement>();
+  const panels = new Map<KeyTab, HTMLElement>();
+  const tabBar = el('div', { class: 'seg key-tabs', role: 'tablist', 'aria-label': t('key.tabs') }, ...KEY_TABS.map(k => {
+    const b = el('button', { role: 'tab', id: `key-tab-${k}`, 'aria-controls': `key-panel-${k}`, onclick: () => showTab(k) }, tabLabel[k]);
+    tabButtons.set(k, b);
+    return b;
+  }));
+  function showTab(next: KeyTab): void {
+    tab = next;
+    try { sessionStorage.setItem(TAB_PREF, next); } catch { /* 이번 화면에서만 유지 */ }
+    for (const [k, b] of tabButtons) { b.classList.toggle('active', k === next); b.setAttribute('aria-selected', String(k === next)); }
+    for (const [k, p] of panels) p.classList.toggle('hidden', k !== next);
+  }
+  function panel(k: KeyTab, ...children: (Node | string | null)[]): HTMLElement {
+    const p = el('div', { role: 'tabpanel', id: `key-panel-${k}`, 'aria-labelledby': `key-tab-${k}` }, ...children);
+    panels.set(k, p);
+    return p;
+  }
+
+  // ── 새 세트의 시작 방법: 빈 표가 먼저 보이고 AI 초안 칸은 표 아래에 있어 손으로 입력부터 하기 쉬웠다. 고르거나 표에 글이 생기면 감춘다 ──
+  let startPicked = false;
+  let firstDesc: HTMLInputElement | null = null; // '직접 입력'을 고르면 초점을 둘 첫 행의 설명 칸
+  const startBox = el('div', { class: 'card key-start' });
+  function renderStart(): void {
+    if (rowsHaveContent(rows)) startPicked = true; // 쓴 글을 다시 지워도 다시 띄우지 않는다
+    startBox.classList.toggle('hidden', !!폴더 || startPicked);
+  }
+  function pickStart(): void { startPicked = true; renderStart(); }
+  const startOption = (title: string, help: string, onclick: () => void) =>
+    el('button', { onclick }, el('strong', {}, title), el('span', { class: 'muted' }, help));
+  startBox.append(el('h3', {}, t('key.start.title')), el('div', { class: 'muted' }, t('key.start.help')),
+    el('div', { class: 'key-start-options' },
+      startOption(t('key.start.ai'), t('key.start.aiHelp'), () => {
+        pickStart(); showTab('draft');
+        problemUpload.querySelector('input')?.focus();
+      }),
+      startOption(t('key.start.manual'), t('key.start.manualHelp'), () => {
+        pickStart(); showTab('questions');
+        if (!rows.length) { rows = [emptyRow()]; renderTable(); }
+        firstDesc?.focus();
+      }),
+      startOption(t('key.import'), t('key.start.importHelp'), () => void importKey())));
+
   function renderTable(): void {
     clear(tableBox);
-    const head = el('tr', {}, ...[t('key.col.question'), t('key.col.type'), t('key.col.desc'), t('key.col.answer'), t('key.col.allow'), t('key.col.keywords'), t('key.col.elements'), ''].map(h => el('th', {}, h)));
-    const body = rows.map((r, i) => {
-      const off = { ans: r.유형 === '요소형' || r.유형 === '확장', allow: r.유형 === '요소형' || r.유형 === '확장', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
-      const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
+    firstDesc = null;
+    hideTip(); // 다시 그리면 설명을 띄운 칸이 사라져 mouseleave가 오지 않는다
+    // 칸 이름에 마우스를 올리면 그 칸에 무엇을 쓰는지(유형은 여섯 유형의 뜻) 보인다
+    const typeTip = [t('key.tip.type'), ...UNIT_TYPES.map(u => `${t(`unit.${u}`)}: ${t(`unit.tip.${u}`)}`)].join('\n');
+    const cols: [string, string][] = [[t('key.col.question'), t('key.tip.question')], [t('key.col.type'), typeTip], [t('key.col.desc'), t('key.tip.desc')],
+      [t('key.col.answer'), t('key.tip.answer')], [t('key.col.allow'), t('key.tip.allow')], [t('key.col.keywords'), t('key.tip.keywords')],
+      [t('key.col.elements'), t('key.tip.elements')], [t('key.col.points'), t('key.tip.points')], ['', '']];
+    const head = el('tr', {}, ...cols.map(([h, text]) => (text ? tip(el('th', {}, h), text) : el('th', {}, h))));
+    const body = rows.flatMap((r, i) => {
+      // 논술형은 요소에 인용할 문장, 핵심에 써야 할 용어를 담는다(정답·허용은 쓰지 않음)
+      const essay = r.유형 === '논술형';
+      const off = { ans: r.유형 === '요소형' || r.유형 === '응답형', allow: r.유형 === '요소형' || r.유형 === '응답형', kw: r.유형 !== '문장형', el: r.유형 !== '요소형' };
+      const bind = <T extends HTMLInputElement | HTMLTextAreaElement>(node: T, key: '설명' | '정답' | '허용' | '핵심' | '요소' | '배점' | '용어배점') => { node.value = r[key]; node.addEventListener('input', () => { r[key] = node.value; touch(); }); return node; };
+      const pointsIn = (key: '배점' | '용어배점', label: string) => bind(el('input', { type: 'number', min: '0.5', step: '0.5', class: 'points', 'aria-label': label }), key);
+      const pointsCell = essay
+        ? el('div', { class: 'essay-points' }, el('label', {}, t('key.essay.quote'), pointsIn('배점', t('key.essay.quotePoints'))), el('label', {}, t('key.essay.term'), pointsIn('용어배점', t('key.essay.termPoints'))))
+        : pointsIn('배점', t('key.col.points'));
       const num = el('input', { type: 'number', min: '1', 'aria-label': t('key.col.question'), value: String(r.문항), oninput: () => { r.문항 = Number(num.value); touch(); } });
-      const type = el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`))));
+      const type = tip(el('select', { 'aria-label': t('key.col.type'), onchange: () => { r.유형 = type.value as UnitType; touch(); renderTable(); } }, ...UNIT_TYPES.map(u => el('option', { value: u, selected: u === r.유형 }, t(`unit.${u}`)))),
+        () => `${t(`unit.${r.유형}`)}: ${t(`unit.tip.${r.유형}`)}`);
       const move = (d: number) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j]!, rows[i]!]; touch(); renderTable(); };
-      return el('tr', {},
-        el('td', {}, num), el('td', {}, type),
-        el('td', {}, bind(el('input', { 'aria-label': t('key.col.desc') }), '설명')),
-        el('td', {}, bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답')),
-        el('td', {}, bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용')),
-        el('td', {}, bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심')),
-        el('td', {}, bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소')),
-        el('td', {}, el('div', { class: 'row' },
-          el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
-          el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('common.delete')))));
+      const descInput = widen(bind(el('input', { 'aria-label': t('key.col.desc') }), '설명'));
+      if (i === 0) firstDesc = descInput;
+      const desc = el('td', essay ? { colspan: '5' } : {}, descInput);
+      const actions = el('td', {}, el('div', { class: 'row' },
+        el('button', { title: t('key.up'), onclick: () => move(-1) }, '↑'), el('button', { title: t('key.down'), onclick: () => move(1) }, '↓'),
+        el('button', { class: 'danger', onclick: () => { rows.splice(i, 1); touch(); renderTable(); } }, t('key.deleteRow'))));
+      // 논술형의 인용 문장·용어는 길어서 표 칸(좁으면 70px 남짓)에 넣으면 한두 글자씩 끊긴다. 바로 아래 줄을 넓게 쓴다
+      if (essay) return [
+        el('tr', { class: 'essay-main' }, el('td', {}, num), el('td', {}, type), desc, el('td', {}, pointsCell), actions),
+        el('tr', { class: 'essay-detail' }, el('td', { colspan: '2' }), el('td', { colspan: '7' }, el('div', { class: 'essay-fields' },
+          el('label', {}, tip(el('span', {}, t('key.essay.quotesHint')), t('key.tip.quotes')), bind(el('textarea', { rows: 3 }), '요소')),
+          el('label', {}, tip(el('span', {}, t('key.essay.termsHint')), t('key.tip.terms')), bind(el('input', {}), '핵심'))))),
+      ];
+      return [el('tr', {},
+        el('td', {}, num), el('td', {}, type), desc,
+        el('td', {}, widen(bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답'))),
+        el('td', {}, widen(bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용'))),
+        el('td', {}, widen(bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심'))),
+        el('td', {}, growElements(bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소'))),
+        el('td', {}, pointsCell), actions)];
     });
+    const clearAll = () => { if (!confirm(t('key.clearAllConfirm'))) return; rows = [emptyRow()]; touch(); renderTable(); };
     const addRow = () => {
       const last = rows[rows.length - 1];
       rows.push(last?.유형 === '빈칸형' ? emptyRow(last.문항, '빈칸형') : emptyRow(last ? last.문항 + 1 : 1)); touch(); renderTable();
     };
     tableBox.append(el('table', { class: 'keytable' }, head, ...body),
       el('div', { class: 'row' }, el('button', { onclick: addRow }, t('key.addRow')),
+        el('button', { class: 'danger', disabled: !rows.length, onclick: clearAll }, t('key.clearAll')),
         el('span', { class: 'muted' }, t('key.typesHelp'))));
   }
 
@@ -235,7 +379,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(casesBox);
     if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, t('key.noCases'))); return; }
     casesBox.append(el('table', {}, el('tr', {}, ...[t('key.col.unit'), t('key.col.caseAnswer'), t('key.col.verdict'), t('key.col.caseSource'), t('key.col.caseWhen'), ''].map(h => el('th', {}, h))),
-      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답), el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`)), el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
+      // 정답·허용과 같은 답을 X로 정한 사례는 다시 판정에서 정답보다 먼저 적용된다. 알고 정한 예외일 수 있어 표시만 한다
+      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답),
+        el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`), savedKey && caseConflict(savedKey, c) ? tip(el('span', { class: 'case-conflict' }, t('key.caseConflict')), t('key.caseConflictTip')) : null),
+        el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
         el('td', {}, el('button', { class: 'danger', onclick: () => guard(async () => {
           if (!폴더 || !confirm(t('key.deleteCaseConfirm', { unit: c.단위, answer: c.답, verdict: c.판정 }))) return;
           사례 = (await api.removeCase(폴더, c.단위, c.답)).사례 ?? [];
@@ -247,6 +394,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     clear(judgeBox);
     const text = r.바뀐장.length ? t('key.changedPages', { n: r.바뀐장.length, list: r.바뀐장.map(c => `${tag(c.page)}(${c.변경.join(', ')})`).join(', ') }) : t('key.noChangedPages');
     put(judgeBox, el('div', { class: 'band info' }, [text, extra].filter(Boolean).join('\n')),
+      r.다시확인?.length ? el('div', { class: 'band warn' }, t('key.recheckPages', { n: r.다시확인.length })) : null,
       r.failed?.length ? el('div', { class: 'band error' }, t('key.failedPages', { list: r.failed.map(f => `${tag(f.page)} ${f.error}`).join(' / ') })) : null,
       r.엑셀오류 ? el('div', { class: 'band warn' }, t('common.excelFailed', { error: r.엑셀오류 })) : null);
   }
@@ -273,9 +421,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   async function setConfirmed(on: boolean): Promise<void> {
     if (!폴더 || dirty) { confirmBox.checked = !on; showError(t('common.saveKeyFirst')); return; }
     await guard(async () => {
-      const next = on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false };
-      확인 = (await api.saveKey(폴더!, rowsToKey(meta, rows, next, 사례))).확인; await store.refreshSets();
-      showInfo(on ? t('key.confirmedOn') : t('key.confirmedOff'));
+      const next = rowsToKey(meta, rows, on ? { 완료: true, 일시: new Date().toISOString() } : { 완료: false }, 사례);
+      if (!unitChangesOk(next)) return;
+      const r = await api.saveKey(폴더!, next);
+      savedKey = r.key; 확인 = r.key.확인; await store.refreshSets();
+      showInfo([on ? t('key.confirmedOn') : t('key.confirmedOff'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례)].filter(Boolean).join('\n'));
     });
     renderStatus();
   }
@@ -292,87 +442,83 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         return;
       }
       // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
-      const saved = await api.saveKey(폴더, rowsToKey(meta, rows, 확인, 사례));
-      확인 = saved.확인; 사례 = saved.사례 ?? []; dirty = false;
+      const next = rowsToKey(meta, rows, 확인, 사례);
+      if (!unitChangesOk(next)) return;
+      const r = await api.saveKey(폴더, next);
+      savedKey = r.key; 확인 = r.key.확인; 사례 = r.key.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
-      showInfo(확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'));
-      if (전사수 > 0 && opts.askRejudge !== false && confirm(t('key.rejudgeConfirm', { n: 전사수 }))) {
+      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례)].filter(Boolean).join('\n'));
+      const n = transcribed();
+      if (n > 0 && opts.askRejudge !== false && confirm(rejudgeQuestion(n, r.정답바뀐사례))) {
         showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
     });
   }
 
-  const tryInput = el('input', { type: 'file', accept: '.jpg,.jpeg,.pdf' });
-  tryInput.addEventListener('change', () => void tryOne());
-  async function tryOne(): Promise<void> {
-    const f = tryInput.files?.[0]; tryInput.value = '';
-    if (!f || !폴더) return;
-    const key = rowsToKey(meta, rows, 확인, 사례); // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
-    clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('key.trying')));
-    try {
-      const jpeg = await fileToJpeg(f, store.state.settings.기본회전);
-      const tr = await api.tryPage(폴더, jpeg);
-      clear(tryBox); tryBox.append(transcriptTable(key, tr));
-    } catch (e) { clear(tryBox); showError((e as Error).message); }
+  async function importKey(): Promise<void> {
+    await guard(async () => {
+      const k = await api.importKey(); if (!k) return;
+      if (dirty && !confirm(t('key.importConfirm'))) return;
+      const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; startPicked = true;
+      tab = 'questions'; // 가져온 표를 바로 확인하게
+      renderEditor();
+      showInfo(t('key.imported'));
+    });
   }
 
+  // 저장 막대: 문항이 많으면 표 아래의 저장·확인 완료가 화면 밖으로 밀려났다. 편집 칸 아래쪽에 붙여 늘 보이게 한다
   function renderStatus(): void {
-    clear(statusBox);
-    const done = 확인?.완료 === true;
-    confirmBox.checked = done; confirmBox.disabled = !폴더 || dirty;
-    statusBox.append(el('div', { class: 'row' },
+    clear(saveBar);
+    const done = 확인?.완료 === true, locked = !폴더 || dirty;
+    confirmBox.checked = done; confirmBox.disabled = locked;
+    put(saveBar,
       el('button', { class: 'primary', onclick: () => void save() }, 폴더 ? t('common.save') : t('key.createSet')),
-      el('label', { title: (!폴더 || dirty) ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
-      (!폴더 || dirty) ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : null,
-      dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null,
-      폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
-      el('button', { onclick: () => guard(async () => {
-        const k = await api.importKey(); if (!k) return;
-        if (dirty && !confirm(t('key.importConfirm'))) return;
-        const r = keyToRows(k); meta = r.meta; rows = r.rows; 확인 = undefined; 사례 = k.사례 ?? []; dirty = true; renderEditor();
-        showInfo(t('key.imported'));
-      }) }, t('key.import'))));
-    if (!done && 폴더) statusBox.append(el('div', { class: 'band warn' }, t('key.notConfirmedWarn')));
-    tryInput.disabled = !폴더 || !done || dirty;
+      el('label', { title: locked ? t('key.confirmAfterSave') : '' }, confirmBox, t('key.confirmLabel')),
+      locked ? el('span', { class: 'muted' }, t('key.confirmAfterSave')) : done ? null : el('span', { class: 'warn-text' }, t('key.notConfirmedWarn')),
+      dirty ? el('span', { class: 'band warn' }, t('key.unsaved')) : null);
   }
 
   function renderEditor(): void {
-    clear(editor); clear(cautionBox); clear(tryBox); attachName.textContent = '';
+    clear(editor); clear(cautionBox); attachName.textContent = '';
     if (!editing) { editor.append(el('div', { class: 'muted' }, t('key.pickSet'))); renderList(); return; }
     글Input.value = meta.글; 학기Input.value = meta.학기; 학년Select.value = String(meta.학년); 반Input.value = meta.반.join(', '); 인원Input.value = formatHeadcount(meta.인원);
     editor.append(
+      // 정답표 내보내기·가져오기는 표만이 아닌 정답표 전체(세트 정보·채점 규칙·사례)를 다루므로 세트 이름 옆에 둔다
       el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? t('common.set', { name: 폴더 }) : t('key.newSet')),
+          el('button', { onclick: () => void importKey() }, t('key.import')),
+          폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
           폴더 ? el('button', { class: 'danger', onclick: () => guard(async () => {
             const info = store.state.sets.find(s => s.폴더 === 폴더);
             if (!confirm(t('key.deleteSetConfirm', { title: meta.글, pages: info?.쪽수 ?? 0, transcripts: info?.전사수 ?? 0 }))) return;
             await api.deleteSet(폴더!); dirty = false; await store.refreshSets(); openNew(); showInfo(t('key.setDeleted'));
           }) }, t('key.deleteSet')) : null),
-        el('div', { class: 'row' }, t('key.fieldTitle'), 글Input, t('key.fieldSemester'), 학기Input, 학년Select, t('key.fieldClasses'), 반Input, t('key.fieldHeadcount'), 인원Input)),
-      el('div', { class: 'card' }, el('h3', {}, t('key.questions')), tableBox, statusBox),
-      el('div', { class: 'card' }, el('h3', {}, t('key.makeDraft')),
-        el('div', { class: 'muted' }, t('key.draftHelp')),
-        el('div', { class: 'row' }, uploadInput('문제', problemArea), uploadInput('지문', sourceArea), clearUploads),
-        el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
-        problemArea, sourceArea,
-        el('div', { class: 'row' }, draftBtn,
-          폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
-        cautionBox,
-        el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
-      el('div', { class: 'card' }, el('h3', {}, t('key.rulesTitle')), rulesBox, casesBox, judgeBar, judgeBox),
-      el('div', { class: 'card' }, el('h3', {}, t('key.tryTitle')),
-        el('div', { class: 'muted' }, t('key.tryHelp')),
-        tryInput, tryBox));
-    renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); clear(judgeBox);
+        // 이름표와 입력란을 label 하나로 묶는다. 따로 두면 줄이 바뀔 때 '반'만 줄 끝에 남고 입력란은 다음 줄로 갔다
+        el('div', { class: 'row key-meta' }, el('label', {}, t('key.fieldTitle'), 글Input), el('label', {}, t('key.fieldSemester'), 학기Input), 학년Select,
+          el('label', {}, t('key.fieldClasses'), 반Input), el('label', {}, t('key.fieldHeadcount'), 인원Input))),
+      startBox,
+      // 초안 주의(cautionBox)는 표에 대한 것이라 표 위에 둔다. 저장 막대는 채점 규칙도 같은 저장으로 적용되므로 탭 밖에 둔다
+      el('div', { class: 'card key-tabcard' }, tabBar,
+        panel('questions', cautionBox, tableBox),
+        panel('draft', el('h3', {}, t('key.makeDraft')),
+          el('div', { class: 'muted' }, t('key.draftHelp')),
+          el('div', { class: 'row' }, problemUpload, sourceUpload, clearUploads),
+          el('div', { class: 'muted' }, t('key.uploadHint')), uploadNotes,
+          problemArea, sourceArea,
+          el('div', { class: 'row' }, draftBtn,
+            폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
+          el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
+        panel('rules', rulesBox, casesBox, judgeBar, judgeBox)),
+      saveBar);
+    showTab(tab);
+    renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); renderStart(); clear(judgeBox);
   }
 
   store.subscribe(() => renderList());
-  window.addEventListener('geulnun:open-set', e => { const name = (e as CustomEvent<string>).detail; if (name !== 폴더) void leaveOk().then(ok => { if (ok) void openSet(name); }); });
+  window.addEventListener(OPEN_SET_EVENT, e => {
+    const req = (e as CustomEvent<OpenSetRequest>).detail;
+    req.heard = true;
+    if (req.폴더 === 폴더 && store.state.current === 폴더) { req.then?.(); return; }
+    void leaveOk().then(async ok => { if (!ok) return; await openSet(req.폴더); if (폴더 === req.폴더) req.then?.(); }); // 못 열었으면(오류는 알림으로) 다른 화면으로 가지 않는다
+  });
   renderEditor();
-}
-
-
-/** jpg는 그대로, PDF는 첫 장을 기본 회전으로 그려 JPEG로 */
-async function fileToJpeg(f: File, rotation: Rotation): Promise<ArrayBuffer> {
-  if (/\.jpe?g$/i.test(f.name)) return f.arrayBuffer();
-  return pdfPageJpeg(f, 1, rotation);
 }

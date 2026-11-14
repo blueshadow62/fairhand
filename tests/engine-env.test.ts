@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childEnv, STRIPPED_ENV_VARS } from '../src/engine/env.js';
+import { childEnv, EFFORT_OVERRIDE_ENV_VARS, STRIPPED_ENV_VARS } from '../src/engine/env.js';
 
 test('childEnv: 과금 경로를 바꾸는 변수를 지우고 원본은 건드리지 않는다', () => {
   const base = { PATH: 'x', ANTHROPIC_API_KEY: 'k', CLAUDE_CODE_USE_BEDROCK: '1', HOME: 'h' };
@@ -12,6 +12,14 @@ test('childEnv: 과금 경로를 바꾸는 변수를 지우고 원본은 건드�
   assert.equal(e.DISABLE_TELEMETRY, '1');
   assert.equal(base.ANTHROPIC_API_KEY, 'k');
   assert.ok(STRIPPED_ENV_VARS.includes('ANTHROPIC_AUTH_TOKEN'));
+});
+
+test('childEnv: 부모 Claude Code 세션의 노력 단계 변수를 지워 글눈의 --effort가 적용되게 한다', () => {
+  const base = { PATH: 'x', CLAUDE_CODE_EFFORT_LEVEL: 'max' };
+  const e = childEnv(base);
+  assert.equal(e.CLAUDE_CODE_EFFORT_LEVEL, undefined);
+  assert.equal(base.CLAUDE_CODE_EFFORT_LEVEL, 'max');
+  assert.ok(EFFORT_OVERRIDE_ENV_VARS.includes('CLAUDE_CODE_EFFORT_LEVEL'));
 });
 
 test('childEnv: configDir가 있으면 CLAUDE_CONFIG_DIR로, 없으면 원본 값도 지운다', () => {

@@ -1,17 +1,17 @@
 import { decide, type Change } from '../core/rejudge.js';
-import type { AnswerKey, Panjeong, Transcript } from '../core/types.js';
+import { DataError, type AnswerKey, type Panjeong, type Transcript } from '../core/types.js';
 import { EngineError, withRetry, type Effort, type StructuredProvider, type StructuredRequest } from './provider.js';
 import { systemPrompt, type Rules } from './rules.js';
+import { unitListSchema, unitsById } from './schema.js';
 
 const TAG = '모델 재판정';
 const VERDICTS: Panjeong[] = ['O', 'X', '빈칸'];
 
-/** { quant: { <id>: { verdict } } } 모든 정량 단위 필수 */
+/** { quant: [{ id, verdict }] }. 빠진 단위는 fromJudgeOutput이 거절한다 */
 export function judgeSchema(key: AnswerKey): Record<string, unknown> {
-  const unit = { type: 'object', properties: { verdict: { type: 'string', enum: VERDICTS } }, required: ['verdict'], additionalProperties: false };
   return {
     type: 'object',
-    properties: { quant: { type: 'object', properties: Object.fromEntries(key.정량.map(u => [u.id, unit])), required: key.정량.map(u => u.id), additionalProperties: false } },
+    properties: { quant: unitListSchema(key.정량.map(u => u.id), { verdict: { type: 'string', enum: VERDICTS } }) },
     required: ['quant'], additionalProperties: false,
   };
 }
@@ -24,8 +24,9 @@ export function judgeRequest(key: AnswerKey, rules: Rules, t: Transcript, effort
 }
 
 export function fromJudgeOutput(raw: unknown, key: AnswerKey): Record<string, Panjeong> {
-  const q = (raw as { quant?: Record<string, { verdict?: unknown }> } | null)?.quant;
-  if (!q || typeof q !== 'object') throw new EngineError('invalid-output', '재판정 출력에 quant가 없음');
+  let q: Record<string, Record<string, unknown>>;
+  try { q = unitsById((raw as { quant?: unknown } | null)?.quant, '재판정 출력의 quant'); }
+  catch (e) { if (e instanceof DataError) throw new EngineError('invalid-output', e.message); throw e; }
   const out: Record<string, Panjeong> = {};
   for (const u of key.정량) {
     const v = q[u.id]?.verdict;

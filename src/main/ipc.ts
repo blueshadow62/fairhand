@@ -1,25 +1,26 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { parseKey } from '../core/key.js';
+import { maskRectArg, parseKey } from '../core/key.js';
 import { keyExportName, setFolderName } from '../core/names.js';
 import { appendUpload, loadSet, loadUploads, listPages, removePage } from '../core/setio.js';
 import { parseTranscript } from '../core/transcript.js';
-import { DataError, type AnswerKey, type UploadRecord } from '../core/types.js';
+import { DataError, type AnswerKey, type MaskRect, type UploadRecord } from '../core/types.js';
 import { EngineError, userFacingMessage } from '../engine/provider.js';
-import { CHANNELS, type ExternalLink, type IpcResult, type SetInfo } from '../shared/ipc.js';
+import { CHANNELS, type ExternalLink, type IpcResult, type SaveKeyResult, type SetInfo } from '../shared/ipc.js';
 import type { EngineBridge } from './engine-bridge.js';
-import { leaveChoice, leaveDialogOptions } from './dialogs.js';
-import { listSets, nextPageNumber, pageFile, resolveSetDir, uniqueFolderName } from './paths.js';
+import { leaveChoice, leaveDialogOptions, pickFileOptions, type PickKind } from './dialogs.js';
+import { listSets, nextPageNumber, pageFile, pagesToDelete, resolveSetDir, uniqueFolderName } from './paths.js';
 import { listTrash, purgeSet, restoreSet, trashSet } from './trash.js';
-import { buildAllCumulative, saveAndRebuild, rebuildResult } from './results.js';
+import { buildAllCumulative, latestResult, saveAndRebuild, rebuildResult } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
 import { copySampleSet, makeDefaultSemester } from './sample.js';
+import { notifyArgs } from './notify.js';
 
-const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', privacy: 'https://github.com/blueshadow62/geulnun/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/geulnun#readme' };
+const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', codexInstall: 'https://developers.openai.com/codex/cli', geminiKey: 'https://aistudio.google.com/apikey', openaiKey: 'https://platform.openai.com/api-keys', privacy: 'https://github.com/blueshadow62/fairhand/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/fairhand#readme', releases: 'https://github.com/blueshadow62/fairhand/releases/latest' };
 
 export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater; sampleDir: string }
 
@@ -43,13 +44,24 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.getSettings, () => d.settings.load());
   h(CHANNELS.saveSettings, (patch: Parameters<SettingsStore['save']>[0]) => d.settings.save(patch));
   h(CHANNELS.pickFolder, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0] ?? null; });
-  h(CHANNELS.pickFile, async (kind: 'roster' | 'exe' | 'json') => {
-    const filters = kind === 'roster' ? [{ name: '명단', extensions: ['xlsx', 'csv'] }] : kind === 'exe' ? [{ name: '실행 파일', extensions: ['exe', 'cmd'] }] : [{ name: 'JSON', extensions: ['json'] }];
-    const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters }); return r.canceled ? null : r.filePaths[0] ?? null;
+  h(CHANNELS.pickFile, async (kind: PickKind) => {
+    const r = await dialog.showOpenDialog(d.window()!, pickFileOptions(kind, process.platform)); return r.canceled ? null : r.filePaths[0] ?? null;
   });
   h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
   h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
   h(CHANNELS.revealPath, async (p: string) => { const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
+  // 오래 걸리는 전사 중 다른 창을 보고 있으면 끝난 줄 모른다. 창에 초점이 있으면 띄우지 않고, 알림을 누르면 창을 앞으로 가져온다
+  let lastNote: Notification | null = null; // 붙잡아 두지 않으면 알림을 누르기 전에 사라져 click이 오지 않는다
+  h(CHANNELS.notify, async (title: unknown, body: unknown) => {
+    const n = notifyArgs(title, body);
+    const w = d.window();
+    if (!w || w.isDestroyed() || w.isFocused() || !Notification.isSupported()) return false;
+    const note = new Notification(n);
+    note.on('click', () => { if (w.isDestroyed()) return; if (w.isMinimized()) w.restore(); w.show(); w.focus(); });
+    lastNote = note;
+    lastNote.show();
+    return true;
+  });
 
   h(CHANNELS.secretView, (id: string) => d.secrets.view(id));
   h(CHANNELS.secretSet, (id: string, key: string) => d.secrets.set(id, key));
@@ -74,7 +86,7 @@ export function registerIpc(d: IpcDeps): void {
     const dir = path.join(sem, 폴더);
     await mkdir(path.join(dir, 'pages'), { recursive: true }); await mkdir(path.join(dir, 'transcripts'), { recursive: true }); await mkdir(path.join(dir, '원본'), { recursive: true });
     await writeFile(path.join(dir, '정답표.json'), JSON.stringify(key, null, 1), 'utf-8');
-    return { 폴더, key, 쪽수: 0, 전사수: 0 };
+    return { 폴더, key, 쪽수: 0, 전사수: 0, 확인수: 0, 미전사수: 0 };
   });
   h(CHANNELS.readSet, async (폴더: string) => {
     const dir = await setDir(폴더); const { key, transcripts } = await loadSet(dir);
@@ -82,7 +94,12 @@ export function registerIpc(d: IpcDeps): void {
     const 명단 = all ? all.filter(x => x.학년 === key.대상.학년 && key.대상.반.includes(x.반)) : null; // 검토 화면의 미제출 목록용
     return { 폴더, key, transcripts, pages: await listPages(dir), 올린파일: await loadUploads(dir), 명단있음: !!all, 명단 };
   });
-  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<AnswerKey> => d.bridge.saveKey(await setDir(폴더), raw));
+  h(CHANNELS.saveKey, async (폴더: string, raw: unknown): Promise<SaveKeyResult> => d.bridge.saveKey(await setDir(폴더), raw));
+  h(CHANNELS.setNameMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setNameMask(await setDir(폴더), rect as MaskRect | null));
+  h(CHANNELS.setEffort, async (폴더: string, effort: unknown): Promise<AnswerKey> => d.bridge.setEffort(await setDir(폴더), effort)); // 값은 bridge의 정답표 검사가 본다
+  h(CHANNELS.setIdentityMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setIdentityMask(await setDir(폴더), maskRectArg(rect)));
+  h(CHANNELS.setAnswerRegion, async (폴더: string, 단위: unknown, rect: unknown): Promise<AnswerKey> => d.bridge.setAnswerRegion(await setDir(폴더), 단위, maskRectArg(rect)));
+  h(CHANNELS.matchRoster, async (폴더: string) => d.bridge.matchRosterAll(await setDir(폴더)));
   h(CHANNELS.importKey, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePaths[0]) return null; return parseKey(await readFile(r.filePaths[0], 'utf-8'), path.basename(r.filePaths[0])); });
   h(CHANNELS.exportKey, async (폴더: string) => { const dir = await setDir(폴더); const { key } = await loadSet(dir); const r = await dialog.showSaveDialog(d.window()!, { defaultPath: keyExportName(key), filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePath) return null; await writeFile(r.filePath, JSON.stringify(key, null, 1), 'utf-8'); return r.filePath; });
   h(CHANNELS.attachSource, async (폴더: string) => {
@@ -136,19 +153,43 @@ export function registerIpc(d: IpcDeps): void {
     try { return await rebuildResult(dir, await roster(), { version: d.version }); }
     catch (e) { return { 엑셀오류: e instanceof Error ? e.message : String(e) }; }
   });
+  h(CHANNELS.deletePages, async (폴더: string, pages: unknown) => {
+    const dir = await setDir(폴더);
+    const list = pagesToDelete(pages);
+    const have = new Set(await listPages(dir));
+    const missing = list.filter(p => !have.has(p));
+    if (missing.length) throw new DataError(`이미 없는 장이 있어 아무것도 지우지 않았습니다: ${missing.join(', ')}`); // 중간에 멈춰 엑셀과 어긋나지 않게 먼저 확인
+    let 전사있었음 = false;
+    for (const p of list) if ((await removePage(dir, p)).전사있었음) 전사있었음 = true;
+    const 삭제 = list.length;
+    if (!전사있었음 || !(await loadSet(dir)).transcripts.length) return { 삭제 };
+    try { return { 삭제, ...(await rebuildResult(dir, await roster(), { version: d.version })) }; } // 엑셀은 다 지운 뒤 한 번만
+    catch (e) { return { 삭제, 엑셀오류: e instanceof Error ? e.message : String(e) }; }
+  });
   h(CHANNELS.recordUpload, async (폴더: string, r: Omit<UploadRecord, '일시'>) => appendUpload(await setDir(폴더),
     { 이름: String(r.이름), 크기: Number(r.크기), 지문: String(r.지문), 장수: Number(r.장수), 시작: Number(r.시작), 끝: Number(r.끝), 일시: new Date().toISOString() }));
 
   h(CHANNELS.saveTranscript, async (폴더: string, raw: unknown) => { const dir = await setDir(폴더); const t = parseTranscript(JSON.stringify(raw), '검토 화면'); return saveAndRebuild(dir, t, await roster(), { version: d.version }); });
   h(CHANNELS.buildResult, async (폴더: string) => rebuildResult(await setDir(폴더), await roster(), { version: d.version }));
-  h(CHANNELS.applyCase, async (폴더: string, c: { 단위: string; 답: string; 판정: 'O' | 'X'; page: number }) => d.bridge.applyCase(await setDir(폴더), c));
+  // 렌더러는 세트 이름만 보내고, 열 파일은 메인이 그 세트 폴더 안에서 고른다(아무 경로나 열게 하지 않는다)
+  h(CHANNELS.openResult, async (폴더: string) => {
+    const dir = await setDir(폴더);
+    const file = (await latestResult(dir)) ?? (await rebuildResult(dir, await roster(), { version: d.version })).엑셀;
+    const error = await shell.openPath(file); // 못 열면 까닭을 글로 돌려준다(빈 글이면 열림)
+    if (error) throw new DataError(`엑셀 파일을 열지 못했습니다: ${error}`);
+    return file;
+  });
+  h(CHANNELS.setUnitResults, async (폴더: string, req: unknown) => d.bridge.setUnitResults(await setDir(폴더), req)); // 요청 모양은 bridge가 검사한다
+  h(CHANNELS.applyCase, async (폴더: string, c: unknown) => d.bridge.applyCase(await setDir(폴더), c)); // 요청 모양은 bridge가 검사한다
+  h(CHANNELS.revertCase, async (폴더: string, req: unknown) => d.bridge.revertCase(await setDir(폴더), req));
   h(CHANNELS.removeCase, async (폴더: string, 단위: string, 답: string) => d.bridge.removeCase(await setDir(폴더), 단위, 답));
   h(CHANNELS.rejudge, async (폴더: string) => d.bridge.rejudge(await setDir(폴더)));
   h(CHANNELS.judgeWithModel, async (폴더: string, opts: { pages?: unknown }) => d.bridge.judgeWithModel(await setDir(폴더), pageList(opts?.pages), e => d.window()?.webContents.send(CHANNELS.progress, e)));
   h(CHANNELS.createSampleSet, async () => ({ 폴더: await copySampleSet(d.sampleDir, await semester()) }));
   h(CHANNELS.makeDefaultSemester, async () => { const p = await makeDefaultSemester(app.getPath('documents')); await d.settings.save({ 학기폴더: p }); return p; });
   h(CHANNELS.updateStatus, async () => d.updater.status());
-  h(CHANNELS.checkUpdate, () => d.updater.check());
+  h(CHANNELS.checkUpdate, () => d.updater.check(true));
+  h(CHANNELS.downloadUpdate, () => d.updater.download());
   h(CHANNELS.installUpdate, async () => d.updater.install());
   h(CHANNELS.buildCumulative, async () => buildAllCumulative(await semester(), await roster(), { version: d.version }));
 }

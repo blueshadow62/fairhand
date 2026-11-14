@@ -1,15 +1,22 @@
 export type Panjeong = 'O' | 'X' | '빈칸';
 export type Hwaksin = '확실' | '추정' | '불명';
 
-export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형';
-/** 유형이 없으면 빈칸 위치대로 옮기는 단위로 본다. '요소형'만 쓴 순서와 상관없이 요소별 단위에 나눈다. */
-export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType }
-export interface QualUnit { id: string; 문항: number; 설명: string }
+export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '논술형';
+/**
+ * 유형이 없으면 빈칸 위치대로 옮기는 단위로 본다. '요소형'만 쓴 순서와 상관없이 요소별 단위에 나눈다.
+ * '논술형'은 한 편의 글에서 찾을 요소 하나: 종류 '인용'은 정답 문장을 거의 그대로 썼는지, '용어'는 정답(허용) 용어를 썼는지.
+ * 배점이 없으면 1점(배점을 두기 전 정답표와 같게). 맞으면(정성은 응답하면) 배점만큼 더한다
+ */
+export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType; 종류?: '인용' | '용어'; 배점?: number }
+export interface QualUnit { id: string; 문항: number; 설명: string; 배점?: number }
 
 /** 세트별 채점 규칙. 없으면 DEFAULT_RULES(key.ts) */
 export interface GradingRules { 맞춤법: '인정' | '불인정'; 넓은말: '인정' | '불인정'; 핵심어: '모두' | '하나라도' }
 /** 선생님이 검토에서 확정한 판정. 같은 단위에 같은(정규화한) 답을 쓴 장에 그대로 적용된다 */
 export interface Case { 단위: string; 답: string; 판정: 'O' | 'X'; 일시: string; 출처: string }
+
+/** 그림에서 가릴 영역. 쪽 크기에 대한 비율(0~1) */
+export interface MaskRect { x: number; y: number; w: number; h: number }
 
 export interface AnswerKey {
   세트: string;
@@ -21,18 +28,44 @@ export interface AnswerKey {
   정성: QualUnit[];
   채점규칙?: Partial<GradingRules>;
   사례?: Case[];
+  /** 있으면 전사 때 이 영역을 가린 사본을 보낸다 */
+  이름가림?: MaskRect;
+  /** 문항별 검토의 그림 보기에서 칠할 학생 정보 영역. 없으면 DEFAULT_IDENTITY_MASK(key.ts) */
+  신원가림?: MaskRect;
+  /**
+   * 문항별 검토에서 손글씨를 잘라 보일 단위별 답 칸(단위 id → 쪽 비율 영역). 한 세트는 같은 양식이라 한 장에서 잡은 자리를 모든 장에 쓴다.
+   * 단위 안이 아니라 여기 두는 까닭: 문항 설정 저장은 단위를 새로 조립하고, 확인 표시를 지우는 기준은 정량·정성만 본다
+   */
+  답영역?: Record<string, MaskRect>;
+  /**
+   * 이 세트를 전사할 때 쓸 노력 단계. 없으면 AI 프로필의 노력 단계를 쓴다(요소형이 많은 세트만 높이는 데 쓴다).
+   * 문항 설정 저장은 이 칸을 모르므로 이름가림처럼 따로 바꾼다(setEffort)
+   */
+  노력?: KeyEffort;
 }
 
-export interface TranscribeInfo { 엔진: 'cli' | 'api' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
+/** 노력 단계(낮음~최대). 정답표에 적을 수 있는 값이다. AI 프로필의 노력 단계(shared/ipc.ts EFFORTS)와 같은 값 */
+export const KEY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type KeyEffort = typeof KEY_EFFORTS[number];
+
+export interface TranscribeInfo { 엔진: 'cli' | 'api' | 'codex' | 'gemini' | 'openai' | '사람'; 모델: string; effort: string; 규칙: string; 일시: string }
 
 export interface Transcript {
   page: number;
   학년: number | null; 반: number | null; 번호: number | null; 이름: string | null;
   식별확신: Hwaksin;
-  정량: Record<string, { 답: string; 판정: Panjeong }>;
+  /** 위치: 그 단위의 답이 있는 세로 위치(쪽 맨 위 0 ~ 맨 아래 1). '답 위치 받기'를 켜고 전사한 장에만 있고, 화면에서 그 자리로 가는 데만 쓴다 */
+  정량: Record<string, { 답: string; 판정: Panjeong; 위치?: number }>;
   정성: Record<string, { 응답: boolean; 답: string }>;
   비고: string[];
   확인완료?: boolean;
+  /** 문항별 검토에서 확인한 단위 id. 모든 단위를 확인하면 확인완료도 켠다 */
+  확인단위?: string[];
+  /**
+   * 논술형 문항(번호를 글자로)마다 학생 글 전체. 전사할 때 함께 받아 검토 화면에서 글 속 위치를 보이는 데만 쓴다(채점은 단위의 답·판정으로).
+   * 0.2.12 전에 전사한 장에는 없다
+   */
+  논술글?: Record<string, string>;
   전사정보?: TranscribeInfo;
 }
 

@@ -1,4 +1,4 @@
-import { headcount } from './key.js';
+import { headcount, roundScore, unitPoints } from './key.js';
 import { identified, findDuplicates } from './transcript.js';
 import { studentKey, pageTag, type AnswerKey, type Row, type ScoreResult, type Student, type Transcript } from './types.js';
 
@@ -16,9 +16,9 @@ export function scoreOne(key: AnswerKey, t: Transcript): ScoreResult {
     r.응답[u.id] = v ? v.응답 === true : false;
     r.답[u.id] = v?.답 ?? '';
   }
-  r.정량 = Object.values(r.판정).filter(x => x === 'O').length;
-  r.정성 = Object.values(r.응답).filter(Boolean).length;
-  r.합계 = r.정량 + r.정성;
+  r.정량 = roundScore(key.정량.reduce((s, u) => s + (r.판정[u.id] === 'O' ? unitPoints(u) : 0), 0));
+  r.정성 = roundScore(key.정성.reduce((s, u) => s + (r.응답[u.id] ? unitPoints(u) : 0), 0));
+  r.합계 = roundScore(r.정량 + r.정성);
   return r;
 }
 

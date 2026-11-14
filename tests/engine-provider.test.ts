@@ -10,7 +10,7 @@ import { transcriptSchema } from '../src/engine/schema.js';
 const key = parseKey(readFileSync(new URL('../../tests/fixtures/세트샘플/정답표.json', import.meta.url), 'utf-8'));
 const info = { 엔진: 'cli' as const, 모델: 'claude-opus-5-5', effort: 'high', 규칙: 'transcribe-v1', 일시: '2026-11-06T01:00:00+09:00' };
 const good = { page: 4, grade: 3, class: 1, number: 9, name: null, id_confidence: '확실',
-  quant: { '1-1': { answer: '은영', verdict: 'O' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] };
+  quant: [{ id: '1-1', answer: '은영', verdict: 'O' }, { id: '3-1', answer: '', verdict: '빈칸' }], qual: [{ id: 'E1', responded: false, answer: '' }], notes: [] };
 
 test('toTranscript: 올바른 출력에 전사정보를 붙인다', () => {
   const t = toTranscript(good, key, 4, info);
@@ -23,10 +23,18 @@ test('toTranscript_rejects_wrong_page', () => {
   assert.throws(() => toTranscript({ ...good, page: 5 }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output' && /page/.test(e.message));
 });
 
+test('toTranscript: 빠진 단위·중복 단위·목록 아닌 출력은 invalid-output(빈칸으로 세지 않는다)', () => {
+  const invalid = (re: RegExp) => (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output' && re.test(e.message);
+  assert.throws(() => toTranscript({ ...good, quant: [good.quant[0]!] }, key, 4, info), invalid(/누락.*3-1/));
+  assert.throws(() => toTranscript({ ...good, qual: [] }, key, 4, info), invalid(/누락.*E1/));
+  assert.throws(() => toTranscript({ ...good, quant: [...good.quant, good.quant[0]!] }, key, 4, info), invalid(/1-1.*두 번/));
+  assert.throws(() => toTranscript({ ...good, quant: { '1-1': { answer: '', verdict: '빈칸' } } }, key, 4, info), invalid(/목록/));
+});
+
 test('toTranscript: 정답표에 없는 단위·잘못된 판정·문자열 응답은 invalid-output', () => {
-  assert.throws(() => toTranscript({ ...good, quant: { ...good.quant, '9-9': { answer: '', verdict: 'O' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
-  assert.throws(() => toTranscript({ ...good, quant: { ...good.quant, '1-1': { answer: '', verdict: 'ㅇ' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
-  assert.throws(() => toTranscript({ ...good, qual: { E1: { responded: 'false', answer: '' } } }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, quant: [...good.quant, { id: '9-9', answer: '', verdict: 'O' }] }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, quant: [{ id: '1-1', answer: '', verdict: 'ㅇ' }, good.quant[1]!] }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
+  assert.throws(() => toTranscript({ ...good, qual: [{ id: 'E1', responded: 'false', answer: '' }] }, key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
   assert.throws(() => toTranscript('글자', key, 4, info), (e: unknown) => e instanceof EngineError && e.kind === 'invalid-output');
 });
 
@@ -39,6 +47,16 @@ test('withRetry: 재시도 가능한 오류만 정해진 횟수만큼 다시 한
   assert.equal(n, 1);
   n = 0;
   await assert.rejects(withRetry(async () => { n++; throw new EngineError('network', 'x'); }, new AbortController().signal, [1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'network');
+  assert.equal(n, 3);
+});
+
+test('withRetry: 시간 초과는 한 번만 다시 묻는다(다른 재시도 오류와 섞여도 시간 초과 두 번이면 멈춤)', async () => {
+  let n = 0;
+  await assert.rejects(withRetry(async () => { n++; throw new EngineError('timeout', 'x'); }, new AbortController().signal, [1, 1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'timeout');
+  assert.equal(n, 2);
+  n = 0;
+  const kinds = ['timeout', 'network', 'timeout'] as const;
+  await assert.rejects(withRetry(async () => { throw new EngineError(kinds[n++]!, 'x'); }, new AbortController().signal, [1, 1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'timeout');
   assert.equal(n, 3);
 });
 
@@ -58,8 +76,56 @@ test('transcribeRequest: 규칙+정답표 시스템 프롬프트, 쪽 지시, �
   const rules = await loadRules();
   const r = transcribeRequest({ imageJpegBase64: 'AAAA', key, rules, page: 3, effort: 'high' });
   assert.equal(r.system, systemPrompt(rules, key));
+  // 배점은 점수 계산에만 쓰여 모델 지시문을 바꾸지 않는다
+  assert.equal(systemPrompt(rules, { ...key, 정량: key.정량.map(u => ({ ...u, 배점: 3 })), 정성: key.정성.map(u => ({ ...u, 배점: 2 })) }), r.system);
   assert.equal(r.user, userText(3));
   assert.equal(r.imageJpegBase64, 'AAAA');
   assert.deepEqual(r.schema, transcriptSchema(key));
   assert.equal(r.effort, 'high');
+});
+
+test('systemPrompt: 논술형 문항이 있는 세트에만 논술형 절을 붙인다(없는 세트의 지시문은 그대로)', async () => {
+  const rules = await loadRules();
+  assert.ok(!systemPrompt(rules, key).includes('# 논술형 문항'));
+  const essay = systemPrompt(rules, { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형', 종류: '인용' }] });
+  assert.ok(essay.includes('# 논술형 문항'));
+  assert.ok(essay.indexOf('# 논술형 문항') < essay.indexOf('# 정답표'));
+});
+
+test('toTranscript: 논술형 글 전체는 정답표의 논술형 문항 것만 두고, 빠지거나 틀려도 전사는 성공', () => {
+  const essayKey = { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const }] };
+  const quant = [...good.quant, { id: '9-1', answer: '배움은 삶이다', verdict: 'O' }];
+  const t = toTranscript({ ...good, quant, essays: [{ question: '9', text: '나는 배움은 삶이다 라고 쓴다.' }, { question: '3', text: '논술형 아님' }] }, essayKey, 4, info);
+  assert.deepEqual(t.논술글, { 9: '나는 배움은 삶이다 라고 쓴다.' });
+  for (const essays of [[], [{ question: '3', text: 'x' }], '글자', [{ question: '9' }]]) {
+    const u = toTranscript({ ...good, quant, essays }, essayKey, 4, info);
+    assert.ok(!('논술글' in u), JSON.stringify(essays));
+    assert.equal(u.정량['9-1']?.판정, 'O');
+  }
+  assert.ok(!('논술글' in toTranscript(good, key, 4, info))); // 논술형이 없는 세트의 전사 파일은 그대로
+});
+
+test('transcribeRequest: 답 위치를 켜면 지시문과 양식에 함께 붙고, 없거나 끄면 그대로', async () => {
+  const rules = await loadRules();
+  const base = { imageJpegBase64: 'AAAA', key, rules, page: 3, effort: 'high' as const };
+  const off = transcribeRequest(base);
+  assert.deepEqual(transcribeRequest({ ...base, 위치: false }), off);
+  assert.equal(off.system, systemPrompt(rules, key));
+  assert.deepEqual(off.schema, transcriptSchema(key));
+  const on = transcribeRequest({ ...base, 위치: true });
+  assert.equal(on.system, systemPrompt(rules, key, { 위치: true }));
+  assert.deepEqual(on.schema, transcriptSchema(key, { 위치: true }));
+  assert.notEqual(on.system, off.system);
+});
+
+test('toTranscript: 답 위치는 0~1이면 두고, null·범위 밖·글자는 그 단위만 버린다(전사는 성공, 다시 묻지 않는다)', () => {
+  const quant = (y1: unknown, y2: unknown) => [{ id: '1-1', answer: '은영', verdict: 'O', y: y1 }, { id: '3-1', answer: '', verdict: '빈칸', y: y2 }];
+  const t = toTranscript({ ...good, quant: quant(0.42, 1) }, key, 4, info);
+  assert.deepEqual([t.정량['1-1'], t.정량['3-1']], [{ 답: '은영', 판정: 'O', 위치: 0.42 }, { 답: '', 판정: '빈칸', 위치: 1 }]);
+  for (const bad of [null, 42, -0.1, 1.01, '0.4', true]) {
+    const u = toTranscript({ ...good, quant: quant(bad, 0) }, key, 4, info);
+    assert.ok(!('위치' in u.정량['1-1']!), JSON.stringify(bad));
+    assert.equal(u.정량['1-1']!.판정, 'O');
+    assert.equal(u.정량['3-1']!.위치, 0);
+  }
 });

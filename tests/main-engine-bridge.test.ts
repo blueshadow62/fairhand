@@ -12,7 +12,7 @@ import { DataError } from '../src/core/types.js';
 
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
-const out = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: { '1-1': { answer: 'x', verdict: 'X' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] });
+const out = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: [{ id: '1-1', answer: 'x', verdict: 'X' }, { id: '3-1', answer: '', verdict: '빈칸' }], qual: [{ id: 'E1', responded: false, answer: '' }], notes: [] });
 const fakeProvider = (): TranscribeProvider => ({
   id: 'api',
   async complete(req: StructuredRequest): Promise<RawResult> { const page = Number(/page는 (\d+)/.exec(req.user)?.[1]); return { output: out(page), model: 'fake' }; },
@@ -27,7 +27,9 @@ async function setup() {
   await rm(path.join(set, 'transcripts'), { recursive: true, force: true });
   await (await import('node:fs/promises')).mkdir(path.join(set, 'pages'), { recursive: true });
   for (const p of [1, 2, 3]) await writeFile(path.join(set, 'pages', `p0${p}.jpg`), JPEG);
-  const bridge = new EngineBridge({ settings: new SettingsStore(path.join(dir, 'settings.json')), secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
+  const settings = new SettingsStore(path.join(dir, 'settings.json'));
+  await settings.save({ 동시장수: 1 }); // 아래 시험들은 한 장씩 차례로 도는 진행·중단 순서를 본다. 동시 전사는 따로 시험한다
+  const bridge = new EngineBridge({ settings, secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
   (bridge as any).provider = async () => fakeProvider(); // 실제 CLI/API 대신
   return { dir, set, bridge };
 }
@@ -57,6 +59,105 @@ test('startRun: 장마다 진행을 알리고 전사를 저장하며, 두 번 �
     assert.deepEqual(r.ok, [1, 2, 3]); assert.deepEqual(seen, [1, 2, 3]);
     assert.equal((await readdir(path.join(set, 'transcripts'))).length, 3);
     assert.ok(r.엑셀);
+    // 다음 전사의 예상 시간에 쓸 기록: 기본 프로필(Claude Code, 노력 기본값)로 3장. 가짜 제공자는 토큰을 알려 주지 않는다
+    const settings = new SettingsStore(path.join(dir, 'settings.json'));
+    const rec = (await settings.load()).전사기록?.['cli||medium'];
+    assert.deepEqual([rec?.장, rec?.토큰장], [3, 0]);
+    assert.ok(rec!.초 >= 0);
+    await bridge.tryPage(set, JPEG); // 시험 한 장도 같은 기록에 더한다
+    assert.equal((await settings.load()).전사기록?.['cli||medium']?.장, 4);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('tryPage: 시험 한 장을 저장하지 않고 전사해 돌려준다(모델이 묻는 장 번호를 그대로 돌려줘도 통과)', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const tr = await bridge.tryPage(set, JPEG);
+    assert.deepEqual(Object.keys(tr.정량), ['1-1', '3-1']);
+    await assert.rejects(readdir(path.join(set, 'transcripts'))); // 시험 결과는 저장하지 않는다
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('startRun·tryPage: 설정 답 위치 받기를 전사 요청에 넘긴다(끄면 위치 없이)', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const asked: (boolean | undefined)[] = [];
+    (bridge as any).provider = async () => ({ ...fakeProvider(), async transcribe(input: { page: number; 위치?: boolean }): Promise<RawResult> { asked.push(input.위치); return { output: out(input.page), model: 'fake' }; } });
+    await bridge.tryPage(set, JPEG);
+    const settings = new SettingsStore(path.join(dir, 'settings.json'));
+    await settings.save({ 답위치: true });
+    await bridge.tryPage(set, JPEG);
+    await bridge.startRun(set, { pages: [1] }, () => undefined);
+    assert.deepEqual(asked, [false, true, true]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('startRun: 설정의 동시 장 수만큼 한꺼번에 전사한다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    await new SettingsStore(path.join(dir, 'settings.json')).save({ 동시장수: 3 });
+    let inFlight = 0, max = 0;
+    const slow: TranscribeProvider = { ...fakeProvider(), async transcribe(input) {
+      inFlight++; max = Math.max(max, inFlight);
+      await new Promise(res => setTimeout(res, 30));
+      inFlight--;
+      return { output: out(input.page), model: 'fake' };
+    } };
+    (bridge as any).provider = async () => slow;
+    const r = await bridge.startRun(set, {}, () => undefined);
+    assert.deepEqual(r.ok, [1, 2, 3]);
+    assert.equal(max, 3);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('setEffort: 세트의 노력 단계를 정답표에 적고 null이면 지운다. 틀린 값은 거절하고, 문항 설정 저장으로는 지워지지 않는다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const on = await bridge.setEffort(set, 'high');
+    assert.equal(on.노력, 'high');
+    const { 노력: _dropped, ...rebuilt } = on; // 문항 설정 화면이 조립한 정답표에는 이 칸이 없다
+    assert.equal((await bridge.saveKey(set, rebuilt)).key.노력, 'high');
+    assert.equal((await bridge.saveKey(set, { ...on, 노력: 'low' })).key.노력, 'high'); // 문항 설정 저장으로는 바꾸지 못한다
+    await assert.rejects(bridge.setEffort(set, 'turbo'), (e: unknown) => e instanceof DataError && /노력/.test(e.message));
+    assert.equal((await bridge.setEffort(set, null)).노력, undefined);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('startRun·tryPage·judgeWithModel: 세트의 노력 단계가 있으면 그 값으로, 없으면 프로필 값으로 요청하고 예상 기록도 그 노력으로 쌓는다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const keyPath = path.join(set, '정답표.json');
+    const key = JSON.parse(await (await import('node:fs/promises')).readFile(keyPath, 'utf-8'));
+    key.확인 = { 완료: true };
+    await writeFile(keyPath, JSON.stringify(key), 'utf-8');
+    const asked: string[] = [];
+    const p: TranscribeProvider = { ...fakeProvider(),
+      async transcribe(input) { asked.push(input.effort); return { output: out(input.page), model: 'fake' }; },
+      async complete(req: StructuredRequest) { asked.push(`재판정:${req.effort}`); return { output: out(1), model: 'fake' }; } };
+    (bridge as any).provider = async () => p;
+    await bridge.setEffort(set, 'high');
+    await bridge.startRun(set, {}, () => undefined);
+    await bridge.tryPage(set, JPEG);
+    await bridge.judgeWithModel(set, [1], () => undefined);
+    assert.deepEqual(asked, ['high', 'high', 'high', 'high', '재판정:high']);
+    const rec = (await new SettingsStore(path.join(dir, 'settings.json')).load()).전사기록;
+    assert.deepEqual([rec?.['cli||high']?.장, rec?.['cli||medium']], [4, undefined]); // 기본 프로필(Claude Code, 노력 기본값)이지만 세트 값으로 쌓는다
+    await bridge.setEffort(set, null);
+    asked.length = 0;
+    await bridge.tryPage(set, JPEG);
+    assert.deepEqual(asked, ['medium']); // 세트 값이 없으면 프로필 값(기본 medium)
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -73,5 +174,20 @@ test('cancel: 중단하면 끝낸 장은 남고 나머지는 멈춘다', async (
     const r = await running;
     assert.deepEqual(r.ok, [1]);
     assert.equal(bridge.running(), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('saveKey는 이름 가림을 바꾸지 못한다(문항 설정 저장으로 꺼져 이름이 나가지 않게), setNameMask로만 켜고 끈다', async () => {
+  const { dir, set, bridge } = await setup();
+  try {
+    const rect = { x: 0.7, y: 0.05, w: 0.3, h: 0.05 };
+    const on = await bridge.setNameMask(set, rect);
+    assert.deepEqual(on.이름가림, rect);
+    const { 이름가림: _dropped, ...rebuilt } = on; // 문항 설정 화면이 조립한 정답표에는 이 칸이 없다
+    assert.deepEqual((await bridge.saveKey(set, rebuilt)).key.이름가림, rect);
+    assert.deepEqual((await bridge.saveKey(set, { ...on, 이름가림: { ...rect, w: 0.1 } })).key.이름가림, rect);
+    assert.equal((await bridge.setNameMask(set, null)).이름가림, undefined);
+    assert.equal((await bridge.saveKey(set, { ...rebuilt, 이름가림: rect })).key.이름가림, undefined);
+    await assert.rejects(bridge.setNameMask(set, { ...rect, x: 0.9 }), /이름가림/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

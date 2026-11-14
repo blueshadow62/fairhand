@@ -12,7 +12,7 @@ import { transcribePage, transcribeSet } from '../src/engine/transcribe.js';
 const FX = fileURLToPath(new URL('../../tests/fixtures/세트샘플/', import.meta.url));
 const key = parseKey(readFileSync(path.join(FX, '정답표.json'), 'utf-8'));
 const rules = await loadRules();
-const good = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: { '1-1': { answer: 'x', verdict: 'X' }, '3-1': { answer: '', verdict: '빈칸' } }, qual: { E1: { responded: false, answer: '' } }, notes: [] });
+const good = (page: number) => ({ page, grade: 3, class: 1, number: page, name: null, id_confidence: '확실', quant: [{ id: '1-1', answer: 'x', verdict: 'X' }, { id: '3-1', answer: '', verdict: '빈칸' }], qual: [{ id: 'E1', responded: false, answer: '' }], notes: [] });
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]); // 검사용 최소 JPEG 바이트. 모델에 보내지 않는다.
 
 function provider(script: (page: number, call: number) => RawResult | Error): TranscribeProvider & { calls: number } {
@@ -54,19 +54,22 @@ test('transcribePage_retries_invalid_once', async () => {
 test('transcribeSet: 장마다 저장하고 실패는 기록하고 계속', async () => {
   const d = sampleSet([4, 5, 6]);
   const p = provider(page => (page === 5 ? new EngineError('refusal', '거절') : { output: good(page), model: 'm' }));
-  const seen: number[] = [];
-  const r = await transcribeSet(p, d, key, rules, [4, 5, 6], new AbortController().signal, { onProgress: e => seen.push(e.page) });
+  const seen: number[] = [], errors: (string | undefined)[] = [];
+  const r = await transcribeSet(p, d, key, rules, [4, 5, 6], new AbortController().signal, { onProgress: e => { seen.push(e.page); errors.push(e.error); } });
   assert.deepEqual(r.ok, [4, 6]); assert.deepEqual(r.failed.map(f => f.page), [5]); assert.deepEqual(r.skipped, []);
   assert.ok(existsSync(path.join(d, 'transcripts', 'p04.json')) && !existsSync(path.join(d, 'transcripts', 'p05.json')));
   assert.deepEqual(seen, [4, 5, 6]);
+  assert.deepEqual(errors, [undefined, r.failed[0]!.error, undefined]); // 실패한 장의 알림에는 오류를 실어, 걸린 시간을 잴 때 뺀다
 });
 
 test('transcribe_set_skips_existing', async () => {
   const d = sampleSet([1, 4]); // p01.json은 픽스처(선생님 확인본)에 이미 있다
   const before = readFileSync(path.join(d, 'transcripts', 'p01.json'), 'utf-8');
   const p = provider(page => ({ output: good(page), model: 'm' }));
-  const r = await transcribeSet(p, d, key, rules, [1, 4], new AbortController().signal);
+  const skippedFlags: (boolean | undefined)[] = [];
+  const r = await transcribeSet(p, d, key, rules, [1, 4], new AbortController().signal, { onProgress: e => skippedFlags.push(e.skipped) });
   assert.deepEqual(r.skipped, [1]); assert.deepEqual(r.ok, [4]);
+  assert.deepEqual(skippedFlags, [true, undefined]); // 건너뛴 장은 알림에 표시해 걸린 시간을 재지 않는다
   assert.equal(readFileSync(path.join(d, 'transcripts', 'p01.json'), 'utf-8'), before);
   const r2 = await transcribeSet(p, d, key, rules, [1], new AbortController().signal, { force: true });
   assert.deepEqual(r2.ok, [1]);
@@ -91,6 +94,52 @@ test('transcribeSet: 중단하면 그 자리에서 멈춘다', async () => {
   assert.ok(r.ok.length <= 2); assert.ok(!r.ok.includes(3));
 });
 
+/** 장마다 늦게 답하는 가짜 제공자: 한꺼번에 몇 장이 돌았는지 센다 */
+function slowProvider(delayMs: (page: number) => number, fail?: (page: number) => Error | undefined): TranscribeProvider & { calls: number[]; maxInFlight: number } {
+  const calls: number[] = [];
+  let inFlight = 0, maxInFlight = 0;
+  return { id: 'cli', calls, get maxInFlight() { return maxInFlight; }, async complete() { throw new Error('검사에서 쓰지 않음'); },
+    async transcribe(input) {
+      calls.push(input.page); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        await new Promise(res => setTimeout(res, delayMs(input.page)));
+        const err = fail?.(input.page);
+        if (err) throw err;
+        return { output: good(input.page), model: 'm' };
+      } finally { inFlight--; }
+    } };
+}
+
+test('transcribeSet: 동시 수만큼 한꺼번에 하되 넘지 않고, 결과는 장 번호 순으로 돌려준다', async () => {
+  const d = sampleSet([1, 2, 3, 4, 5, 6]);
+  const p = slowProvider(page => (7 - page) * 15); // 앞 장일수록 늦게 끝나 끝나는 순서가 뒤바뀐다
+  const ms: (number | undefined)[] = [];
+  const r = await transcribeSet(p, d, key, rules, [1, 2, 3, 4, 5, 6], new AbortController().signal, { force: true, 동시: 3, onProgress: e => ms.push(e.ms) });
+  assert.equal(p.maxInFlight, 3);
+  assert.deepEqual(r.ok, [1, 2, 3, 4, 5, 6]);
+  assert.deepEqual([...p.calls.slice(0, 3)].sort(), [1, 2, 3]); // 장 순서대로 맡는다
+  assert.ok(ms.length === 6 && ms.every(x => typeof x === 'number' && x >= 0)); // 장마다 처리 시간을 싣는다
+  for (const n of [1, 2, 3, 4, 5, 6]) assert.ok(existsSync(path.join(d, 'transcripts', `p0${n}.json`)));
+});
+
+test('transcribeSet: 동시에 하다가 로그인 오류가 나면 새 장을 더 시작하지 않는다', async () => {
+  const d = sampleSet([1, 2, 3, 4, 5, 6]);
+  const p = slowProvider(page => (page === 1 ? 0 : 40), page => (page === 1 ? new EngineError('signed-out', '로그인 필요') : undefined));
+  const r = await transcribeSet(p, d, key, rules, [1, 2, 3, 4, 5, 6], new AbortController().signal, { force: true, 동시: 2 });
+  assert.deepEqual([...p.calls].sort(), [1, 2]);
+  assert.deepEqual(r.failed.map(f => f.page), [1]);
+  assert.deepEqual(r.ok, [2]); // 이미 돌던 장은 끝까지 한다
+});
+
+test('transcribeSet: 동시에 하다가 중단하면 새 장을 시작하지 않는다', async () => {
+  const d = sampleSet([1, 2, 3, 4, 5, 6]);
+  const ac = new AbortController();
+  const p = slowProvider(page => { if (page === 2) ac.abort(); return 20; });
+  const r = await transcribeSet(p, d, key, rules, [1, 2, 3, 4, 5, 6], ac.signal, { force: true, 동시: 3 });
+  assert.ok(p.calls.every(page => page <= 3));
+  assert.ok(!r.ok.some(page => page > 3));
+});
+
 test('transcribeSet: 저장 전에 사례·정답 정확 일치를 적용한다', async () => {
   const d = sampleSet([4]);
   const k = { ...key, 사례: [{ 단위: '1-1', 답: 'x', 판정: 'O' as const, 일시: 'a', 출처: 'p' }] };
@@ -100,4 +149,27 @@ test('transcribeSet: 저장 전에 사례·정답 정확 일치를 적용한다'
   assert.equal(saved.정량['1-1'].판정, 'O');
   assert.equal(saved.정량['1-1'].답, 'x');
   assert.ok(saved.비고.includes('재판정: 1-1 X→O (사례)'));
+});
+
+test('transcribeSet: 논술형 세트는 학생 글 전체(논술글)를 전사 파일에 함께 저장한다', async () => {
+  const d = sampleSet([4]);
+  const k = { ...key, 정량: [...key.정량, { id: '9-1', 문항: 9, 설명: '인용 1', 정답: '배움은 삶이다', 유형: '논술형' as const, 종류: '인용' as const }] };
+  const essay = (page: number) => ({ ...good(page), quant: [...good(page).quant, { id: '9-1', answer: '배움은 삶이다', verdict: 'O' }], essays: [{ question: '9', text: '첫 문단.\n배움은 삶이다.' }] });
+  const r = await transcribeSet(provider(page => ({ output: essay(page), model: 'm' })), d, k, rules, [4], new AbortController().signal);
+  assert.deepEqual(r.ok, [4]);
+  const saved = JSON.parse(readFileSync(path.join(d, 'transcripts', 'p04.json'), 'utf-8'));
+  assert.deepEqual(saved.논술글, { 9: '첫 문단.\n배움은 삶이다.' });
+  assert.equal(saved.정량['9-1'].답, '배움은 삶이다');
+});
+
+test('transcribeSet: 답 위치를 켜면 요청에 넘기고, 받은 위치를 단위마다 저장한다(틀린 위치는 그 단위만 버림)', async () => {
+  const d = sampleSet([4]);
+  const asked: (boolean | undefined)[] = [];
+  const p: TranscribeProvider = { id: 'cli', async complete() { throw new Error('검사에서 쓰지 않음'); },
+    async transcribe(input) { asked.push(input.위치); const g = good(input.page); return { output: { ...g, quant: [{ ...g.quant[0]!, y: 0.31 }, { ...g.quant[1]!, y: 7 }] }, model: 'm' }; } };
+  const r = await transcribeSet(p, d, key, rules, [4], new AbortController().signal, { 위치: true });
+  assert.deepEqual([r.ok, asked], [[4], [true]]);
+  const saved = JSON.parse(readFileSync(path.join(d, 'transcripts', 'p04.json'), 'utf-8'));
+  assert.equal(saved.정량['1-1'].위치, 0.31);
+  assert.ok(!('위치' in saved.정량['3-1']));
 });
