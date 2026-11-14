@@ -6,6 +6,7 @@
 
 - 전사(손글씨 읽기)는 선생님 PC에 설치된 Claude Code·Codex(본인 구독 로그인)나 API 키(Anthropic·OpenAI·Gemini)로 합니다. 정확도는 AI 도구에 따라 다르며, 개발자는 Claude를 추천합니다.
 - 학생 답안지에는 **학년, 반, 번호만** 입력되어 있는 걸 추천합니다. 이름이 있으면 그림과 함께 AI 제공자 서버(Claude는 Anthropic, Codex·OpenAI API는 OpenAI, Gemini는 Google)로 전송됩니다. 명단(이름)은 PC 안에서만 씁니다. 자세한 내용은 [PRIVACY.md](PRIVACY.md).
+- 학습지원 소프트웨어 필수기준 체크리스트가 [에듀집](https://edzip.kr/learning-sw/6af57631f6157ba37081cb53)에 탑재되어 있습니다.
 
 ## 설치
 ### Windows
