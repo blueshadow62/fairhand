@@ -80,11 +80,17 @@ export type UpdateStatus =
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string };
 export type ExternalLink = 'install' | 'codexInstall' | 'geminiKey' | 'openaiKey' | 'privacy' | 'guide' | 'releases';
 export type LeaveChoice = 'save' | 'discard' | 'stay';
+export type InstallKind = 'claude' | 'codex';
+/** 공식 문서의 설치 명령 그대로(Claude Code: code.claude.com/docs/ko/setup, Codex: github.com/openai/codex). 설치 창에서 돌리고, 누르기 전 확인 창에도 같은 글을 보인다 */
+export const INSTALL_COMMANDS: Record<InstallKind, { win: string; unix: string }> = {
+  claude: { win: 'irm https://claude.ai/install.ps1 | iex', unix: 'curl -fsSL https://claude.ai/install.sh | bash' },
+  codex: { win: 'irm https://chatgpt.com/codex/install.ps1 | iex', unix: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh' },
+};
 
 export const CHANNELS = {
   getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version', notify: 'app:notify',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
-  cliStatus: 'cli:status', cliLogin: 'cli:login',
+  cliStatus: 'cli:status', cliLogin: 'cli:login', cliInstall: 'cli:install',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', openResult: 'review:open-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
@@ -112,6 +118,8 @@ export interface GeulnunApi {
   secretTest(profileId: string): Promise<{ ok: boolean; message: string }>;
   cliStatus(profileId: string): Promise<CliStatusView>;
   cliLogin(profileId: string): Promise<{ ok: boolean; message?: string }>;
+  /** 이 PC의 터미널 창을 열어 공식 설치 명령을 돌린다 */
+  cliInstall(profileId: string): Promise<{ ok: boolean; message?: string }>;
   listSets(): Promise<SetInfo[]>;
   createSet(key: AnswerKey): Promise<SetInfo>;
   deleteSet(폴더: string): Promise<void>;            // 세트 폴더를 학기 폴더 안 .휴지통으로(목록에서 되살리거나 영구 삭제)

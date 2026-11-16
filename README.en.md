@@ -12,7 +12,7 @@ A desktop tool for teachers that transcribes scanned handwritten short-answer/es
 1. Download `fairhand-setup-x.y.z.exe` from [Releases](https://github.com/blueshadow62/fairhand/releases).
 2. Run it. Because it is not code-signed, Windows shows an 'Unknown publisher' / 'Windows protected your PC' warning. Press **More info → Run anyway**. No administrator rights are needed (per-user install).
 3. On first start, open **설정** (Settings) and press the button to create the default folder (Documents), or choose a semester folder, and set an AI profile.
-4. To transcribe with Claude Code, install it and log in ([setup guide](https://code.claude.com/docs/en/setup)). The Settings screen walks you through the login.
+4. To transcribe with Claude Code, install it and log in. In Settings > AI profile, press 'Install CLI'. A PowerShell window opens and runs the official install command. Then press 'Open login'. If the installation fails, see the [setup guide](https://code.claude.com/docs/en/setup).
 
 ### Mac (beta)
 The developer has not used this beta on a real Mac; it has only been launched and screen-checked on CI servers. Please report problems (see [Reporting problems](#reporting-problems)).
@@ -20,7 +20,7 @@ The developer has not used this beta on a real Mac; it has only been launched an
 2. Open the dmg and drag **Fairhand** into Applications. On the Mac the app is named Fairhand; inside it is the same 글눈.
 3. It is not signed by Apple, so the first launch shows a 'cannot be verified' dialog. Press **Done**, then **Open Anyway** at the bottom of System Settings > Privacy & Security, and open it again. If you see 'is damaged and can't be opened', run `xattr -dr com.apple.quarantine /Applications/Fairhand.app` in Terminal and open it again.
 4. There is no automatic update. Download new versions with 'Open releases page' in Settings and replace the app the same way.
-5. Install the Mac versions of Claude Code or Codex. 'Open login' in Settings starts the login in a Terminal window.
+5. Install the Mac versions of Claude Code or Codex. 'Install CLI' in Settings runs the official install command in a Terminal window. 'Open login' starts the login in a Terminal window.
 
 ## Updates
 - The app checks GitHub 10 seconds after start and every 4 hours, only to see whether a new version exists. If there is one, Settings shows 'Download and install'; pressing it downloads the update and restarts the app to install it. If a transcription is running, installing waits and 'Restart to apply' appears instead. A new version is also announced next to the version number at the top ('Update available'); click it to open the update section in Settings.

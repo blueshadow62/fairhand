@@ -23,7 +23,7 @@ import { claudeStatus, locateClaude } from '../engine/status.js';
 import { transcribePage, transcribeSet } from '../engine/transcribe.js';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, type CaseResult, type CaseRevertResult, type CliStatusView, type JudgeResult, type KeyDraftResult, type Profile, type ProgressEvent, type RejudgeResult, type RunResult, type SaveKeyResult, type UnitResultsResult } from '../shared/ipc.js';
 import { addRun, runMeter, statKey, type RunStat } from '../shared/estimate.js';
-import { openLogin } from './launch.js';
+import { openInstall, openLogin } from './launch.js';
 import { rebuildResult, saveKeyFile } from './results.js';
 import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
@@ -116,6 +116,13 @@ export class EngineBridge {
     const program = locateClaude(this.env, existsSync, p.cliPath);
     if (!program) return { ok: false, message: 'Claude Code가 설치되어 있지 않습니다. 설치 안내를 보세요' };
     return openLogin(program, this.cliEnv(p));
+  }
+
+  /** 이미 설치돼 있어도 연다(공식 설치 명령은 최신판으로 덮어쓴다). 프로필의 로그인 폴더는 넘기지 않는다(launch.ts) */
+  async openInstall(id: string): Promise<{ ok: boolean; message?: string }> {
+    const p = await this.profile(id);
+    if (p.종류 !== 'cli' && p.종류 !== 'codex') throw new DataError('CLI 프로필이 아닙니다');
+    return openInstall(p.종류 === 'codex' ? 'codex' : 'claude', this.env);
   }
 
   async testApiKey(id: string): Promise<{ ok: boolean; message: string }> {

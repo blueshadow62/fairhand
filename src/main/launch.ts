@@ -5,6 +5,7 @@ import path from 'node:path';
 import { CODEX_STRIPPED_ENV_VARS } from '../engine/codex.js';
 import { STRIPPED_ENV_VARS } from '../engine/env.js';
 import type { ClaudeProgram } from '../engine/status.js';
+import { INSTALL_COMMANDS, type InstallKind } from '../shared/ipc.js';
 
 export const LOGIN_EXE_ENV = 'GEULNUN_LOGIN_EXE';
 export const LOGIN_ARGS_ENV = 'GEULNUN_LOGIN_ARGS';
@@ -50,6 +51,57 @@ export function macLoginScript(program: ClaudeProgram, env: NodeJS.ProcessEnv, a
 }
 
 const writeExecutable = (file: string, text: string): Promise<void> => writeFile(file, text, { mode: 0o700 });
+
+export const INSTALL_CMD_ENV = 'GEULNUN_INSTALL_CMD';
+export const INSTALL_DONE_ENV = 'GEULNUN_INSTALL_DONE';
+export const INSTALL_DONE_MESSAGE = "설치가 끝났으면 이 창을 닫고 글눈에서 '다시 확인'을 누르세요. 오류가 났으면 글눈의 '설치 안내'를 보세요.";
+// 프로필의 로그인 폴더가 들어가면 설치본이 그 폴더로 간다(Codex 설치 스크립트는 CODEX_HOME 아래에 프로그램을 둔다). 설치는 기본 위치로
+const INSTALL_STRIPPED_ENV = ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', INSTALL_CMD_ENV, INSTALL_DONE_ENV];
+// 명령과 안내 글은 환경 변수로 넘긴다. 명령줄에 넣으면 cmd의 start가 따옴표·한글을 다시 해석한다
+const INSTALL_SCRIPT = [
+  `$c = $env:${INSTALL_CMD_ENV}`, `$m = $env:${INSTALL_DONE_ENV}`,
+  `Remove-Item Env:${INSTALL_CMD_ENV}, Env:${INSTALL_DONE_ENV}`,
+  `Write-Host $c`, `Invoke-Expression $c`, `Write-Host ''`, `Write-Host $m`,
+].join('; ');
+
+export function installCommandLine(env: NodeJS.ProcessEnv): string {
+  const ps = W.join(windowsSystemDir(env), 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  // Codex 공식 안내가 ExecutionPolicy ByPass로 돌린다. 이 창 하나에만 적용된다
+  return `start "" "${ps}" -NoLogo -NoExit -ExecutionPolicy Bypass -Command "${INSTALL_SCRIPT}"`;
+}
+
+export function installChildEnv(kind: InstallKind, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = { ...base };
+  for (const k of INSTALL_STRIPPED_ENV) delete env[k];
+  return { ...env, [INSTALL_CMD_ENV]: INSTALL_COMMANDS[kind].win, [INSTALL_DONE_ENV]: INSTALL_DONE_MESSAGE };
+}
+
+export function macInstallScript(kind: InstallKind): string {
+  return ['#!/bin/sh', 'rm -f "$0"', `unset ${INSTALL_STRIPPED_ENV.join(' ')}`, `echo ${shQuote(INSTALL_COMMANDS[kind].unix)}`,
+    INSTALL_COMMANDS[kind].unix, 'echo', `echo ${shQuote(INSTALL_DONE_MESSAGE)}`].join('\n') + '\n';
+}
+
+/** 'CLI 설치하기': 터미널 창(Windows는 PowerShell, 맥은 터미널)을 열어 공식 설치 명령을 돌린다. 창은 끝나도 남아 결과를 보게 한다 */
+export async function openInstall(kind: InstallKind, env: NodeJS.ProcessEnv, spawn: typeof nodeSpawn = nodeSpawn, platform: NodeJS.Platform = process.platform,
+  writeScript: (file: string, text: string) => Promise<void> = writeExecutable): Promise<{ ok: boolean; message?: string }> {
+  try {
+    if (platform === 'darwin') {
+      const file = path.join(os.tmpdir(), `geulnun-install-${Date.now()}.command`);
+      await writeScript(file, macInstallScript(kind));
+      spawn('open', ['-a', 'Terminal', file], { stdio: 'ignore' }).unref?.();
+      return { ok: true };
+    }
+    if (platform !== 'win32') return { ok: false, message: `터미널을 열어 \`${INSTALL_COMMANDS[kind].unix}\`을 직접 실행해 주세요.` };
+    const child = spawn(installCommandLine(env), [], {
+      cwd: windowsSystemDir(env), env: installChildEnv(kind, env),
+      shell: W.join(windowsSystemDir(env), 'cmd.exe'), stdio: 'ignore', windowsHide: true,
+    });
+    child.unref?.();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: `설치 창을 열지 못했습니다: ${(e as Error).message}` };
+  }
+}
 
 export async function openLogin(program: ClaudeProgram, env: NodeJS.ProcessEnv, spawn: typeof nodeSpawn = nodeSpawn, platform: NodeJS.Platform = process.platform,
   args: readonly string[] = CLAUDE_LOGIN_ARGS, writeScript: (file: string, text: string) => Promise<void> = writeExecutable): Promise<{ ok: boolean; message?: string }> {

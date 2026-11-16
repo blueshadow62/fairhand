@@ -5,7 +5,7 @@ import type { GeulnunApi, IpcResult, ProgressEvent, UpdateStatus } from '../shar
 const CHANNELS = {
   getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version', notify: 'app:notify',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
-  cliStatus: 'cli:status', cliLogin: 'cli:login',
+  cliStatus: 'cli:status', cliLogin: 'cli:login', cliInstall: 'cli:install',
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', openResult: 'review:open-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
@@ -37,6 +37,7 @@ const api: GeulnunApi = {
   secretTest: (id) => call(CHANNELS.secretTest, id),
   cliStatus: (id) => call(CHANNELS.cliStatus, id),
   cliLogin: (id) => call(CHANNELS.cliLogin, id),
+  cliInstall: (id) => call(CHANNELS.cliInstall, id),
   listSets: () => call(CHANNELS.listSets),
   deleteSet: (폴더) => call(CHANNELS.deleteSet, 폴더),
   listTrash: () => call(CHANNELS.listTrash),

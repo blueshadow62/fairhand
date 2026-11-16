@@ -69,6 +69,7 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.secretTest, (id: string) => d.bridge.testApiKey(id));
   h(CHANNELS.cliStatus, (id: string) => d.bridge.cliStatus(id));
   h(CHANNELS.cliLogin, (id: string) => d.bridge.openLogin(id));
+  h(CHANNELS.cliInstall, (id: string) => d.bridge.openInstall(id));
 
   h(CHANNELS.listSets, async () => listSets(await semester()));
   h(CHANNELS.deleteSet, async (폴더: string) => {

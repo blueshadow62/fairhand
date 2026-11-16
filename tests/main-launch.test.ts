@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LOGIN_ARGS_ENV, LOGIN_EXE_ENV, loginChildEnv, loginCommandLine, macLoginScript, openLogin, shQuote, windowsSystemDir } from '../src/main/launch.js';
+import { INSTALL_CMD_ENV, INSTALL_DONE_ENV, LOGIN_ARGS_ENV, LOGIN_EXE_ENV, installChildEnv, installCommandLine, loginChildEnv, loginCommandLine, macInstallScript, macLoginScript, openInstall, openLogin, shQuote, windowsSystemDir } from '../src/main/launch.js';
+import { INSTALL_COMMANDS } from '../src/shared/ipc.js';
 
 test('loginCommandLine: 시스템 폴더의 PowerShell 전체 경로, 창이 남고, 명령은 상수(경로가 안 들어감)', () => {
   const line = loginCommandLine({ SystemRoot: 'C:\\Windows' });
@@ -58,4 +59,44 @@ test('macLoginScript: 스스로 지우고, API 키 변수는 지우고, 로그�
   assert.ok(!s.includes('CLAUDE_CONFIG_DIR='));
   assert.equal(lines.at(-1), `'/Users/o'\\''neil/My Apps/codex' 'login'`);
   assert.equal(shQuote("a'b"), `'a'\\''b'`);
+});
+
+test('installCommandLine: PowerShell 창을 남기고, 명령·URL은 명령줄에 넣지 않는다', () => {
+  const line = installCommandLine({ SystemRoot: 'C:\\Windows' });
+  assert.ok(line.startsWith('start "" "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoLogo -NoExit -ExecutionPolicy Bypass -Command "'));
+  assert.ok(line.includes(`$env:${INSTALL_CMD_ENV}`) && line.includes(`$env:${INSTALL_DONE_ENV}`));
+  assert.ok(!line.includes('https://'));
+  assert.equal((line.match(/"/g) ?? []).length, 6); // start의 제목·실행 파일·명령 세 쌍. 명령 안에 큰따옴표가 있으면 cmd가 잘못 나눈다
+});
+
+test('installChildEnv: 공식 명령을 넘기고, 프로필의 로그인 폴더는 지운다(설치는 기본 위치로)', () => {
+  const e = installChildEnv('codex', { CODEX_HOME: 'C:\\u\\.codex-b', CLAUDE_CONFIG_DIR: 'C:\\u\\.claude-max', PATH: 'p' });
+  assert.equal(e[INSTALL_CMD_ENV], 'irm https://chatgpt.com/codex/install.ps1 | iex');
+  assert.match(e[INSTALL_DONE_ENV] ?? '', /다시 확인/);
+  assert.equal(e.CODEX_HOME, undefined); assert.equal(e.CLAUDE_CONFIG_DIR, undefined); assert.equal(e.PATH, 'p');
+  assert.equal(installChildEnv('claude', {})[INSTALL_CMD_ENV], 'irm https://claude.ai/install.ps1 | iex');
+});
+
+test('openInstall: Windows는 cmd.exe로 start, 맥은 .command를 터미널로, 리눅스는 직접 실행할 명령을 알린다', async () => {
+  const calls: { cmd: string; args: string[]; opts: any }[] = [];
+  const spawn = ((cmd: string, args: string[], opts: any) => { calls.push({ cmd, args, opts }); return { unref: () => undefined } as any; }) as any;
+  const r = await openInstall('claude', { SystemRoot: 'C:\\Windows', CLAUDE_CONFIG_DIR: 'C:\\x' }, spawn, 'win32');
+  assert.equal(r.ok, true);
+  assert.equal(calls[0]!.opts.shell, 'C:\\Windows\\System32\\cmd.exe');
+  assert.equal(calls[0]!.opts.env[INSTALL_CMD_ENV], INSTALL_COMMANDS.claude.win);
+  assert.equal(calls[0]!.opts.env.CLAUDE_CONFIG_DIR, undefined);
+  const written: { file: string; text: string }[] = [];
+  const m = await openInstall('codex', {}, spawn, 'darwin', async (file, text) => { written.push({ file, text }); });
+  assert.equal(m.ok, true);
+  assert.match(written[0]!.file, /geulnun-install-\d+\.command$/);
+  assert.deepEqual(calls[1]!.args, ['-a', 'Terminal', written[0]!.file]);
+  const l = await openInstall('codex', {}, spawn, 'linux');
+  assert.equal(l.ok, false); assert.ok(l.message?.includes(INSTALL_COMMANDS.codex.unix));
+});
+
+test('macInstallScript: 스스로 지우고, 로그인 폴더 변수를 지운 뒤 공식 명령을 그대로 돌린다', () => {
+  const lines = macInstallScript('claude').trimEnd().split('\n');
+  assert.equal(lines[0], '#!/bin/sh'); assert.equal(lines[1], 'rm -f "$0"');
+  assert.ok(lines[2]!.split(' ').includes('CODEX_HOME') && lines[2]!.split(' ').includes('CLAUDE_CONFIG_DIR'));
+  assert.ok(lines.includes('curl -fsSL https://claude.ai/install.sh | bash'));
 });

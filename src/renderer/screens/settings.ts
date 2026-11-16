@@ -1,4 +1,4 @@
-import { DEFAULT_EFFORT, DEFAULT_GEMINI_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus } from '../../shared/ipc.js';
+import { DEFAULT_EFFORT, DEFAULT_GEMINI_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL, EFFORTS, GEMINI_MODELS, MODELS, OPENAI_MODELS, THEMES, type CliStatusView, type EffortLevel, type Language, type ModelId, type Profile, type Rotation, type SecretView, type Theme, type UpdateStatus, INSTALL_COMMANDS } from '../../shared/ipc.js';
 import { priceVars } from '../../shared/prices.js';
 import { applyTheme, reloadTo, type Ctx } from '../app.js';
 import { api } from '../lib/api.js';
@@ -272,6 +272,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('div', { class: 'band info' }, t(codex ? 'settings.codex.howto' : 'settings.cli.howto')),
         el('div', { class: 'band warn' }, t(codex ? 'settings.codex.privacy' : 'settings.cli.privacy')),
         el('div', { class: 'row' },
+          el('button', { onclick: () => guard(async () => {
+            const mac = /Mac/.test(navigator.platform), cmd = INSTALL_COMMANDS[codex ? 'codex' : 'claude'][mac ? 'unix' : 'win'];
+            // 인터넷에서 받은 설치 스크립트를 돌리는 일이라 무엇을 돌리는지 보이고 한 번 묻는다
+            if (!confirm(t('settings.installConfirm', { term: mac ? t('settings.terminalMac') : 'PowerShell', name: codex ? 'Codex' : 'Claude Code', cmd }))) return;
+            await synced();
+            const r = await api.cliInstall(p.id);
+            if (r.ok) showInfo(t('settings.installOpened')); else showError(r.message ?? t('settings.installFailed'));
+          }) }, t('settings.install')),
           el('button', { onclick: () => guard(async () => {
             await synced();
             const r = await api.cliLogin(p.id);
