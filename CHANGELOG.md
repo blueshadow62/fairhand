@@ -1,6 +1,6 @@
 # 변경 기록
 
-## 0.2.16 (준비 중)
+## 0.2.16 (2026-11-16)
 - 설정 > AI 프로필: Claude Code·Codex 칸에 'CLI 설치하기' 단추를 단다. 누르면 실행할 공식 설치 명령을 보이고 한 번 물은 뒤, PowerShell 창(맥은 터미널)을 열어 그 명령을 돌린다(Claude Code는 `irm https://claude.ai/install.ps1 | iex`, Codex는 `irm https://chatgpt.com/codex/install.ps1 | iex`. 맥은 각 `curl … | sh`). 전에는 '설치 안내'가 설치 설명 웹 페이지만 열어 명령을 직접 복사해 터미널에 붙여야 했다. '설치 안내'는 설치가 안 될 때 보도록 그대로 둔다. 설치는 프로필의 로그인 폴더와 상관없이 기본 위치로 한다.
 - Codex: PATH에 없으면 공식 설치 위치(Windows `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`, 맥 `~/.local/bin`)에서도 찾는다. 'CLI 설치하기'로 막 설치한 Codex를 글눈을 다시 켜지 않고 '다시 확인'으로 찾게 하려는 것이다. Codex 공식 설치 명령은 Node.js가 없어도 된다.
 
