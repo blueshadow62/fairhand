@@ -60,6 +60,15 @@ test('locateCodex: 설정 경로가 먼저, npm의 codex.cmd는 node로 bin/code
   assert.equal(locateCodex({ PATH: '' }, exists, undefined, 'win32'), null);
 });
 
+test('locateCodex: PATH에 없으면 공식 설치 위치(설치 직후 글눈의 PATH에는 아직 없다)', () => {
+  const win = 'C:\\Users\\t\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe';
+  assert.deepEqual(locateCodex({ PATH: '', LOCALAPPDATA: 'C:\\Users\\t\\AppData\\Local' }, p => p === win, undefined, 'win32'), { command: win, prefixArgs: [] });
+  assert.equal(locateCodex({ PATH: '' }, () => true, undefined, 'win32'), null); // LOCALAPPDATA가 없으면 짐작하지 않는다
+  // PATH에 있는 것이 먼저(이미 쓰던 설치본을 바꾸지 않는다)
+  assert.deepEqual(locateCodex({ PATH: 'C:\\npm', LOCALAPPDATA: 'C:\\Users\\t\\AppData\\Local' }, p => p === win || p === 'C:\\npm\\codex.exe', undefined, 'win32'), { command: 'C:\\npm\\codex.exe', prefixArgs: [] });
+  assert.deepEqual(locateCodex({ PATH: '/usr/bin', HOME: '/Users/t' }, p => p === '/Users/t/.local/bin/codex', undefined, 'darwin'), { command: '/Users/t/.local/bin/codex', prefixArgs: [] });
+});
+
 test('locateCodex(맥·리눅스): PATH를 :로 나눠 확장자 없는 codex를 찾고, npm 설치본도 그대로 실행한다', () => {
   const exists = (p: string) => p === '/opt/homebrew/bin/codex';
   assert.deepEqual(locateCodex({ PATH: '/usr/bin:/opt/homebrew/bin' }, exists, undefined, 'darwin'), { command: '/opt/homebrew/bin/codex', prefixArgs: [] });

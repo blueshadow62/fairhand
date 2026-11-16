@@ -27,8 +27,9 @@ export function codexEnv(base: NodeJS.ProcessEnv, opts: { configDir?: string } =
 }
 
 /**
- * Windows: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex.exe → PATH의 codex.cmd(npm 설치)
- * 맥·리눅스: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex(npm·Homebrew 설치본도 그대로 실행된다)
+ * Windows: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex.exe → PATH의 codex.cmd(npm 설치) → 공식 설치 위치(%LOCALAPPDATA%\Programs\OpenAI\Codex\bin)
+ * 맥·리눅스: 설정 경로 → GEULNUN_CODEX_PATH → PATH의 codex(npm·Homebrew 설치본도 그대로 실행된다) → 공식 설치 위치(~/.local/bin)
+ * 공식 설치 위치는 맨 뒤에 본다. 'CLI 설치하기'로 막 설치하면 글눈이 시작할 때 읽은 PATH에는 아직 없어서, 다시 켜지 않고도 '다시 확인'에서 찾게 하려는 것이다
  */
 export function locateCodex(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync, configuredPath?: string, platform: NodeJS.Platform = process.platform): ClaudeProgram | null {
   const win = platform === 'win32';
@@ -38,14 +39,18 @@ export function locateCodex(env: NodeJS.ProcessEnv = process.env, exists: (p: st
   }
   const configured = env.GEULNUN_CODEX_PATH;
   if (configured && exists(configured)) return { command: configured, prefixArgs: [] };
+  const P = win ? path.win32 : path.posix;
+  const home = (win ? env.USERPROFILE ?? env.HOME : env.HOME ?? env.USERPROFILE) ?? '';
+  const standalone = win ? (env.LOCALAPPDATA ? P.join(env.LOCALAPPDATA, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe') : '') : home ? P.join(home, '.local', 'bin', 'codex') : '';
+  const official = (): ClaudeProgram | null => (standalone && exists(standalone) ? { command: standalone, prefixArgs: [] } : null);
   if (!win) {
     const bin = onPath('codex', env, exists, platform);
-    return bin ? { command: bin, prefixArgs: [] } : null;
+    return bin ? { command: bin, prefixArgs: [] } : official();
   }
   const exe = onPath('codex.exe', env, exists, platform);
   if (exe) return { command: exe, prefixArgs: [] };
   const cmd = onPath('codex.cmd', env, exists, platform);
-  return cmd ? fromNpmShim(cmd, env, exists) : null;
+  return cmd ? fromNpmShim(cmd, env, exists) : official();
 }
 
 /** npm의 codex.cmd는 셸이 있어야 돌아가므로(인수에 경로가 들어가 셸 인용이 위험) node로 bin/codex.js를 직접 실행한다. Windows 전용 */
