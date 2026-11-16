@@ -18,13 +18,18 @@ export function toItems(transcripts: Transcript[]): ReviewItem[] {
 
 export const isProblem = (i: ReviewItem): boolean => i.중복 || i.식별확신 !== '확실';
 
-/** 문제먼저: 중복·불명·추정 → 비고 있음 → 나머지, 묶음 안은 page 순. 검색: 번호(숫자 일치) 또는 이름 부분 일치 */
+// 읽지 못한 학년·반·번호(null)는 뒤로 보낸다. 앞에 두면 1반 1번보다 먼저 보여 출석부 순서가 흐트러진다
+const byNum = (a: number | null, b: number | null) => (a === b ? 0 : a === null ? 1 : b === null ? -1 : a - b);
+const byStudent = (a: ReviewItem, b: ReviewItem) => byNum(a.학년, b.학년) || byNum(a.반, b.반) || byNum(a.번호, b.번호) || a.page - b.page;
+
+/** 문제먼저: 중복·불명·추정 → 비고 있음 → 나머지. 묶음 안은 학년·반·번호 순(같으면 page 순)이라, 번호를 고쳐 저장하면 다시 읽을 때 제자리로 간다.
+ *  검색: 번호(숫자 일치) 또는 이름 부분 일치 */
 export function applyFilter(items: ReviewItem[], f: Filter): ReviewItem[] {
   const q = f.검색.trim();
   const out = items.filter(i => (!f.비고만 || i.비고수 > 0) && (f.반 === null || i.반 === f.반) && (!f.미확인만 || !i.확인완료)
     && (!q || (/^\d+$/.test(q) ? i.번호 === Number(q) : (i.이름 ?? '').includes(q))));
   const group = (i: ReviewItem) => (!f.문제먼저 ? 0 : isProblem(i) ? 0 : i.비고수 > 0 ? 1 : 2);
-  return out.sort((a, b) => group(a) - group(b) || a.page - b.page);
+  return out.sort((a, b) => group(a) - group(b) || byStudent(a, b));
 }
 
 /** 명단이 있으면 명단(대상 학년·반) 중 전사에 없는 학생, 없으면 반별 인원 기준(1..인원 중 없는 번호) */

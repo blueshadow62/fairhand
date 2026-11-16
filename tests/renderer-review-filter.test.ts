@@ -12,10 +12,19 @@ test('toItems: 같은 학년·반·번호가 두 장이면 중복', () => {
 
 test('applyFilter: 문제 먼저, 비고만, 반, 검색', () => {
   const items = toItems([t(1, 1), t(2, 2, { 비고: ['x'] }), t(3, 3, { 식별확신: '불명', 번호: null }), t(4, 4, { 반: 2 }), t(5, 1)]);
-  assert.deepEqual(applyFilter(items, { 비고만: false, 문제먼저: true, 반: null, 검색: '', 미확인만: false }).map(i => i.page), [1, 3, 5, 2, 4]);
+  assert.deepEqual(applyFilter(items, { 비고만: false, 문제먼저: true, 반: null, 검색: '', 미확인만: false }).map(i => i.page), [1, 5, 3, 2, 4]);
   assert.deepEqual(applyFilter(items, { 비고만: true, 문제먼저: false, 반: null, 검색: '', 미확인만: false }).map(i => i.page), [2]);
   assert.deepEqual(applyFilter(items, { 비고만: false, 문제먼저: false, 반: 2, 검색: '', 미확인만: false }).map(i => i.page), [4]);
   assert.deepEqual(applyFilter(items, { 비고만: false, 문제먼저: false, 반: null, 검색: '4', 미확인만: false }).map(i => i.page), [4]);
+});
+
+test('applyFilter: 반·번호 순, 읽지 못한 번호는 뒤, 번호를 고치면 제자리로', () => {
+  const none = { 비고만: false, 문제먼저: false, 반: null, 검색: '', 미확인만: false };
+  // 3쪽은 반만 읽혀 1반 끝, 6쪽은 아무것도 못 읽어 맨 끝
+  const sheets = [t(1, 3, { 반: 2 }), t(2, 10), t(3, null, { 식별확신: '불명' }), t(4, 2), t(5, 1, { 반: 2 }), t(6, null, { 학년: null, 반: null, 식별확신: '불명' })];
+  assert.deepEqual(applyFilter(toItems(sheets), none).map(i => i.page), [4, 2, 3, 5, 1, 6]);
+  sheets[1] = t(2, 1); // 손글씨 10을 1로 고쳐 저장
+  assert.deepEqual(applyFilter(toItems(sheets), none).map(i => i.page), [2, 4, 3, 5, 1, 6]);
 });
 
 test('missingStudents: 명단이 없으면 인원 기준, 있으면 명단 기준', () => {
