@@ -1,15 +1,19 @@
 import { decide, findCase, normalizeAnswer } from './rejudge.js';
 import { DataError, type AnswerKey, type Case, type Panjeong, type Transcript } from './types.js';
 
-/** 문항별 검토에서 한 장에 정할 것. 판정(정량)·응답(정성)·답(AI가 옮긴 글을 고친 것)이 없으면 확인 표시만 한다 */
-export interface UnitResultItem { page: number; 판정?: Panjeong; 응답?: boolean; 답?: string }
+/**
+ * 문항별 검토에서 한 장에 정할 것. 판정(정량)·응답(정성)·답(AI가 옮긴 글을 고친 것)이 없으면 확인 표시만 한다.
+ * 확인: false면 그 단위의 확인을 푼다(답 줄의 '확인' 상자를 끈 것). 없거나 true면 확인으로 표시한다
+ */
+export interface UnitResultItem { page: number; 판정?: Panjeong; 응답?: boolean; 답?: string; 확인?: boolean }
 /** 한 단위의 여러 장을 한꺼번에 정하는 요청. 사례기록이면 답 묶음 전체를 O·X로 바꾼 것을 사례로 남긴다 */
 export interface UnitResultsRequest { 단위: string; 항목: UnitResultItem[]; 사례기록?: boolean }
 /**
  * 쓸전사: 판정·응답·답·확인 표시 중 하나라도 바뀐 장. 바뀐장수: 판정·응답·답이 바뀐 장(엑셀을 다시 만들 일). 확인장수: 새로 확인한 장.
- * 글고침: 답 글을 고친 장. 판정필요: 글을 고쳤는데 글자만으로 판정이 정해지지 않아 확인을 푼 장(선생님이 O·X를 고를 일)
+ * 글고침: 답 글을 고친 장. 판정필요: 글을 고쳤는데 글자만으로 판정이 정해지지 않아 확인을 푼 장(선생님이 O·X를 고를 일).
+ * 해제장수: 확인: false로 확인을 푼 장(확인되어 있던 장만 센다)
  */
-export interface UnitResultsPlan { 쓸전사: Transcript[]; 바뀐장수: number; 확인장수: number; 글고침: number; 판정필요: number; 사례: Case[] }
+export interface UnitResultsPlan { 쓸전사: Transcript[]; 바뀐장수: number; 확인장수: number; 해제장수: number; 글고침: number; 판정필요: number; 사례: Case[] }
 
 export const MAX_UNIT_ITEMS = 1000;
 /** 고친 답 글 하나의 길이 한도(논술형 단위의 답도 들어갈 만큼) */
@@ -64,10 +68,11 @@ export function unitResultsRequest(raw: unknown): UnitResultsRequest {
     if (x.판정 !== undefined && !VERDICTS.includes(x.판정)) throw new DataError('판정 값이 잘못되었습니다');
     if (x.응답 !== undefined && typeof x.응답 !== 'boolean') throw new DataError('응답 값은 true/false여야 합니다');
     if (x.답 !== undefined && (typeof x.답 !== 'string' || x.답.length > MAX_ANSWER_LEN)) throw new DataError(`고친 답 글은 ${MAX_ANSWER_LEN}자 이하의 글자여야 합니다`);
+    if (x.확인 !== undefined && typeof x.확인 !== 'boolean') throw new DataError('확인 값은 true/false여야 합니다');
     const it: UnitResultItem = { page: x.page as number, ...(x.판정 !== undefined ? { 판정: x.판정 as Panjeong } : {}), ...(x.응답 !== undefined ? { 응답: x.응답 as boolean } : {}),
-      ...(x.답 !== undefined ? { 답: x.답 as string } : {}) };
+      ...(x.답 !== undefined ? { 답: x.답 as string } : {}), ...(x.확인 !== undefined ? { 확인: x.확인 as boolean } : {}) };
     const prev = byPage.get(it.page);
-    if (prev && (prev.판정 !== it.판정 || prev.응답 !== it.응답 || prev.답 !== it.답)) throw new DataError('같은 장을 서로 다르게 정한 요청입니다');
+    if (prev && (prev.판정 !== it.판정 || prev.응답 !== it.응답 || prev.답 !== it.답 || prev.확인 !== it.확인)) throw new DataError('같은 장을 서로 다르게 정한 요청입니다');
     byPage.set(it.page, it);
   }
   return { 단위: o.단위, 항목: [...byPage.values()], 사례기록: o.사례기록 === true };
@@ -89,7 +94,7 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
 
   const units = [...key.정량, ...key.정성].map(u => u.id);
   const 쓸전사: Transcript[] = [];
-  let 바뀐장수 = 0, 확인장수 = 0, 글고침 = 0, 판정필요 = 0;
+  let 바뀐장수 = 0, 확인장수 = 0, 해제장수 = 0, 글고침 = 0, 판정필요 = 0;
   for (const it of req.항목) {
     const t = byPage.get(it.page)!;
     let next = t, changed = false;
@@ -114,6 +119,8 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
       if (newText && it.응답 === undefined) check = 'keep'; // 응답형은 응답 여부로만 채점하므로 글만 고쳤으면 응답·확인 표시는 그대로
       if (답 !== cur.답 || 응답 !== cur.응답) { next = { ...next, 정성: { ...next.정성, [단위]: { ...cur, 답, 응답 } } }; changed = true; }
     }
+    // 선생님이 '확인' 상자를 끈 것: 판정은 그대로 두고 이 단위의 확인만 푼다(확인 완료한 장은 다른 단위의 확인을 남긴다)
+    if (it.확인 === false) { check = 'unmark'; if (unitChecked(t, 단위)) 해제장수++; }
     if (check === 'mark') {
       const marks = t.확인단위 ?? [];
       if (!marks.includes(단위)) next = { ...next, 확인단위: [...marks, 단위] };
@@ -145,5 +152,5 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
       사례.push({ 단위, 답, 판정: v, 일시: now.toISOString(), 출처: '문항별 검토' });
     }
   }
-  return { 쓸전사, 바뀐장수, 확인장수, 글고침, 판정필요, 사례 };
+  return { 쓸전사, 바뀐장수, 확인장수, 해제장수, 글고침, 판정필요, 사례 };
 }

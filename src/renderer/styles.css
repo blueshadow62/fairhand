@@ -440,6 +440,8 @@ dialog.case-confirm .actions { justify-content: flex-end; margin: 4px 0 0; }
 .item-review .unit.done .meta { color: var(--ok); }
 .item-review .tag-warn { display: inline-block; padding: 0 6px; border: 1px solid var(--warn-line); border-radius: var(--r-s); background: var(--warn-soft); color: var(--warn-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
 .item-review .ok-text { color: var(--ok); font-weight: 600; }
+.item-review .row-check { display: inline-flex; flex: none; align-items: center; gap: 4px; font-size: var(--fs-m); color: var(--text-2); cursor: pointer; user-select: none; }
+.item-review .row-check.on { color: var(--ok); font-weight: 600; }
 .item-review .groups { overflow: auto; padding: 10px 14px 20px; }
 .item-review .ir-head { padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .item-review .ir-head .row { margin: 6px 0 4px; }

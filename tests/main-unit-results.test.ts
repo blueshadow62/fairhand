@@ -65,7 +65,7 @@ test('setUnitResults: 확인만 하면 판정·엑셀은 그대로, 모든 단�
   const { dir, set, bridge, page, xlsx } = await setup();
   try {
     const r = await bridge.setUnitResults(set, { 단위: '3-1', 항목: [{ page: 1 }, { page: 3 }] }, NOW);
-    assert.deepEqual(r, { 바뀐장수: 0, 확인장수: 2, 글고침: 0, 판정필요: 0, 사례수: 0 });
+    assert.deepEqual(r, { 바뀐장수: 0, 확인장수: 2, 해제장수: 0, 글고침: 0, 판정필요: 0, 사례수: 0 });
     assert.equal(await xlsx(), 0);
     for (const 단위 of ['1-1', 'E1']) await bridge.setUnitResults(set, { 단위, 항목: [{ page: 1 }] }, NOW);
     const p1 = await page(1);
@@ -73,7 +73,7 @@ test('setUnitResults: 확인만 하면 판정·엑셀은 그대로, 모든 단�
     assert.deepEqual(p1.정량['3-1'], { 답: '열심히', 판정: 'X' });
     assert.notEqual((await page(3)).확인완료, true);
     const again = await bridge.setUnitResults(set, { 단위: 'E1', 항목: [{ page: 1, 응답: true }] }, NOW);
-    assert.deepEqual(again, { 바뀐장수: 0, 확인장수: 0, 글고침: 0, 판정필요: 0, 사례수: 0 });
+    assert.deepEqual(again, { 바뀐장수: 0, 확인장수: 0, 해제장수: 0, 글고침: 0, 판정필요: 0, 사례수: 0 });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -85,5 +85,19 @@ test('setUnitResults: 잘못된 요청은 아무것도 쓰지 않고 거절', as
       await assert.rejects(bridge.setUnitResults(set, bad, NOW), DataError, JSON.stringify(bad));
     assert.equal(JSON.stringify((await loadSet(set)).transcripts), before);
     assert.equal((await page(1)).확인단위, undefined);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('setUnitResults 확인 풀기: 판정·엑셀은 그대로 두고 그 단위의 확인만 풀며, 해제장수로 알린다', async () => {
+  const { dir, set, bridge, page, xlsx } = await setup();
+  try {
+    await bridge.setUnitResults(set, { 단위: '3-1', 항목: [{ page: 1 }] }, NOW);
+    assert.deepEqual((await page(1)).확인단위, ['3-1']);
+    const r = await bridge.setUnitResults(set, { 단위: '3-1', 항목: [{ page: 1, 확인: false }] }, NOW);
+    assert.deepEqual(r, { 바뀐장수: 0, 확인장수: 0, 해제장수: 1, 글고침: 0, 판정필요: 0, 사례수: 0 });
+    assert.equal(await xlsx(), 0);
+    const p1 = await page(1);
+    assert.equal(p1.확인단위, undefined);
+    assert.deepEqual(p1.정량['3-1'], { 답: '열심히', 판정: 'X' });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

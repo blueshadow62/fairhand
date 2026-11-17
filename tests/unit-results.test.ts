@@ -64,7 +64,7 @@ test('planUnitResults: 지금 판정과 같으면 확인 표시만, 이미 확�
   assert.equal(p.바뀐장수, 0); assert.equal(p.확인장수, 1);
   assert.deepEqual(p.쓸전사[0]!.확인단위, ['1-1']);
   const again = plan(p.쓸전사, req('1-1', [{ page: 1, 판정: 'O' }]));
-  assert.deepEqual(again, { 쓸전사: [], 바뀐장수: 0, 확인장수: 0, 글고침: 0, 판정필요: 0, 사례: [] });
+  assert.deepEqual(again, { 쓸전사: [], 바뀐장수: 0, 확인장수: 0, 해제장수: 0, 글고침: 0, 판정필요: 0, 사례: [] });
   const done = plan([tr(1, '가나', 'O', { 확인완료: true })], req('1-1', [{ page: 1 }])); // 답안지별에서 확인 완료한 장은 이미 확인한 것
   assert.equal(done.확인장수, 0);
   assert.deepEqual(done.쓸전사[0]!.확인단위, ['1-1']);
@@ -190,4 +190,28 @@ test('uncheckChanged: 다시 판정이 바꾼 단위의 확인을 빼고 확인 
     assert.equal(r.transcript, t);
     assert.equal(r.다시확인, false);
   }
+});
+
+test('unitResultsRequest 확인: true/false만 받고, 같은 장을 확인과 확인 풀기로 함께 정한 요청은 거절', () => {
+  assert.deepEqual(unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 확인: false }, { page: 2, 확인: true }] }).항목, [{ page: 1, 확인: false }, { page: 2, 확인: true }]);
+  for (const bad of ['false', 0, null]) assert.throws(() => unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 확인: bad }] }), /확인 값/, String(bad));
+  assert.throws(() => unitResultsRequest({ 단위: '1-1', 항목: [{ page: 1, 확인: false }, { page: 1 }] }), /서로 다르게/);
+});
+
+test("planUnitResults 확인: false('확인' 상자를 끔): 판정은 그대로 두고 그 단위의 확인만 푼다", () => {
+  // 문항별에서 단위마다 확인한 장
+  const p = plan([tr(1, '가나', 'O', { 확인단위: ['1-1', '3-1'] })], req('1-1', [{ page: 1, 확인: false }]));
+  assert.deepEqual([p.해제장수, p.확인장수, p.바뀐장수], [1, 0, 0]);
+  assert.deepEqual(p.쓸전사[0]!.확인단위, ['3-1']);
+  assert.deepEqual(p.쓸전사[0]!.정량['1-1'], { 답: '가나', 판정: 'O' });
+  // 답안지별에서 확인 완료한 장: 확인 완료를 풀고 다른 단위의 확인은 그대로 둔다
+  const sheet = plan([tr(2, '가나', 'O', { 확인완료: true })], req('1-1', [{ page: 2, 확인: false }])).쓸전사[0]!;
+  assert.deepEqual([sheet.확인완료, sheet.확인단위], [false, ['3-1', 'E1']]);
+  // 다시 켜면 확인하고, 모든 단위를 확인했으면 확인 완료로 돌아온다
+  assert.equal(plan([sheet], req('1-1', [{ page: 2 }])).쓸전사[0]!.확인완료, true);
+  // 확인하지 않은 장은 쓸 것이 없다
+  assert.deepEqual(plan([tr(3, '가나', 'O')], req('1-1', [{ page: 3, 확인: false }])), { 쓸전사: [], 바뀐장수: 0, 확인장수: 0, 해제장수: 0, 글고침: 0, 판정필요: 0, 사례: [] });
+  // 정성 단위도 응답은 그대로 두고 확인만 푼다
+  const qual = plan([tr(4, '가나', 'O', { 확인단위: ['E1'] })], req('E1', [{ page: 4, 확인: false }]));
+  assert.deepEqual([qual.해제장수, qual.쓸전사[0]!.확인단위, qual.쓸전사[0]!.정성.E1], [1, undefined, { 응답: true, 답: '생각' }]);
 });

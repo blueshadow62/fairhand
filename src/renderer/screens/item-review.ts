@@ -324,8 +324,13 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     el('div', { class: 'verdicts', role: 'group' }, ...VERDICTS.map(v => el('button', { class: `v-${v}${v === current ? ' on' : ''}`, 'data-focus': `${focus}:${v}`, 'aria-pressed': String(v === current),
       disabled: busy, title: t(title), onclick: () => onPick(v) }, t(`verdict.${v}`))));
 
-  const checkMark = (tr: Transcript, 단위: string): HTMLElement =>
-    unitChecked(tr, 단위) ? el('span', { class: 'ok-text', title: t('item.checked') }, '✓') : el('span', { class: 'muted' }, t('item.unchecked'));
+  /** 답마다 '확인' 상자: 판정은 그대로 두고 그 답의 확인만 켜고 끈다(전에는 표시만 있어, 이미 켜진 판정 단추를 다시 눌러야 확인됐다) */
+  const checkBox = (tr: Transcript, 단위: string, n: number): HTMLElement => {
+    const on = unitChecked(tr, 단위);
+    const cb = el('input', { type: 'checkbox', 'data-focus': `ck:${n}`, checked: on, disabled: busy, 'aria-label': t('item.checkRow', { n }),
+      onchange: () => void send(단위, [cb.checked ? { page: tr.page } : { page: tr.page, 확인: false }]) });
+    return el('label', { class: `row-check${on ? ' on' : ''}`, title: t('item.checkHelp') }, cb, t('item.check'));
+  };
 
   // ── 글 고치기: AI가 옮긴 글을 손글씨와 견주어 고친다. 판정은 메인이 정한다(글자로 정해지면 맞추고, 아니면 확인을 풀어 선생님이 고르게) ──
   const isEditing = (단위: string, page: number): boolean => textEdit === `${단위}\u0000${page}`;
@@ -380,7 +385,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
         el('span', { class: 'anon' }, t('item.answerN', { n })),
         editingThis ? textEditor(u.id, page, n, v.답, longText(u, v.답))
           : el('div', { class: 'answer' }, own === g.대표 ? '' : answerText(u, own)), // 대표 답과 글자가 다를 때만 원래 글을 보인다
-        checkMark(tr, u.id),
+        checkBox(tr, u.id, n),
         verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
         editingThis ? null : editButton(u.id, page, n),
         el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(page, n) }, t('item.viewImage')),
@@ -393,7 +398,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
   function qtyCell(u: QtyUnit, g: AnswerGroup, page: number, n: number, tr: Transcript, grid: Grid): HTMLElement {
     const v = tr.정량[u.id] ?? { 답: '', 판정: '빈칸' as Panjeong }, own = v.답.trim(), editingThis = isEditing(u.id, page);
     return el('div', { class: `hw-cell${view?.page === page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` }, hwCanvas(page, n, grid),
-      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
+      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkBox(tr, u.id, n)),
       editingThis ? textEditor(u.id, page, n, v.답, longText(u, v.답)) : own === g.대표 ? null : el('div', { class: 'answer' }, answerText(u, own)),
       el('div', { class: 'hw-actions' }, verdictButtons(v.판정, 'item.rowVerdict', `rv:${n}`, p => void send(u.id, [{ page, 판정: p }])),
         editingThis ? null : editButton(u.id, page, n),
@@ -406,7 +411,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     const cb = el('input', { type: 'checkbox', 'data-focus': `qr:${n}`, checked: v.응답, disabled: busy, onchange: () => void send(u.id, [{ page: tr.page, 응답: cb.checked }]) });
     const editingThis = isEditing(u.id, tr.page);
     return el('div', { class: `hw-cell${view?.page === tr.page ? ' viewing' : ''}${editingThis ? ' text-editing' : ''}` }, hwCanvas(tr.page, n, grid),
-      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkMark(tr, u.id)),
+      el('div', { class: 'hw-meta' }, el('span', { class: 'anon' }, t('item.answerN', { n })), checkBox(tr, u.id, n)),
       editingThis ? textEditor(u.id, tr.page, n, v.답, longText(u, v.답)) : el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
       el('div', { class: 'hw-actions' }, el('label', {}, cb, t('review.responded')),
         editingThis ? null : editButton(u.id, tr.page, n),
@@ -421,7 +426,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       el('span', { class: 'anon' }, t('item.answerN', { n })),
       editingThis ? textEditor(u.id, tr.page, n, v.답, longText(u, v.답)) : el('div', { class: 'answer' }, v.답.trim() || el('span', { class: 'muted' }, t('item.emptyAnswer'))),
       el('label', {}, cb, t('review.responded')),
-      checkMark(tr, u.id),
+      checkBox(tr, u.id, n),
       editingThis ? null : editButton(u.id, tr.page, n),
       el('button', { class: 'small view', 'data-focus': `view:${n}`, onclick: () => openViewer(tr.page, n) }, t('item.viewImage')));
   }
@@ -439,7 +444,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
       if (r.엑셀오류) deps.notice.append(el('div', { class: 'band warn' }, t('review.savedExcelFailed', { error: r.엑셀오류 })));
       if (r.사례오류) deps.notice.append(el('div', { class: 'band warn' }, t('item.caseFailed', { error: r.사례오류 })));
       // 신원을 숨기는 화면이라 알림에도 장 번호 없이 수만 적는다
-      if (!r.엑셀오류) showInfo(kind === 'text' ? textNotice(단위, r) : r.바뀐장수 ? [t('item.changed', { n: r.바뀐장수 }), r.사례수 ? t('item.casesRecorded', { n: r.사례수 }) : ''].join(' ').trim()
+      if (!r.엑셀오류) showInfo(kind === 'text' ? textNotice(단위, r) : r.해제장수 ? t('item.uncheckedDone', { n: r.해제장수 }) : r.바뀐장수 ? [t('item.changed', { n: r.바뀐장수 }), r.사례수 ? t('item.casesRecorded', { n: r.사례수 }) : ''].join(' ').trim()
         : r.확인장수 ? t('item.confirmed', { n: r.확인장수 }) : t('item.nothingNew'));
     } catch (e) {
       showError((e as Error).message);
