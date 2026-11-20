@@ -1,10 +1,11 @@
 import path from 'node:path';
 import type ExcelJS from 'exceljs';
 import { loadExcel } from './excel.js';
-import { fullScore, unitPoints } from './key.js';
+import { fullScore, headcount, unitPoints } from './key.js';
 import { DataError, type AnswerKey, type Panjeong, type Row } from './types.js';
 
-export interface ResultInfo { 채점일시: string; 프로그램버전: string; 전사정보: string }
+/** 명단있음: 명단으로 행을 만들었는지. 없으면 반별 인원이 있는 반만 미제출을 알 수 있다 */
+export interface ResultInfo { 채점일시: string; 프로그램버전: string; 전사정보: string; 명단있음?: boolean }
 
 const WHO = ['학년', '반', '번호', '이름'] as const;
 const PERCENT = '0.0%';
@@ -89,6 +90,18 @@ export async function writeResultXlsx(key: AnswerKey, rows: Row[], unmatched: Ro
     qty.forEach((id, i) => mark(row.getCell(lead.length + 1 + i), r.판정[id]));
   }
   finish(ws, { widths: { 4: 20, 8: 50 }, wrapCol: 8, students: true });
+
+  // 미제출자를 따로 출력·전달하려면 '결과'를 필터해야 했다. 붙은 장이 없는 대상 학생(미제출·번호 중복으로 미확정)을 반·번호 순으로 모은다
+  ws = wb.addWorksheet('미제출');
+  ws.addRow([...WHO, '사유']);
+  const absent = rows.filter(r => r.page === null);
+  for (const r of absent) ws.addRow([...WHO.map(k => r[k]), r.비고]);
+  // 명단도 반별 인원도 없는 반은 낸 학생으로만 행을 만들어 미제출이 늘 0이다. '없습니다'로 오해하지 않게 따로 적는다
+  const unknown = info.명단있음 ? [] : [...new Set(key.대상.반)].sort((a, b) => a - b).filter(반 => headcount(key, 반) === undefined);
+  if (unknown.length) ws.addRow([`${unknown.join('·')}반은 명단이나 반별 인원이 없어 미제출 학생을 알 수 없습니다(설정 > 기본의 학생 명단, 또는 문항 설정의 반별 인원)`]);
+  else if (!absent.length) ws.addRow(['미제출 학생이 없습니다']);
+  finish(ws, { widths: { 4: 20, 5: 40 }, wrapCol: 5, students: absent.length > 0 });
+
   addAnalysis(wb, key, rows, unmatched);
 
   ws = wb.addWorksheet('답안');

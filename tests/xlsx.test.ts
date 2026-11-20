@@ -35,7 +35,7 @@ const fg = (c: ExcelJS.Cell) => c.font?.color?.argb ?? null;
 async function written(k = key, roster = ROSTER): Promise<ExcelJS.Workbook> {
   const { rows, unmatched } = buildRows(k, roster, ts);
   const out = path.join(tmp(), '채점결과.xlsx');
-  await writeResultXlsx(k, rows, unmatched, out, info);
+  await writeResultXlsx(k, rows, unmatched, out, { ...info, 명단있음: !!roster });
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(out);
   return wb;
@@ -47,12 +47,32 @@ test('write_xlsx: 시트와 머리글, 행 수', async () => {
   await writeResultXlsx(key, rows, unmatched, out, info);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(out);
-  assert.deepEqual(wb.worksheets.map(w => w.name), ['결과', '문항 분석', '답안', '정답표', '정보']);
+  assert.deepEqual(wb.worksheets.map(w => w.name), ['결과', '미제출', '문항 분석', '답안', '정답표', '정보']);
   const ws = wb.getWorksheet('결과')!;
   assert.deepEqual(headers(ws), ['학년', '반', '번호', '이름', '합계', '정량', '정성', '비고', '1-1', '3-1', 'E1']);
   assert.equal(ws.rowCount, 1 + 3 + 1); // 명단 3명 + 미확인 1장
   assert.deepEqual(cells(ws, 2), [3, 1, 1, '박가상', 2, 1, 1, null, 'O', 'X', 'O']);
   assert.deepEqual(cells(ws, 4).slice(0, 8), [3, 1, 3, '최가상', null, null, null, '미제출']);
+});
+
+test('미제출 시트: 붙은 장이 없는 대상 학생만 반·번호 순으로, 사유와 함께', async () => {
+  const roster: Student[] = [...ROSTER, { 학년: 3, 반: 1, 번호: 4, 이름: '정가상' }];
+  const ws = (await written(key, roster)).getWorksheet('미제출')!;
+  assert.deepEqual(sheetRows(ws), [['학년', '반', '번호', '이름', '사유'], [3, 1, 3, '최가상', '미제출'], [3, 1, 4, '정가상', '미제출']]);
+  assert.deepEqual(frozen(ws), [4, 1]);
+  // 명단이 모두 냈으면 빈 시트 대신 그렇다고 적는다
+  const full = (await written(key, ROSTER.slice(0, 2))).getWorksheet('미제출')!;
+  assert.deepEqual(sheetRows(full), [['학년', '반', '번호', '이름', '사유'], ['미제출 학생이 없습니다']]);
+});
+
+test('미제출 시트(명단 없음): 반별 인원이 있으면 번호로, 없으면 "없습니다" 대신 알 수 없다고 적는다', async () => {
+  const none = (await written(key, null as unknown as Student[])).getWorksheet('미제출')!;
+  assert.equal(none.rowCount, 2);
+  assert.match(String(cells(none, 2)[0]), /^1반은 명단이나 반별 인원이 없어 미제출 학생을 알 수 없습니다/);
+  const withCount = { ...key, 대상: { ...key.대상, 인원: { '1': 4 } } };
+  const counted = (await written(withCount, null as unknown as Student[])).getWorksheet('미제출')!;
+  assert.deepEqual(sheetRows(counted).slice(1).map(r => r.slice(0, 3)), [[3, 1, 3], [3, 1, 4]]);
+  assert.equal(cells(counted, 2)[4], '미제출(인원 기준)');
 });
 
 test('essay_answer_verbatim: 답안 시트에 정성 답 원문', async () => {

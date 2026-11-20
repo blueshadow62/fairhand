@@ -28,7 +28,7 @@ try {
   const engines = new Set(transcripts.map(t => t.전사정보 ? `${t.전사정보.엔진}/${t.전사정보.모델}/${t.전사정보.effort}/${t.전사정보.규칙}` : '사람'));
   const out = path.join(values.out ?? setDir, resultFileName(key, new Date()));
   await writeResultXlsx(key, rows, unmatched, out, {
-    채점일시: new Date().toLocaleString('ko-KR'), 프로그램버전: version, 전사정보: [...engines].join(', ') });
+    채점일시: new Date().toLocaleString('ko-KR'), 프로그램버전: version, 전사정보: [...engines].join(', '), 명단있음: !!roster });
   const 비고 = [...rows, ...unmatched].filter(r => r.비고).length;
   console.log(`${out}: ${rows.length}행, 미제출 ${rows.filter(r => r.비고.startsWith('미제출')).length}, 미확인 ${unmatched.length}, 비고 있는 행 ${비고}`);
 } catch (e) {

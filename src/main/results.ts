@@ -26,7 +26,7 @@ export async function rebuildResult(setDir: string, roster: Student[] | null, de
   const { rows, unmatched } = buildRows(key, roster, transcripts);
   const out = path.join(setDir, resultFileName(key, now()));
   const 전사정보 = [...new Set(transcripts.map(t => t.전사정보 ? `${t.전사정보.엔진}/${t.전사정보.모델}/${t.전사정보.규칙}` : '사람'))].join(', ');
-  try { await writeResultXlsx(key, rows, unmatched, out, { 채점일시: stamp(now()), 프로그램버전: deps.version, 전사정보 }); }
+  try { await writeResultXlsx(key, rows, unmatched, out, { 채점일시: stamp(now()), 프로그램버전: deps.version, 전사정보, 명단있음: !!roster }); }
   catch (e) { throw friendlyFsError(e, '엑셀 파일'); }
   return { 엑셀: out };
 }
