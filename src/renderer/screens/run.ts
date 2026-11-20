@@ -600,6 +600,19 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     onDone: r => { if (r) void saveMask(r); else { dragRect = null; drawMask(); } },
   });
 
+  // 설정 화면까지 가지 않고 여기서 고른다. 고른 파일은 설정의 명단 칸과 같은 값으로 저장된다
+  const rosterButton = () => el('button', { disabled: running, onclick: () => void pickRoster() }, t('run.pickRoster'));
+  async function pickRoster(): Promise<void> {
+    try {
+      const p = await api.pickFile('roster');
+      if (!p) return;
+      store.update({ settings: await api.saveSettings({ 명단: p }) });
+      await refresh();
+      // 세트를 읽을 때 깨진 명단은 조용히 '없음'으로 보므로(세트는 열려야 한다) 여기서 읽혔는지 알린다
+      if (data && !data.명단있음) showError(t('run.rosterUnreadable')); else showInfo(t('run.rosterSaved', { path: p }));
+    } catch (e) { showError((e as Error).message); }
+  }
+
   async function matchWithRoster(): Promise<void> {
     if (!data) return;
     try {
@@ -623,7 +636,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         onchange: (e: Event) => void saveMask((e.target as HTMLInputElement).checked ? DEFAULT_MASK : null) }), t('run.maskToggle'))),
       el('div', { class: 'muted' }, t('run.maskHelp')));
     if (on) {
-      put(privacyBox, el('div', { class: 'band warn' }, t('run.maskLimit')), data.명단있음 ? null : el('div', { class: 'band warn' }, t('run.maskNoRoster')));
+      put(privacyBox, el('div', { class: 'band warn' }, t('run.maskLimit')), data.명단있음 ? null : el('div', { class: 'band warn' }, t('run.maskNoRoster'), ' ', rosterButton()));
       if (!data.pages.length) put(privacyBox, el('div', { class: 'muted' }, t('run.maskNoPages')));
       else {
         if (maskPage === null || !data.pages.includes(maskPage)) maskPage = data.pages[0]!;
@@ -635,7 +648,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     }
     put(privacyBox,
       el('div', { class: 'row' }, el('button', { disabled: running || !data.명단있음 || !data.transcripts.length, onclick: () => void matchWithRoster() }, t('run.matchRoster')),
-        data.명단있음 ? null : el('span', { class: 'muted' }, t('run.matchNeedRoster'))),
+        data.명단있음 ? null : rosterButton(), data.명단있음 ? null : el('span', { class: 'muted' }, t('run.matchNeedRoster'))),
       el('div', { class: 'muted' }, t('run.matchHelp')));
   }
 

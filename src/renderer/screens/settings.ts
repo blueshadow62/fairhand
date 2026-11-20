@@ -149,7 +149,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       }) }, t('settings.makeDefault')))]),
       el('div', { class: 'muted' }, t('settings.semesterHelp')));
     clear(rosterBox);
-    rosterBox.append(el('div', { class: 'row' }, t('settings.roster'), s.명단 ? el('span', { class: 'path' }, s.명단) : el('span', { class: 'muted' }, t('settings.none')),
+    // 제목 없이 한 줄만 두었더니 아래의 긴 주의 띠에 묻혀 찾지 못했다
+    rosterBox.append(el('h3', {}, t('settings.rosterTitle')), el('div', { class: 'row' }, t('settings.roster'), s.명단 ? el('span', { class: 'path' }, s.명단) : el('span', { class: 'muted' }, t('settings.none')),
       el('button', { onclick: () => guard(async () => { const p = await api.pickFile('roster'); if (!p) return; store.update({ settings: await api.saveSettings({ 명단: p }) }); renderBasics(); }) }, t('settings.choose')),
       el('button', { disabled: !s.명단, onclick: () => guard(async () => { store.update({ settings: await api.saveSettings({ 명단: null }) }); renderBasics(); }) }, t('settings.clear'))),
       el('div', { class: 'band warn' }, t('settings.rosterWarn')),
