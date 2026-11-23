@@ -8,7 +8,8 @@ export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '
  * 논술형은 칸을 이렇게 쓴다: 요소 = 인용할 문장(줄마다 하나), 핵심 = 써야 할 용어(쉼표, 다른 표기는 '/'),
  * 배점 = 인용 하나의 배점, 용어배점 = 용어 하나의 배점
  */
-export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */; 배점: string /* 단위마다(요소형은 요소마다), 기본 1 */; 용어배점: string /* 논술형 용어 하나의 배점, 기본 1 */ }
+/** 순서무관: 빈칸형 행에만 쓴다. 같은 문항에서 켠 빈칸형 행들이 한 묶음이다(다른 유형으로 바꾸면 정답표에 넣지 않는다) */
+export interface UnitRow { 문항: number; 유형: UnitType; 설명: string; 정답: string; 허용: string /* 쉼표 구분 */; 핵심: string /* 쉼표 구분 */; 요소: string /* 요소형: 줄마다 하나 */; 배점: string /* 단위마다(요소형은 요소마다), 기본 1 */; 용어배점: string /* 논술형 용어 하나의 배점, 기본 1 */; 순서무관?: boolean }
 export interface KeyMeta { 글: string; 학기: string; 학년: number; 반: number[]; 인원: Record<string, number> /* "1": 28 */; 채점규칙?: GradingRules /* 없으면 기본값 */ }
 
 export const UNIT_TYPES: UnitType[] = ['빈칸형', '단답형', '문장형', '요소형', '논술형', '응답형'];
@@ -48,6 +49,7 @@ export function rowsToKey(meta: KeyMeta, rows: UnitRow[], 확인?: AnswerKey['�
     if (r.유형 === '문장형' && 핵심.length) u.핵심 = 핵심;
     u.유형 = r.유형;
     Object.assign(u, points(r));
+    if (r.유형 === '빈칸형' && r.순서무관) u.순서무관 = true;
     정량.push(u);
   }
   const 대상: AnswerKey['대상'] = { 학년: meta.학년, 반: [...meta.반] };
@@ -89,7 +91,7 @@ function unitsToRows(정량: QtyUnit[], 정성: QualUnit[]): UnitRow[] {
       const r = { ...emptyRow(u.문항, '요소형'), 요소: u.정답, 배점: pointsText(u) };
       elementRow.set(u.문항, r); rows.push(r); continue;
     }
-    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '', 배점: pointsText(u), 용어배점: '1' });
+    rows.push({ 문항: u.문항, 유형, 설명: u.설명, 정답: u.정답, 허용: (u.허용 ?? []).join(', '), 핵심: (u.핵심 ?? []).join(', '), 요소: '', 배점: pointsText(u), 용어배점: '1', ...(u.순서무관 === true ? { 순서무관: true } : {}) });
   }
   for (const u of 정성) rows.push({ ...emptyRow(u.문항, '응답형'), 설명: u.설명, 배점: pointsText(u) });
   return rows;
@@ -149,6 +151,13 @@ export function validateRows(meta: KeyMeta, rows: UnitRow[]): string[] {
     if (r.유형 === '문장형' && !list(r.핵심, /,/).length) e.push(t('form.keywordsMissing', { at }));
     if (!validPoints(r.배점)) e.push(t('form.pointsBad', { at }));
   });
+  // 순서 무관 묶음(같은 문항에서 켠 빈칸형 행): 둘 이상이고 배점이 같아야 한다(정답표 검사 keyProblems와 같은 조건)
+  const groups = new Map<number, UnitRow[]>();
+  for (const r of rows) if (r.유형 === '빈칸형' && r.순서무관) groups.set(r.문항, [...(groups.get(r.문항) ?? []), r]);
+  for (const [q, rs] of groups) {
+    if (rs.length < 2) e.push(t('form.orderFreeAlone', { q }));
+    else if (new Set(rs.map(r => Number(r.배점))).size > 1) e.push(t('form.orderFreePoints', { q }));
+  }
   return e;
 }
 

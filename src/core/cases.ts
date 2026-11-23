@@ -1,4 +1,4 @@
-import { addCase, findCase, keyMatch, normalizeAnswer, pagesWithSameAnswer, removeCase } from './rejudge.js';
+import { addCase, caseRecord, caseUnits, keyMatch, normalizeAnswer, removeCase, stampCase } from './rejudge.js';
 import { DataError, pageTag, type AnswerKey, type Case, type Panjeong, type Transcript } from './types.js';
 
 /** 답안지별 검토에서 기록할 사례 하나: 한 단위의 답과 선생님이 정한 판정 */
@@ -25,13 +25,17 @@ export function caseCandidates(key: AnswerKey, before: Transcript | undefined, a
   return out;
 }
 
-/** 사례 하나가 바꿀 장: 같은 단위에 같은(정규화한) 답을 쓴 장 중 판정이 사례와 다른 장 */
-export function caseEffects(transcripts: Transcript[], c: CaseInput, exceptPage?: number): CaseChange[] {
-  const same = new Set(pagesWithSameAnswer(transcripts, c.단위, c.답, exceptPage));
-  return transcripts.flatMap(t => {
-    const 이전 = t.정량[c.단위]?.판정 ?? '빈칸';
-    return same.has(t.page) && 이전 !== c.판정 ? [{ page: t.page, 단위: c.단위, 이전, 이후: c.판정 }] : [];
-  });
+/**
+ * 사례 하나가 바꿀 장: 같은 단위에 같은(정규화한) 답을 쓴 장 중 판정이 사례와 다른 장.
+ * units: 볼 단위(순서 무관 묶음이면 묶음 전체, caseUnits). 묶음에서는 다른 칸에 같은 답을 쓴 장도 바뀐다
+ */
+export function caseEffects(transcripts: Transcript[], c: CaseInput, exceptPage?: number, units: readonly string[] = [c.단위]): CaseChange[] {
+  const n = normalizeAnswer(c.답);
+  if (!n) return [];
+  return transcripts.flatMap(t => t.page === exceptPage ? [] : units.flatMap(id => {
+    const v = t.정량[id];
+    return v && normalizeAnswer(v.답) === n && v.판정 !== c.판정 ? [{ page: t.page, 단위: id, 이전: v.판정, 이후: c.판정 }] : [];
+  }));
 }
 
 /**
@@ -40,12 +44,13 @@ export function caseEffects(transcripts: Transcript[], c: CaseInput, exceptPage?
  */
 export function caseConflict(key: Pick<AnswerKey, '정량'>, c: Pick<Case, '단위' | '답' | '판정'>): '정답' | '허용' | null {
   if (c.판정 !== 'X') return null;
-  const u = key.정량.find(x => x.id === c.단위);
-  return u ? keyMatch(u, c.답) : null;
+  // 순서 무관 묶음은 묶음의 정답 전체가 그 칸의 정답이다. 정답과 맞는 단위가 있으면 '정답', 허용과만 맞으면 '허용'
+  const ms = caseUnits(key, c.단위).flatMap(id => { const u = key.정량.find(x => x.id === id); return u ? [keyMatch(u, c.답)] : []; });
+  return ms.includes('정답') ? '정답' : ms.includes('허용') ? '허용' : null;
 }
 
 export function previewCases(key: AnswerKey, transcripts: Transcript[], cases: CaseInput[], page: number): CasePreview[] {
-  return cases.map(c => ({ ...c, 바뀔장: caseEffects(transcripts, c, page), 경고: caseConflict(key, c), 논술형: key.정량.find(x => x.id === c.단위)?.유형 === '논술형' }));
+  return cases.map(c => ({ ...c, 바뀔장: caseEffects(transcripts, c, page, caseUnits(key, c.단위)), 경고: caseConflict(key, c), 논술형: key.정량.find(x => x.id === c.단위)?.유형 === '논술형' }));
 }
 
 /** 다른 장이 바뀌거나 정답표와 맞는 답을 X로 기록할 때만 묻는다. 이 장만 바뀌는 보통의 저장은 묻지 않는다 */
@@ -80,9 +85,9 @@ export function caseRequest(raw: unknown): CaseInput & { page: number } {
  */
 export function planApplyCase(key: AnswerKey, transcripts: Transcript[], c: CaseInput & { page: number }, now: Date): { key: AnswerKey; 쓸전사: Transcript[]; 변경: CaseChange[]; 이전사례?: Case } {
   if (!key.정량.some(u => u.id === c.단위)) throw new DataError(`정답표에 단위 ${c.단위}가 없습니다`);
-  const 이전사례 = findCase(key, c.단위, c.답);
-  const next = addCase(key, { 단위: c.단위, 답: c.답, 판정: c.판정, 일시: now.toISOString(), 출처: `검토 ${pageTag(c.page)}` });
-  const 변경 = caseEffects(transcripts, c);
+  const 이전사례 = caseRecord(key, c.단위, c.답); // 판정에 쓰이지 않던 사례여도 바꿔 쓰므로 되돌릴 때 묶음 값까지 그대로 되살린다
+  const next = addCase(key, stampCase(key, { 단위: c.단위, 답: c.답, 판정: c.판정, 일시: now.toISOString(), 출처: `검토 ${pageTag(c.page)}` }));
+  const 변경 = caseEffects(transcripts, c, undefined, caseUnits(key, c.단위));
   const byPage = new Map(transcripts.map(t => [t.page, t]));
   const 쓸전사 = 변경.map(ch => {
     const t = byPage.get(ch.page)!;
@@ -93,9 +98,9 @@ export function planApplyCase(key: AnswerKey, transcripts: Transcript[], c: Case
 
 /**
  * 렌더러가 보낸 되돌리기 요청 검사. 되돌릴 판정은 요청한 사례의 단위이고 '이후'가 그 사례의 판정이어야 한다:
- * 아무 판정이나 바꾸는 통로가 되지 않게
+ * 아무 판정이나 바꾸는 통로가 되지 않게. key를 주면 순서 무관 묶음의 다른 칸도 그 사례의 단위로 본다(사례가 묶음 전체에 적용되므로)
  */
-export function caseRevertRequest(raw: unknown): CaseRevertRequest {
+export function caseRevertRequest(raw: unknown, key?: Pick<AnswerKey, '정량'>): CaseRevertRequest {
   const o = record(raw, '되돌리기 요청이 잘못되었습니다');
   if (!Array.isArray(o.사례) || !o.사례.length || o.사례.length > MAX_REVERT_CASES) throw new DataError('되돌릴 사례 목록이 잘못되었습니다');
   if (!Array.isArray(o.변경) || o.변경.length > MAX_REVERT_CHANGES) throw new DataError('되돌릴 판정 목록이 잘못되었습니다');
@@ -104,13 +109,13 @@ export function caseRevertRequest(raw: unknown): CaseRevertRequest {
     const c = caseInput(raw), k = `${c.단위}\u0000${normalizeAnswer(c.답)}`;
     if (seen.has(k)) throw new DataError('같은 사례가 두 번 들어 있습니다');
     seen.add(k);
-    verdicts.set(c.단위, (verdicts.get(c.단위) ?? new Set<Panjeong>()).add(c.판정));
+    for (const id of key ? caseUnits(key, c.단위) : [c.단위]) verdicts.set(id, (verdicts.get(id) ?? new Set<Panjeong>()).add(c.판정));
     const prev = (raw as Record<string, unknown>).이전사례;
     if (prev === undefined || prev === null) return c;
     const p = record(prev, '이전 사례가 잘못되었습니다');
     if (p.단위 !== c.단위 || typeof p.답 !== 'string' || normalizeAnswer(p.답) !== normalizeAnswer(c.답) || (p.판정 !== 'O' && p.판정 !== 'X')
-      || typeof p.일시 !== 'string' || typeof p.출처 !== 'string') throw new DataError('이전 사례가 잘못되었습니다');
-    return { ...c, 이전사례: { 단위: p.단위, 답: p.답, 판정: p.판정, 일시: p.일시, 출처: p.출처 } as Case };
+      || typeof p.일시 !== 'string' || typeof p.출처 !== 'string' || (p.묶음 !== undefined && p.묶음 !== true)) throw new DataError('이전 사례가 잘못되었습니다');
+    return { ...c, 이전사례: { 단위: p.단위, 답: p.답, 판정: p.판정, 일시: p.일시, 출처: p.출처, ...(p.묶음 === true ? { 묶음: true } : {}) } as Case };
   });
   const pairs = new Set<string>();
   const 변경 = (o.변경 as unknown[]).map(raw => {
@@ -148,7 +153,7 @@ export function planCaseRevert(key: AnswerKey, transcripts: Transcript[], req: C
   for (const c of req.사례) if (!key.정량.some(u => u.id === c.단위)) throw new DataError(`정답표에 단위 ${c.단위}가 없습니다`);
   let next = key, 사례 = 0;
   for (const c of req.사례) {
-    if (findCase(next, c.단위, c.답)?.판정 !== c.판정) continue;
+    if (caseRecord(next, c.단위, c.답)?.판정 !== c.판정) continue;
     next = removeCase(next, c.단위, c.답);
     if (c.이전사례) next = addCase(next, c.이전사례);
     사례++;

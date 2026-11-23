@@ -5,15 +5,21 @@ export type UnitType = '빈칸형' | '단답형' | '문장형' | '요소형' | '
 /**
  * 유형이 없으면 빈칸 위치대로 옮기는 단위로 본다. '요소형'만 쓴 순서와 상관없이 요소별 단위에 나눈다.
  * '논술형'은 한 편의 글에서 찾을 요소 하나: 종류 '인용'은 정답 문장을 거의 그대로 썼는지, '용어'는 정답(허용) 용어를 썼는지.
- * 배점이 없으면 1점(배점을 두기 전 정답표와 같게). 맞으면(정성은 응답하면) 배점만큼 더한다
+ * 배점이 없으면 1점(배점을 두기 전 정답표와 같게). 맞으면(정성은 응답하면) 배점만큼 더한다.
+ * 순서무관: 같은 문항에서 이 표시가 있는 단위들이 한 묶음이다. 답은 칸 자리대로 옮기고, 판정은 묶음의 정답 중 어느 것과든 맞으면 O(한 정답은 한 칸에만).
+ * 어느 정답과 맞았는지는 저장하지 않으므로 묶음의 배점은 모두 같아야 한다(keyProblems)
  */
-export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType; 종류?: '인용' | '용어'; 배점?: number }
+export interface QtyUnit { id: string; 문항: number; 설명: string; 정답: string; 허용?: string[]; 핵심?: string[]; 유형?: UnitType; 종류?: '인용' | '용어'; 배점?: number; 순서무관?: true }
 export interface QualUnit { id: string; 문항: number; 설명: string; 배점?: number }
 
 /** 세트별 채점 규칙. 없으면 DEFAULT_RULES(key.ts) */
 export interface GradingRules { 맞춤법: '인정' | '불인정'; 넓은말: '인정' | '불인정'; 핵심어: '모두' | '하나라도' }
-/** 선생님이 검토에서 확정한 판정. 같은 단위에 같은(정규화한) 답을 쓴 장에 그대로 적용된다 */
-export interface Case { 단위: string; 답: string; 판정: 'O' | 'X'; 일시: string; 출처: string }
+/**
+ * 선생님이 검토에서 확정한 판정. 같은 단위에 같은(정규화한) 답을 쓴 장에 그대로 적용된다.
+ * 묶음: 그 단위가 순서 무관 단위일 때 기록한 사례('묶음의 어느 정답으로 인정/어느 정답도 아님'). 자리 기준 사례('이 칸의 정답으로 인정/이 칸의 정답이 아님')와
+ * 뜻이 달라, 순서 무관을 켜거나 끄면 뜻이 맞지 않는 쪽은 판정에 쓰지 않는다(caseActive)
+ */
+export interface Case { 단위: string; 답: string; 판정: 'O' | 'X'; 일시: string; 출처: string; 묶음?: true }
 
 /** 그림에서 가릴 영역. 쪽 크기에 대한 비율(0~1) */
 export interface MaskRect { x: number; y: number; w: number; h: number }

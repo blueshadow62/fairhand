@@ -32,6 +32,7 @@ export function keyProblems(k: unknown): string[] {
     if (u?.핵심 !== undefined && !strList(u.핵심)) p.push(`${u?.id}: 핵심은 글자 목록이어야 합니다`);
     if (u?.유형 === '논술형' && u.종류 !== '인용' && u.종류 !== '용어') p.push(`${u?.id}: 논술형 단위의 종류는 '인용' 또는 '용어'여야 합니다`);
   }
+  p.push(...orderFreeProblems(Array.isArray(o.정량) ? o.정량 : []));
   if (o.채점규칙 !== undefined) {
     if (typeof o.채점규칙 !== 'object' || o.채점규칙 === null || Array.isArray(o.채점규칙)) p.push('채점규칙은 객체여야 합니다');
     else for (const [k, v] of Object.entries(o.채점규칙)) if (!RULE_VALUES[k]?.includes(v as string)) p.push(`채점규칙.${k} 값이 잘못됨 (${String(v)})`);
@@ -43,6 +44,7 @@ export function keyProblems(k: unknown): string[] {
       if (!qty.has(c?.단위)) p.push(`사례 ${i + 1}: 단위 '${c?.단위}'가 정량에 없습니다`);
       if (c?.판정 !== 'O' && c?.판정 !== 'X') p.push(`사례 ${i + 1}: 판정은 O 또는 X여야 합니다`);
       if (typeof c?.답 !== 'string' || !c.답.trim()) p.push(`사례 ${i + 1}: 답이 비었습니다`);
+      if (c?.묶음 !== undefined && c.묶음 !== true) p.push(`사례 ${i + 1}: 묶음 값은 true여야 합니다`);
     });
   }
   const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
@@ -55,6 +57,27 @@ export function keyProblems(k: unknown): string[] {
       if (!ids.has(id)) p.push(`답영역: 정답표에 없는 단위 ${id}`);
       if (badMask(m)) p.push(`답영역 ${id}: 영역이 쪽을 벗어나거나 잘못되었습니다`);
     }
+  }
+  return p;
+}
+
+/**
+ * 순서무관 단위의 조건. 묶음은 같은 문항 번호의 순서무관 단위들이라 문항 번호가 정수여야 하고, 칸 자리대로 옮기는 단위라 요소형·논술형은 안 된다.
+ * 어느 정답과 맞았는지 저장하지 않아 점수 계산(scoreOne)이 칸의 배점을 쓰므로 묶음의 배점은 모두 같아야 한다
+ */
+function orderFreeProblems(정량: any[]): string[] {
+  const p: string[] = [];
+  const groups = new Map<number, any[]>();
+  for (const u of 정량) {
+    if (u?.순서무관 === undefined) continue;
+    if (u.순서무관 !== true) { p.push(`${u?.id}: 순서무관 값은 true여야 합니다`); continue; }
+    if (!Number.isInteger(u.문항)) { p.push(`${u?.id}: 순서 무관 단위는 문항 번호가 있어야 합니다(같은 문항의 순서 무관 단위가 한 묶음입니다)`); continue; }
+    if (u.유형 === '요소형' || u.유형 === '논술형') { p.push(`${u.문항}번 문항 ${u.id}: ${u.유형} 단위에는 순서 무관을 쓸 수 없습니다(칸이 따로 있는 빈칸형에 씁니다)`); continue; }
+    groups.set(u.문항, [...(groups.get(u.문항) ?? []), u]);
+  }
+  for (const [q, us] of groups) {
+    if (us.length < 2) p.push(`${q}번 문항: 순서 무관 단위가 하나뿐입니다(${us[0].id}). 순서 무관은 같은 문항의 단위 둘 이상에 켭니다`);
+    else if (new Set(us.map(u => unitPoints(u))).size > 1) p.push(`${q}번 문항: 순서 무관 단위(${us.map(u => u.id).join(', ')})의 배점이 모두 같아야 합니다`);
   }
   return p;
 }

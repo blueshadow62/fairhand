@@ -1,4 +1,4 @@
-import { decide, type Change } from '../core/rejudge.js';
+import { decidePage, pageAnswers, type Change } from '../core/rejudge.js';
 import { DataError, type AnswerKey, type Panjeong, type Transcript } from '../core/types.js';
 import { EngineError, withRetry, type Effort, type StructuredProvider, type StructuredRequest } from './provider.js';
 import { systemPrompt, type Rules } from './rules.js';
@@ -42,10 +42,11 @@ export async function judgePage(provider: StructuredProvider, key: AnswerKey, ru
   const verdicts = fromJudgeOutput(raw.output, key);
   const changes: Change[] = [];
   const 정량 = { ...t.정량 };
+  const ds = decidePage(key, pageAnswers(t)); // 순서 무관 묶음은 같은 장의 다른 칸을 함께 봐야 정해진다
   for (const u of key.정량) {
     const v = 정량[u.id];
     if (!v) continue;
-    const d = decide(key, u.id, v.답); // 빈칸·선생님 사례·정답 글자 일치는 모델보다 우선한다(전사 저장 때와 같은 규칙)
+    const d = ds[u.id] ?? null; // 빈칸·선생님 사례·정답 글자 일치는 모델보다 우선한다(전사 저장 때와 같은 규칙)
     const next = d ? d.판정 : verdicts[u.id]!;
     if (next !== v.판정) { changes.push({ 단위: u.id, 이전: v.판정, 이후: next, 근거: d ? d.근거 : '모델' }); 정량[u.id] = { ...v, 판정: next }; }
   }

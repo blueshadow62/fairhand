@@ -51,7 +51,8 @@ function addAnalysis(wb: ExcelJS.Workbook, key: AnswerKey, rows: Row[], unmatche
   for (const u of key.정량) {
     const by = (v: Panjeong) => count(r => (r.판정[u.id] ?? '빈칸') === v);
     const o = by('O'), b = by('빈칸');
-    add([u.id, u.문항, u.유형 ?? null, u.설명, unitPoints(u), n, o, by('X'), b, rate(o), rate(b)], [10, 11]);
+    // 순서 무관 단위의 정답률은 '그 칸에 묶음의 정답 하나를 맞게 쓴 비율'이다(칸마다 판정). 계산은 같고 유형 칸에 표시만 한다
+    add([u.id, u.문항, u.순서무관 === true ? `${u.유형 ?? '빈칸형'}(순서 무관)` : u.유형 ?? null, u.설명, unitPoints(u), n, o, by('X'), b, rate(o), rate(b)], [10, 11]);
   }
   if (key.정성.length) {
     table(['단위 id', '문항', '유형', '설명', '배점', '대상 장 수', '응답 수', '미응답 수', '응답률(%)']);

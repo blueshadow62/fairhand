@@ -1,5 +1,5 @@
 import { caseConflict } from './cases.js';
-import { mergeCases, normalizeAnswer } from './rejudge.js';
+import { caseActive, mergeCases, normalizeAnswer } from './rejudge.js';
 import type { AnswerKey, Case, MaskRect, QtyUnit, QualUnit } from './types.js';
 
 // 문항 설정은 저장할 때마다 단위 id를 행 순서로 다시 매긴다(문항마다 1-1, 1-2…, 응답형은 E1, E2…).
@@ -120,5 +120,6 @@ export function casesOnChangedAnswers(old: Pick<AnswerKey, '정량'>, next: Pick
     const u = next.정량.find(x => x.id === map.get(o.id));
     if (u && (normalizeAnswer(o.정답) !== normalizeAnswer(u.정답) || allowed(o) !== allowed(u))) changed.add(u.id);
   }
-  return (next.사례 ?? []).filter(c => changed.has(c.단위)).map(c => ({ 단위: c.단위, 답: c.답, 판정: c.판정, 어긋남: caseConflict(next, c) !== null }));
+  // 판정에 쓰지 않는 사례(순서 무관을 켜거나 꺼서)는 확인할 것이 아니다
+  return (next.사례 ?? []).filter(c => changed.has(c.단위) && caseActive(next, c)).map(c => ({ 단위: c.단위, 답: c.답, 판정: c.판정, 어긋남: caseConflict(next, c) !== null }));
 }

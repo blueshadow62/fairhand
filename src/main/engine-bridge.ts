@@ -328,8 +328,8 @@ export class EngineBridge {
    * 정답표를 먼저 쓴다(사례 기록과 같은 순서). 엑셀은 판정을 다 돌린 뒤 한 번만
    */
   async revertCase(setDir: string, raw: unknown): Promise<CaseRevertResult> {
-    const req = caseRevertRequest(raw);
     const { key, transcripts } = await loadSet(setDir);
+    const req = caseRevertRequest(raw, key); // 순서 무관 묶음의 사례는 묶음의 다른 칸도 바꿨다
     const plan = planCaseRevert(key, transcripts, req);
     if (plan.key) await saveKeyFile(setDir, plan.key);
     let written = 0;

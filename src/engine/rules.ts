@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { essayQuestions, gradingRules } from '../core/key.js';
+import { caseActive } from '../core/rejudge.js';
 import { DataError, type AnswerKey } from '../core/types.js';
 
 export interface Rules { 버전: string; 본문: string }
@@ -43,6 +44,22 @@ function essaySection(key: AnswerKey): string[] {
     `- answer에는 ${full ? '그 글(essays의 text)에서 그 요소에 해당하는 부분(문장이나 구절)을 글자 그대로' : '학생 글에서 그 요소에 해당하는 부분(문장이나 구절)을 그대로'} 옮긴다. 찾지 못하면 빈 문자열과 "X". 그 문항에 쓴 글이 전혀 없으면 그 문항의 모든 단위를 빈 문자열과 "빈칸"으로 한다.`, ''];
 }
 
+/**
+ * 순서 무관 단위가 있는 세트에만 붙인다(없는 세트의 지시문은 그대로라 잰 정확도가 유지된다).
+ * 답은 칸 자리대로 받아야 검토 화면·답안지 PDF가 학생이 쓴 칸에 판정을 보인다. 판정만 묶음의 정답 전체로 본다
+ */
+function orderFreeSection(key: AnswerKey): string[] {
+  const groups = new Map<number, string[]>();
+  for (const u of key.정량) if (u.순서무관 === true) groups.set(u.문항, [...(groups.get(u.문항) ?? []), u.id]);
+  if (!groups.size) return [];
+  return ['# 순서 무관 단위',
+    `- 정답표 단위에 \`순서무관: true\`가 있으면 같은 문항의 순서무관 단위들이 한 묶음이다. 학생은 묶음의 정답을 어느 칸에 어떤 순서로 써도 된다. 이 세트의 묶음: ${[...groups].map(([q, ids]) => `${q}번 문항(${ids.join(', ')})`).join(', ')}.`,
+    '- answer는 전사 규칙대로 칸 자리대로 옮긴다. 정답에 맞추려고 답의 자리를 바꿔 옮기지 않는다.',
+    '- verdict는 그 단위의 정답만 보지 않는다. 그 칸의 답이 같은 문항의 순서무관 단위들의 정답·허용 중 어느 것과든 뜻이 맞으면 "O"다(채점 규칙을 따른다).',
+    '- 같은 정답에 해당하는 답을 두 칸 이상에 썼으면 앞 칸만 "O"이고 뒤 칸은 "X"다.',
+    '- 이 절이 전사 규칙의 빈칸형 기준과 다르면 이 절을 따른다.', ''];
+}
+
 /** 위치: 정량 단위마다 답의 세로 위치도 받는다(설정 '답 위치 받기'). 양식(transcriptSchema)과 같은 값을 넘긴다 */
 export interface PromptOptions { 위치?: boolean }
 
@@ -58,9 +75,12 @@ function positionSection(on: boolean | undefined): string[] {
     '- 위치는 화면에서 그 답을 찾아가는 데만 쓴다. 판정에는 영향이 없다.', ''];
 }
 
-/** 선생님이 확정한 판정(최근 것부터 200건). 같은 단위에 같은 답이면 같게 판정한다 */
+/**
+ * 선생님이 확정한 판정(최근 것부터 200건). 같은 단위에 같은 답이면 같게 판정한다.
+ * 순서 무관을 켜거나 꺼서 판정에 쓰지 않는 사례(caseActive)는 보내지 않는다(보이면 모델이 따라 한다)
+ */
 function casesSection(key: AnswerKey): string[] {
-  const cases = (key.사례 ?? []).slice(-CASE_LIMIT);
+  const cases = (key.사례 ?? []).filter(c => caseActive(key, c)).slice(-CASE_LIMIT);
   if (!cases.length) return [];
   return ['# 판정 사례(선생님 확정, 같은 답은 같게)', ...cases.map(c => `- ${c.단위}: ${JSON.stringify(c.답)} → ${c.판정}`), ''];
 }
@@ -75,7 +95,7 @@ export function systemPrompt(rules: Rules, key: AnswerKey, opts: PromptOptions =
     '# 대상', `이 세트는 ${key.대상.학년}학년 ${반.join('·')}반 답안지다. 학년은 ${key.대상.학년}, 반은 ${반.join(' 또는 ')} 중 하나다.${인원 ? ` 반별 인원: ${인원}.` : ''}`,
     '읽은 학년·반·번호가 이 범위를 벗어나면 그 자리에 가장 비슷한 허용 값(예: 7처럼 보이는 3)을 적고 id_confidence를 "추정"으로 하고 notes에 읽은 그대로를 적는다. 범위 안이어도 흘려 써서 다른 숫자로도 읽히면 "추정"이다.', '',
     ...(key.이름가림 ? ['# 이름 칸 가림', '이 세트는 이름 칸을 흰색으로 가려서 보냈다. name은 null로 두고 학년·반·번호로만 식별한다. 가려진 칸은 notes에 적지 않는다. 이 절이 전사 규칙의 이름 항목과 다르면 이 절을 따른다.', ''] : []),
-    ...rulesSection(key), ...essaySection(key), ...positionSection(opts.위치), ...casesSection(key),
+    ...rulesSection(key), ...essaySection(key), ...orderFreeSection(key), ...positionSection(opts.위치), ...casesSection(key),
     '# 정답표', '```json', JSON.stringify(keyForModel, null, 1), '```', '',
     '# 출력', '주어진 JSON 스키마에 맞는 객체 하나만 낸다. quant·qual은 목록이다. 정답표의 모든 단위를 id와 함께 한 번씩, 정답표 순서대로 넣는다.'].join('\n');
 }

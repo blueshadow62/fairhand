@@ -1,4 +1,4 @@
-import { decide, findCase, normalizeAnswer } from './rejudge.js';
+import { decide, findCaseFor, normalizeAnswer, pageAnswers, stampCase } from './rejudge.js';
 import { DataError, type AnswerKey, type Case, type Panjeong, type Transcript } from './types.js';
 
 /**
@@ -109,7 +109,7 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
       // 글을 고쳤는데 판정을 함께 정하지 않았으면: 빈칸·사례·정답·허용 글자 일치는 전사 저장 때와 같은 규칙으로 정하고 확인한다.
       // 뜻으로 볼 일이면 옛 판정(AI가 다른 글에 내린 것)이 '확인됨'으로 남지 않게 확인을 풀어 선생님이 고르게 한다
       if (newText && it.판정 === undefined) {
-        const d = decide(key, 단위, 답);
+        const d = decide(key, 단위, 답, pageAnswers(t)); // 순서 무관 묶음은 이 장의 다른 칸과 함께 본다(다른 칸의 판정은 바꾸지 않는다)
         if (d) 판정 = d.판정; else { check = 'unmark'; 판정필요++; }
       }
       if (답 !== cur.답 || 판정 !== cur.판정) { next = { ...next, 정량: { ...next.정량, [단위]: { ...cur, 답, 판정 } } }; changed = true; }
@@ -148,8 +148,8 @@ export function planUnitResults(key: AnswerKey, transcripts: Transcript[], req: 
       if (!members.every(m => asked.get(m.page) === v)) continue;
       if (members.every(m => m.정량[단위]?.판정 === v)) continue; // 바뀐 것이 없으면 확인만
       const 답 = representative(members.map(m => m.정량[단위]?.답 ?? ''));
-      if (findCase(key, 단위, 답)?.판정 === v) continue;
-      사례.push({ 단위, 답, 판정: v, 일시: now.toISOString(), 출처: '문항별 검토' });
+      if (findCaseFor(key, 단위, 답)?.판정 === v) continue;
+      사례.push(stampCase(key, { 단위, 답, 판정: v, 일시: now.toISOString(), 출처: '문항별 검토' }));
     }
   }
   return { 쓸전사, 바뀐장수, 확인장수, 해제장수, 글고침, 판정필요, 사례 };
