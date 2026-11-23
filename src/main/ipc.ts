@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electr
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { answerPdfOptionsArg } from '../core/answer-pdf.js';
 import { maskRectArg, parseKey } from '../core/key.js';
 import { keyExportName, setFolderName } from '../core/names.js';
 import { appendUpload, loadSet, loadUploads, listPages, removePage } from '../core/setio.js';
@@ -18,6 +19,7 @@ import type { SecretStore } from './secrets.js';
 import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
 import { copySampleSet, makeDefaultSemester } from './sample.js';
+import { exportAnswerPdf } from './answer-pdf.js';
 import { notifyArgs } from './notify.js';
 
 const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', codexInstall: 'https://developers.openai.com/codex/cli', geminiKey: 'https://aistudio.google.com/apikey', openaiKey: 'https://platform.openai.com/api-keys', privacy: 'https://github.com/blueshadow62/fairhand/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/fairhand#readme', releases: 'https://github.com/blueshadow62/fairhand/releases/latest' };
@@ -43,13 +45,20 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.version, async () => d.version);
   h(CHANNELS.getSettings, () => d.settings.load());
   h(CHANNELS.saveSettings, (patch: Parameters<SettingsStore['save']>[0]) => d.settings.save(patch));
-  h(CHANNELS.pickFolder, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openDirectory'] }); return r.canceled ? null : r.filePaths[0] ?? null; });
+  // 사용자가 폴더 고르기 창에서 고른 폴더와 답안지 PDF를 쓴 곳만 기억한다: PDF는 고른 폴더에만 쓰고, 학기 폴더 밖이라도 쓴 곳은 '폴더 열기'로 보인다
+  const pickedFolders = new Set<string>(), exportedPaths = new Set<string>();
+  h(CHANNELS.pickFolder, async () => {
+    const r = await dialog.showOpenDialog(d.window()!, { properties: ['openDirectory', 'createDirectory'] });
+    const p = r.canceled ? null : r.filePaths[0] ?? null;
+    if (p) pickedFolders.add(path.resolve(p));
+    return p;
+  });
   h(CHANNELS.pickFile, async (kind: PickKind) => {
     const r = await dialog.showOpenDialog(d.window()!, pickFileOptions(kind, process.platform)); return r.canceled ? null : r.filePaths[0] ?? null;
   });
   h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
   h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
-  h(CHANNELS.revealPath, async (p: string) => { const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
+  h(CHANNELS.revealPath, async (p: string) => { if (typeof p === 'string' && exportedPaths.has(path.resolve(p))) { shell.showItemInFolder(p); return; } const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
   // 오래 걸리는 전사 중 다른 창을 보고 있으면 끝난 줄 모른다. 창에 초점이 있으면 띄우지 않고, 알림을 누르면 창을 앞으로 가져온다
   let lastNote: Notification | null = null; // 붙잡아 두지 않으면 알림을 누르기 전에 사라져 click이 오지 않는다
   h(CHANNELS.notify, async (title: unknown, body: unknown) => {
@@ -114,6 +123,13 @@ export function registerIpc(d: IpcDeps): void {
     for (let i = 2; existsSync(path.join(out, name)); i++) name = `${stem} (${i})${ext}`; // 같은 이름의 지문을 덮어쓰지 않는다
     await copyFile(src, path.join(out, name));
     return name;
+  });
+  h(CHANNELS.exportAnswerPdf, async (폴더: string, outDir: unknown, opts: unknown) => {
+    const dir = await setDir(폴더);
+    if (typeof outDir !== 'string' || !pickedFolders.has(path.resolve(outDir))) throw new DataError('받을 폴더를 폴더 고르기 창에서 다시 골라 주세요');
+    const r = await exportAnswerPdf(dir, path.resolve(outDir), answerPdfOptionsArg(opts));
+    for (const f of [r.폴더, ...r.파일]) exportedPaths.add(path.resolve(f));
+    return r;
   });
   h(CHANNELS.readSourceText, async (폴더: string) => { const dir = await setDir(폴더); try { return await readFile(path.join(dir, '원본', '지문.txt'), 'utf-8'); } catch { return ''; } });
 

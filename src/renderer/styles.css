@@ -574,3 +574,11 @@ dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 /* 휴지통 */
 .trash { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; margin-top: 6px; display: flex; flex-direction: column; gap: 8px; }
 .trash-item { padding: 6px 8px; background: var(--surface-2); border-radius: 6px; }
+
+/* 답안지 PDF 받기 창(사례 확인 창의 틀을 같이 쓴다) */
+dialog.answer-pdf .pdf-options { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+dialog.answer-pdf fieldset { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--r); }
+dialog.answer-pdf legend { padding: 0 4px; font-weight: 700; }
+dialog.answer-pdf fieldset .band { margin: 4px 0 0; }
+dialog.answer-pdf .row.sub { margin: 0; }
+dialog.answer-pdf .pdf-status .path { overflow-wrap: anywhere; }

@@ -14,6 +14,7 @@ import { essayNodes, essaySpanViews } from '../lib/essay-view.js';
 import { essayStatus, keyLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
+import { openAnswerPdfDialog } from './answer-pdf.js';
 import { askCaseRecord } from './case-confirm.js';
 import { createItemPane } from './item-review.js';
 
@@ -124,6 +125,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }
   const title = el('h2');
   const rebuildBtn = el('button', { onclick: () => guard(async () => { if (!data) return; const r = await api.buildResult(data.폴더); showInfo(t('review.excelRebuilt', { path: r.엑셀 })); }) }, t('review.rebuildExcel'));
+  // 학생에게 돌려줄 답안지. 고친 판정이 반영되게 저장하지 않은 고침이 있으면 먼저 저장하거나 버린 뒤, 새로 읽은 세트로 연다
+  const pdfBtn = el('button', { onclick: () => guard(async () => {
+    if (!data || !(await leaveOk())) return;
+    const d = await api.readSet(data.폴더);
+    openAnswerPdfDialog(d);
+  }) }, t('review.answerPdf'));
 
   // ── 그림 칸과 전사 칸 사이를 끌어 너비 바꾸기. 두 칸의 최소 너비는 CSS(minmax)가 지킨다 ──
   const EDITOR_PREF = 'geulnun.review.editorWidth';
@@ -197,7 +204,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     data = d;
     // 머리 줄은 비우지 않고 제목만 바꾼다. 문항별 검토는 판정마다 다시 읽어서, 비웠다 채우면 화면이 위아래로 튄다
     title.textContent = t('review.title', { name: 폴더 });
-    if (!top.firstChild) put(top, seg, title, rebuildBtn); // 누가기록은 세트 하나가 아닌 학기 전체의 일이라 시작 화면의 세트 현황에서 만든다
+    if (!top.firstChild) put(top, seg, title, rebuildBtn, pdfBtn); // 누가기록은 세트 하나가 아닌 학기 전체의 일이라 시작 화면의 세트 현황에서 만든다
     renderFilters();
     const pages = order();
     const target = keepPage !== undefined && pages.includes(keepPage) ? keepPage : T && pages.includes(T.page) ? T.page : pages[0];
