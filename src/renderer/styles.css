@@ -544,6 +544,43 @@ dialog.region-editor .preview canvas { display: block; width: 100%; background: 
 dialog.region-editor .preview figcaption { font-size: var(--fs-s); color: var(--text-2); }
 dialog.region-editor .actions { justify-content: flex-end; margin: 0; }
 
+/* ── 답 칸 한꺼번에 잡기: 화면을 거의 채우는 창. 왼쪽 단위 목록, 오른쪽 쪽 그림(폭 맞춤, 세로로 넘김) ── */
+dialog.region-batch { margin: 2vh auto auto; width: 96vw; max-width: 1680px; height: 95vh; max-height: 95vh; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-l); background: var(--surface); color: var(--text); box-shadow: 0 12px 40px var(--shadow); }
+dialog.region-batch[open] { display: flex; flex-direction: column; gap: 6px; }
+dialog.region-batch::backdrop { background: rgba(10, 14, 20, .5); }
+dialog.region-batch .rb-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+dialog.region-batch h3 { margin: 0; }
+dialog.region-batch .rb-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); gap: 10px; }
+dialog.region-batch .rb-units { overflow: auto; min-height: 0; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+dialog.region-batch .rb-unit { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; min-height: 0; padding: 6px 10px; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0;
+  background: transparent; color: var(--text); text-align: left; font-weight: 400; }
+dialog.region-batch .rb-unit:hover { background: var(--surface-2); }
+dialog.region-batch .rb-unit.active { background: color-mix(in srgb, #e65100 14%, var(--surface)); box-shadow: inset 4px 0 0 #e65100; }
+dialog.region-batch .rb-unit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+dialog.region-batch .rb-unit .line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+dialog.region-batch .rb-unit .desc, dialog.region-batch .rb-unit .key { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.region-batch .rb-unit .desc { flex: 1; }
+dialog.region-batch .rb-unit .key { font-size: var(--fs-s); color: var(--text-2); }
+dialog.region-batch .rb-mark { flex: none; font-size: var(--fs-s); color: var(--text-3); }
+dialog.region-batch .rb-unit.has .rb-mark { color: var(--accent-text); font-weight: 600; }
+dialog.region-batch .rb-view { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+dialog.region-batch .rb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+dialog.region-batch .rb-current { display: flex; align-items: baseline; gap: 8px; flex: 1 1 240px; min-width: 0; }
+dialog.region-batch .rb-current strong { color: color-mix(in srgb, #e65100 70%, var(--text)); }
+dialog.region-batch .rb-current .desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dialog.region-batch .rb-sheets button { min-height: 30px; font-size: var(--fs-m); }
+dialog.region-batch .rb-gap { flex: 1; }
+dialog.region-batch .zoom { min-width: 44px; text-align: center; font-size: var(--fs-m); }
+dialog.region-batch .page-wrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: auto; border-radius: var(--r); background: var(--viewer-bg); }
+dialog.region-batch canvas.page { display: block; width: 100%; cursor: crosshair; touch-action: none; background: #fff; }
+dialog.region-batch .rb-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; }
+dialog.region-batch .rb-loading[hidden] { display: none; }
+dialog.region-batch .actions { margin: 0; }
+dialog.region-batch .rb-status { flex: 1; min-width: 0; color: var(--text-2); font-size: var(--fs-m); }
+dialog.region-batch .rb-status.error { color: var(--bad); }
+dialog.answer-pdf .region-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+dialog.answer-pdf .region-note > span { flex: 1 1 240px; min-width: 0; }
+
 /* ── 설정: 기본·정보 묶음은 카드로, 프로필 묶음은 안의 카드들로 ── */
 /* 머리 줄: 제목 옆에 세 탭(기본·AI 프로필·정보·업데이트). 한 화면이 1,500px에 이르러 나눴다. 탭 모양은 검토 화면의 .seg */
 .settings-head { column-gap: var(--sp-4); margin: 0 0 var(--sp-4); }

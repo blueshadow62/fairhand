@@ -14,6 +14,8 @@ import { cachedCrop, clearCrops, cropKey, loadCrop } from '../lib/crop-cache.js'
 import { essayNodes, essaySpanViews, essayTextOf } from '../lib/essay-view.js';
 import { anonLabels, anonOrder, groupAnswers, keyLine, orderFreeLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
+import { regionCount, unitOrder } from '../lib/region-batch.js';
+import { openRegionBatch } from './region-batch.js';
 import { openRegionEditor } from './region-editor.js';
 
 /** 실행마다 새로 정한다. 익명 줄 순서가 실행마다 달라 지난번 순서로 학생을 짐작하지 못한다 */
@@ -204,7 +206,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     const only = el('input', { type: 'checkbox', 'data-focus': 'only', checked: onlyUnchecked, onchange: () => { onlyUnchecked = only.checked; renderUnits(); } });
     units.append(el('div', { class: 'filters' },
       el('div', {}, t('item.progress', { units: p.단위, unitsTotal: p.단위전체, pages: p.장, pagesTotal: p.장전체 })),
-      el('label', {}, only, t('item.onlyUnchecked'))));
+      el('label', {}, only, t('item.onlyUnchecked')),
+      batchButton(d, t('region.batch.openCount', { n: regionCount(unitOrder(d.key), d.key.답영역), total: unitOrder(d.key).length }), 'region-batch')));
     const shown = sums.filter(s => !onlyUnchecked || !unitDone(s));
     if (!shown.length) { units.append(el('div', { class: 'unit-empty muted' }, t(sums.length ? 'item.allDone' : 'item.noUnits'))); restoreFocus(); return; }
     for (const s of shown) {
@@ -235,7 +238,8 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     const qtyGroups = qty ? sortGroups(groupAnswers(d.transcripts, qty.id)) : [];
     groups.append(el('div', { class: 'muted' }, t('item.notice')), head(u, !!qty, d.transcripts.every(x => unitChecked(x, u.id)), !!region, qtyGroups));
     if (!region) groups.append(el('div', { class: 'region-hint band info' }, el('span', {}, t('item.region.hint')),
-      el('button', { class: 'small', 'data-focus': 'region-hint', onclick: () => editRegion(u) }, t('item.region.set'))));
+      el('button', { class: 'small', 'data-focus': 'region-hint', onclick: () => editRegion(u) }, t('item.region.set')),
+      batchButton(d, t('region.batch.open'), 'region-hint-batch', 'small')));
     const anon = [...labels].sort(([, a], [, b]) => a - b);
     if (qty) for (const g of qtyGroups) groups.append(groupBox(qty, g, labels, byPage, grid));
     else if (grid) groups.append(gridBox(grid, anon.map(([page, n]) => qualCell(qual!, byPage.get(page)!, n, grid)), 'qual-list'));
@@ -300,6 +304,20 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
     if (hit) paintCrop(c, hit);
     else { lazy.set(c, () => loadCrop(url, grid.crop, grid.hide)); seen.observe(c); }
     return c;
+  }
+
+  /** '답 칸 한꺼번에 잡기' 단추. 전사한 장이 없으면 잡을 그림이 없어 잠근다 */
+  function batchButton(d: SetData, label: string, focus: string, cls = ''): HTMLElement {
+    const none = !d.transcripts.length;
+    return el('button', { class: cls || null, 'data-focus': focus, disabled: none, title: t(none ? 'region.batch.needTranscript' : 'region.batch.openTitle'),
+      onclick: () => openRegionBatch({ data: d, onSaved: (key, n) => regionsSaved(d, key, n) }) }, label);
+  }
+  /** 답 칸을 한꺼번에 저장한 뒤(이 화면에서 열었든 답안지 PDF 창에서 열었든). 옛 영역으로 자른 그림은 다시 쓰지 않는다 */
+  function regionsSaved(d: SetData, key: SetData['key'], n: number): void {
+    d.key = key;
+    clearCrops();
+    showInfo(t('region.batch.saved', { n }));
+    if (data === d) { renderUnits(); renderGroups(); }
   }
 
   /** 답 칸 지정 창. 영역은 전사된 첫 장에서 잡고, 미리보기는 익명 순서로 다른 장 넷까지 */

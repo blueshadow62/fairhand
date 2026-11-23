@@ -8,6 +8,7 @@ import type { Ctx } from '../app.js';
 import { answerSpot, spotScrollLeft, spotScrollTop } from '../lib/answer-spot.js';
 import { api, imageUrl } from '../lib/api.js';
 import { collapseToggle } from '../lib/collapse.js';
+import { clearCrops } from '../lib/crop-cache.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { essayNodes, essaySpanViews } from '../lib/essay-view.js';
@@ -129,7 +130,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const pdfBtn = el('button', { onclick: () => guard(async () => {
     if (!data || !(await leaveOk())) return;
     const d = await api.readSet(data.폴더);
-    openAnswerPdfDialog(d);
+    // PDF 창에서 답 칸을 한꺼번에 잡아 저장하면 검토 화면(문항별 잘라 보기, 답 자리 띠)도 새 답 칸으로 다시 그린다
+    openAnswerPdfDialog(d, { onRegionsSaved: key => { if (data?.폴더 !== d.폴더) return; data.key = key; clearCrops(); item.render(data); } });
   }) }, t('review.answerPdf'));
 
   // ── 그림 칸과 전사 칸 사이를 끌어 너비 바꾸기. 두 칸의 최소 너비는 CSS(minmax)가 지킨다 ──
