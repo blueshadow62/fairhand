@@ -1,7 +1,7 @@
 import { caseCandidates, needsCaseConfirm, previewCases, revertTranscript, type CaseRevertRequest } from '../../core/cases.js';
 import { essayQuestions, roundScore, unitPoints } from '../../core/key.js';
 import { essayTextMarks } from '../../core/rejudge.js';
-import type { Hwaksin, Panjeong, Transcript } from '../../core/types.js';
+import type { Hwaksin, Panjeong, QtyUnit, Transcript } from '../../core/types.js';
 import { setSheetDone } from '../../core/unit-results.js';
 import type { SetData } from '../../shared/ipc.js';
 import type { Ctx } from '../app.js';
@@ -11,7 +11,7 @@ import { collapseToggle } from '../lib/collapse.js';
 import { clear, el, put } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { essayNodes, essaySpanViews } from '../lib/essay-view.js';
-import { essayStatus, keyLine } from '../lib/item-review.js';
+import { essayStatus, keyLine, orderFreeLine } from '../lib/item-review.js';
 import { applyFilter, missingStudents, toItems, type Filter } from '../lib/review-filter.js';
 import { makeGuard, makeLeaveGuard, tag } from '../lib/screen-utils.js';
 import { openAnswerPdfDialog } from './answer-pdf.js';
@@ -433,6 +433,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
     // 1점이 아닌 단위만 배점을 보인다(대부분의 세트는 모두 1점이라 표가 그대로)
     const pointsTag = (u: { 배점?: number }) => (unitPoints(u) === 1 ? null : el('div', { class: 'muted' }, t('review.points', { n: unitPoints(u) })));
+    const orderFreeEl = (u: QtyUnit) => { const line = orderFreeLine(u, key); return line ? el('div', { class: 'muted order-free-line' }, line) : null; };
     const essayPaint = new Map<number, () => void>(); // 논술형 문항 → 글 전체 다시 칠하기(단위의 답을 고치면 밑줄이 따라간다)
     const qtyRows = key.정량.map(u => {
       const v = tr.정량[u.id] ??= { 답: '', 판정: '빈칸' };
@@ -443,7 +444,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       showEssay();
       const sel = el('select', { class: `v-${v.판정}`, onchange: () => { v.판정 = sel.value as Panjeong; sel.className = `v-${v.판정}`; touch(); } },
         ...(['O', 'X', '빈칸'] as Panjeong[]).map(p => el('option', { value: p, selected: p === v.판정 }, t(`verdict.${p}`))));
-      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine(u))), el('td', {}, ans, essay), el('td', {}, sel));
+      return el('tr', { 'data-unit': u.id }, el('td', {}, u.id, pointsTag(u)), el('td', {}, u.설명, el('div', { class: 'muted' }, keyLine(u)), orderFreeEl(u)), el('td', {}, ans, essay), el('td', {}, sel));
     });
     const qualRows = key.정성.map(u => {
       const v = tr.정성[u.id] ??= { 응답: false, 답: '' };

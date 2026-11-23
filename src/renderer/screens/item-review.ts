@@ -12,7 +12,7 @@ import { MASK_FILL, cropAspect, cropRect, gridColumns, identityInCrop, toPixels 
 import { answerSpot, spotScrollLeft, spotScrollTop } from '../lib/answer-spot.js';
 import { cachedCrop, clearCrops, cropKey, loadCrop } from '../lib/crop-cache.js';
 import { essayNodes, essaySpanViews, essayTextOf } from '../lib/essay-view.js';
-import { anonLabels, anonOrder, groupAnswers, keyLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
+import { anonLabels, anonOrder, groupAnswers, keyLine, orderFreeLine, progress, sortGroups, unitDone, unitSummaries, type AnswerGroup } from '../lib/item-review.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
 import { openRegionEditor } from './region-editor.js';
 
@@ -258,6 +258,7 @@ export function createItemPane(ctx: Ctx, deps: ItemPaneDeps): ItemPane {
           t(allOpen ? 'item.grid.collapseAll' : 'item.grid.showAll')) : null),
       el('div', { class: 'ir-desc' }, u.설명),
       isQty ? el('div', { class: 'muted' }, keyLine(u as QtyUnit)) : null,
+      isQty && data && orderFreeLine(u as QtyUnit, data.key) ? el('div', { class: 'muted order-free-line' }, orderFreeLine(u as QtyUnit, data.key)) : null,
       유형 === '논술형' ? el('div', { class: 'muted essay-help' }, el('mark', { class: 'key-hit' }, t('item.essay.markKey')),
         (u as QtyUnit).허용?.length ? el('mark', { class: 'key-hit allow' }, t('item.essay.markAllow')) : null, el('span', {}, t('item.essay.help'))) : null,
       // 글 전체를 받은 장이 있을 때만 밑줄 뜻을 알린다(옛 전사뿐이면 글 전체 칸이 없다)

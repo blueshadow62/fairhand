@@ -1,4 +1,4 @@
-import { keyMatch, normalizeAnswer } from '../../core/rejudge.js';
+import { keyMatch, normalizeAnswer, orderFreeGroup } from '../../core/rejudge.js';
 import type { AnswerKey, Panjeong, QtyUnit, Transcript } from '../../core/types.js';
 import { representative, unitChecked } from '../../core/unit-results.js';
 import { t } from './i18n.js';
@@ -6,6 +6,15 @@ import { t } from './i18n.js';
 /** 정답·허용·핵심 한 줄. 답안지별 검토의 정량 표와 문항별 검토의 머리가 같은 글을 쓴다 */
 export const keyLine = (u: QtyUnit): string => t('review.keyLine', { answer: u.정답,
   allow: u.허용?.length ? t('review.allowPart', { list: u.허용.join(', ') }) : '', keywords: u.핵심?.length ? t('review.keywordsPart', { list: u.핵심.join(', ') }) : '' });
+
+/**
+ * 순서 무관 단위의 정답 줄: 그 칸은 묶음의 정답 중 어느 것과든 맞으면 O라, 그 칸의 정답만 보이면 'B를 썼는데 O'가 틀려 보인다.
+ * 묶음의 정답 전체(정답/허용…)를 보인다. 순서 무관 단위가 아니면 null
+ */
+export function orderFreeLine(u: QtyUnit, key: Pick<AnswerKey, '정량'>): string | null {
+  const g = orderFreeGroup(key, u.id);
+  return g.length ? t('review.orderFreeLine', { list: g.map(x => [x.정답, ...(x.허용 ?? [])].join('/')).join(', ') }) : null;
+}
 
 /**
  * 답안지별 검토의 논술형 답 칸 아래 표시. decide의 논술형 규칙(keyMatch)과 같은 기준으로 정답·허용 표기가 그대로 들어 있는지.

@@ -171,6 +171,8 @@ tr.note { background: var(--warn-soft); }
 .v-빈칸 { color: var(--text-3); }
 select.v-O { background: var(--ok-soft); } select.v-X { background: var(--bad-soft); } select.v-빈칸 { background: var(--surface-3); }
 /* 사례 표: 정답·허용과 같은 답을 X로 정한 사례(판정 옆) */
+.case-unused td { opacity: 0.55; } /* 순서 무관을 켜거나 꺼서 판정에 쓰지 않는 사례 */
+.case-unused-note { display: inline-block; margin-left: 6px; font-size: var(--fs-s); color: var(--text-2); white-space: nowrap; cursor: help; }
 .case-conflict { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--warn-line); border-radius: var(--r-s); background: var(--warn-soft); color: var(--warn-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; cursor: help; }
 
 /* ── 시작 화면: 머리글 + 학기 현황판(세트 목록) + 두 칸 격자(순서·지금 상태) ── */
@@ -237,6 +239,7 @@ label.upload input:focus { box-shadow: none; }
 .keytable th:nth-child(2) { width: 100px; } /* '단답형'이 잘리지 않게 */
 .keytable th:last-child { width: 140px; }
 .keytable th:nth-last-child(2) { width: 84px; } /* 배점(논술형은 인용·용어 둘) */
+.keytable .order-free { display: flex; gap: 4px; align-items: center; font-size: 0.9em; } /* 빈칸형 행의 요소 칸 자리 */
 .keytable tr.essay-main td { border-bottom: 0; }
 .keytable tr.essay-detail td { border-top: 0; padding-top: 0; }
 .keytable .essay-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; }

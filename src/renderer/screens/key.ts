@@ -9,6 +9,7 @@ import { hideTip, tip } from '../lib/tip.js';
 import { filesToDraft } from '../lib/draft-files.js';
 import { answerChangeNotice, cleanupNotice, draftToRows, emptyRow, formatHeadcount, keyToRows, parseClasses, parseHeadcount, rejudgeQuestion, rowsHaveContent, rowsToKey, UNIT_TYPES, validateRows, type KeyMeta, type UnitRow, type UnitType } from '../lib/key-form.js';
 import { caseConflict } from '../../core/cases.js';
+import { caseActive } from '../../core/rejudge.js';
 import { changedUnitIds } from '../../core/unit-map.js';
 
 function defaultSemester(d = new Date()): string {
@@ -107,6 +108,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const n = transcribed();
     return !changed.length || !n || confirm(t('key.unitMeaningConfirm', { units: changed.join(', '), n }));
   }
+  /** 저장으로 판정에 쓰지 않게 된 사례 수: 새 정답표에서 쓰이지 않고 옛 정답표에서는 쓰이던 것(순서 무관을 켜거나 끄면 단위 id는 그대로다) */
+  const unusedNow = (old: AnswerKey | null, next: AnswerKey): number => (next.사례 ?? []).filter(c => !caseActive(next, c) && (!old || caseActive(old, c))).length;
   const touch = () => { if (!dirty) { dirty = true; renderStatus(); } renderStart(); };
 
   const listBox = el('div', { class: 'setlist' });
@@ -339,7 +342,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         el('td', {}, widen(bind(el('input', { disabled: off.ans, 'aria-label': t('key.col.answer') }), '정답'))),
         el('td', {}, widen(bind(el('input', { disabled: off.allow, 'aria-label': t('key.col.allow') }), '허용'))),
         el('td', {}, widen(bind(el('input', { disabled: off.kw, 'aria-label': t('key.col.keywords') }), '핵심'))),
-        el('td', {}, growElements(bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소'))),
+        // 빈칸형은 요소 칸을 쓰지 않으므로 그 자리에 '순서 무관'을 둔다(같은 문항에서 켠 빈칸형 행들이 한 묶음)
+        el('td', {}, r.유형 === '빈칸형'
+          ? tip(el('label', { class: 'order-free' }, el('input', { type: 'checkbox', checked: r.순서무관 === true, onchange: (e: Event) => { r.순서무관 = (e.target as HTMLInputElement).checked; touch(); } }), t('key.orderFree')), t('key.tip.orderFree'))
+          : growElements(bind(el('textarea', { rows: 2, disabled: off.el, 'aria-label': t('key.col.elements') }), '요소'))),
         el('td', {}, pointsCell), actions)];
     });
     const clearAll = () => { if (!confirm(t('key.clearAllConfirm'))) return; rows = [emptyRow()]; touch(); renderTable(); };
@@ -380,15 +386,18 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     if (!사례.length) { casesBox.append(el('div', { class: 'muted' }, t('key.noCases'))); return; }
     casesBox.append(el('table', {}, el('tr', {}, ...[t('key.col.unit'), t('key.col.caseAnswer'), t('key.col.verdict'), t('key.col.caseSource'), t('key.col.caseWhen'), ''].map(h => el('th', {}, h))),
       // 정답·허용과 같은 답을 X로 정한 사례는 다시 판정에서 정답보다 먼저 적용된다. 알고 정한 예외일 수 있어 표시만 한다
-      ...[...사례].reverse().map(c => el('tr', {}, el('td', {}, c.단위), el('td', {}, c.답),
-        el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`), savedKey && caseConflict(savedKey, c) ? tip(el('span', { class: 'case-conflict' }, t('key.caseConflict')), t('key.caseConflictTip')) : null),
+      // 순서 무관을 켜거나 꺼서 뜻이 맞지 않게 된 사례는 판정에 쓰지 않는다(파일에는 두어 다시 바꾸면 되살아난다). 흐리게 하고 까닭을 적는다
+      ...[...사례].reverse().map(c => { const unused = savedKey !== null && !caseActive(savedKey, c); return el('tr', unused ? { class: 'case-unused' } : {}, el('td', {}, c.단위), el('td', {}, c.답),
+        el('td', { class: `v-${c.판정}` }, t(`verdict.${c.판정}`),
+          unused ? tip(el('span', { class: 'case-unused-note' }, t(c.묶음 ? 'key.caseUnused.group' : 'key.caseUnused.position')), t(c.묶음 ? 'key.caseUnused.groupTip' : 'key.caseUnused.positionTip'))
+            : savedKey && caseConflict(savedKey, c) ? tip(el('span', { class: 'case-conflict' }, t('key.caseConflict')), t('key.caseConflictTip')) : null),
         el('td', {}, c.출처), el('td', {}, Number.isNaN(Date.parse(c.일시)) ? c.일시 : new Date(c.일시).toLocaleString(locale())),
         el('td', {}, el('button', { class: 'danger', onclick: () => guard(async () => {
           if (!폴더 || !confirm(t('key.deleteCaseConfirm', { unit: c.단위, answer: c.답, verdict: c.판정 }))) return;
           사례 = (await api.removeCase(폴더, c.단위, c.답)).사례 ?? [];
           renderCases();
           clear(judgeBox); judgeBox.append(el('div', { class: 'band info' }, t('key.caseDeleted')));
-        }) }, t('common.delete')))))));
+        }) }, t('common.delete')))); })));
   }
   function showJudge(r: RejudgeResult & { failed?: { page: number; error: string }[] }, extra = ''): void {
     clear(judgeBox);
@@ -444,11 +453,17 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       // 채점 내용(단위·정답·허용·핵심)이 바뀌었으면 메인이 확인을 지운다. 채점규칙만 바꾼 저장은 확인 유지
       const next = rowsToKey(meta, rows, 확인, 사례);
       if (!unitChangesOk(next)) return;
+      const orderFreeOf = (k: AnswerKey | null) => (k?.정량 ?? []).filter(u => u.순서무관 === true).map(u => u.id).join(',');
+      const orderFreeChanged = orderFreeOf(savedKey) !== orderFreeOf(next);
+      const before = savedKey;
       const r = await api.saveKey(폴더, next);
       savedKey = r.key; 확인 = r.key.확인; 사례 = r.key.사례 ?? []; dirty = false;
       await store.refreshSets(); renderStatus(); renderCases();
-      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례)].filter(Boolean).join('\n'));
       const n = transcribed();
+      // 순서 무관을 켜거나 끈 것은 그림을 다시 읽지 않고 다시 판정으로 고친다. 무엇을 누르면 되는지 알린다
+      showInfo([확인?.완료 ? t('key.saved') : t('key.savedUnconfirmed'), cleanupNotice(r.정리), answerChangeNotice(r.정답바뀐사례),
+        orderFreeChanged && n > 0 ? t('key.orderFreeSaved') : '',
+        orderFreeChanged && unusedNow(before, r.key) > 0 ? t('key.orderFreeUnusedCases', { n: unusedNow(before, r.key) }) : ''].filter(Boolean).join('\n'));
       if (n > 0 && opts.askRejudge !== false && confirm(rejudgeQuestion(n, r.정답바뀐사례))) {
         showJudge(await api.rejudge(폴더), t('key.rejudgeNote'));
       }
