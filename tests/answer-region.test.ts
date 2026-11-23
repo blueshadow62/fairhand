@@ -76,3 +76,33 @@ test('saveKey: 문항 설정 저장은 답영역을 되살리고(확인 표시�
     assert.deepEqual(JSON.parse(await readFile(keyPath, 'utf-8')).답영역, { '1-1': r1 });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('setAnswerRegions: 여러 단위를 한 번에 쓰고 null은 지운다. 정답표의 다른 칸은 그대로, 틀린 값이 하나라도 있으면 아무것도 쓰지 않는다', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'geulnun-region-'));
+  try {
+    const set = path.join(dir, '세트A');
+    await cp(FX, set, { recursive: true });
+    const keyPath = path.join(set, '정답표.json');
+    const mask = { x: 0, y: 0, w: 1, h: 0.1 };
+    await writeFile(keyPath, JSON.stringify({ ...key, 신원가림: mask, 이름가림: mask, 확인: { 완료: true }, 답영역: { E1: rE } }), 'utf-8');
+    const bridge = new EngineBridge({ settings: new SettingsStore(path.join(dir, 'settings.json')), secrets: new SecretStore(path.join(dir, 'secrets.json'), storage), version: 't', env: {} });
+    (bridge as any).current = new AbortController(); // 전사가 도는 중에도 된다(화면에만 쓰는 칸)
+    const r3 = { x: 0.2, y: 0.3, w: 0.5, h: 0.04 };
+    const a = await bridge.setAnswerRegions(set, { '1-1': r1, '3-1': { ...r3, 덤: 1 } });
+    assert.deepEqual(a.답영역, { E1: rE, '1-1': r1, '3-1': r3 }); // 네 수만 들어간다
+    const file = JSON.parse(await readFile(keyPath, 'utf-8'));
+    assert.deepEqual(file.답영역, a.답영역);
+    assert.deepEqual([file.신원가림, file.이름가림, file.확인, file.정량, file.정성], [mask, mask, { 완료: true }, key.정량, key.정성]);
+    const b = await bridge.setAnswerRegions(set, { E1: null, '1-1': rE });
+    assert.deepEqual(b.답영역, { '1-1': rE, '3-1': r3 });
+    assert.equal((await bridge.setAnswerRegions(set, { '1-1': null, '3-1': null })).답영역, undefined); // 다 지우면 칸을 두지 않는다
+    assert.ok(!('답영역' in JSON.parse(await readFile(keyPath, 'utf-8'))));
+    await bridge.setAnswerRegions(set, { '1-1': r1 });
+    const before = await readFile(keyPath, 'utf-8');
+    await assert.rejects(bridge.setAnswerRegions(set, { '3-1': r3, '9-9': r1 }), (e: unknown) => e instanceof DataError && /9-9/.test(e.message));
+    await assert.rejects(bridge.setAnswerRegions(set, { '3-1': { ...r1, y: 0.99 } }), /답영역 3-1/); // 쪽 밖
+    await assert.rejects(bridge.setAnswerRegions(set, { '3-1': { x: 0.1, y: 0.2, w: '0.3', h: 0.1 } }), DataError); // 수가 아닌 값
+    for (const bad of [null, 'x', [r1], 7]) await assert.rejects(bridge.setAnswerRegions(set, bad), DataError, JSON.stringify(bad));
+    assert.equal(await readFile(keyPath, 'utf-8'), before); // 거절된 변경은 하나도 쓰지 않았다
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

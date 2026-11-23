@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { caseRequest, caseRevertRequest, planApplyCase, planCaseRevert } from '../core/cases.js';
-import { isConfirmed, parseKey } from '../core/key.js';
+import { isConfirmed, maskRectArg, parseKey } from '../core/key.js';
 import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
 import { loadSet, listPages, saveTranscript } from '../core/setio.js';
@@ -245,6 +245,26 @@ export class EngineBridge {
     const { 답영역: before = {}, ...rest } = key;
     const regions = { ...before };
     if (rect) regions[단위] = rect; else delete regions[단위];
+    const next = parseKey(JSON.stringify(Object.keys(regions).length ? { ...rest, 답영역: regions } : rest), '답 칸 설정');
+    await saveKeyFile(setDir, next);
+    return next;
+  }
+
+  /**
+   * 여러 단위의 답 칸을 한 번에 바꾼다('답 칸 한꺼번에 잡기'). 변경은 단위 id → 사각형(null이면 지우기).
+   * setAnswerRegion과 같은 검사를 단위마다 하고, 하나라도 틀리면 아무것도 쓰지 않는다. 정답표는 한 번만 쓴다
+   */
+  async setAnswerRegions(setDir: string, changes: unknown): Promise<AnswerKey> {
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new DataError('답 칸 변경 값이 잘못되었습니다');
+    const { key } = await loadSet(setDir);
+    const ids = new Set([...key.정량, ...key.정성].map(u => u.id));
+    const { 답영역: before = {}, ...rest } = key;
+    const regions = { ...before };
+    for (const [단위, raw] of Object.entries(changes)) {
+      if (!ids.has(단위)) throw new DataError(`정답표에 단위 ${단위}가 없습니다`);
+      const rect = maskRectArg(raw);
+      if (rect) regions[단위] = rect; else delete regions[단위];
+    }
     const next = parseKey(JSON.stringify(Object.keys(regions).length ? { ...rest, 답영역: regions } : rest), '답 칸 설정');
     await saveKeyFile(setDir, next);
     return next;

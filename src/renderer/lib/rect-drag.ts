@@ -10,9 +10,10 @@ export const bigEnough = (r: MaskRect): boolean => r.w > 0.01 && r.h > 0.005;
 
 /**
  * 캔버스 위를 끌어 쪽 비율(0~1) 사각형을 잡는다. 채점 실행의 이름 칸 가리기와 문항별 검토의 신원 영역이 같이 쓴다.
- * 끄는 동안 onMove로 그리게 하고, 놓으면 충분히 큰 사각형만 onDone에 넘긴다(아니면 null)
+ * 끄는 동안 onMove로 그리게 하고, 놓으면 충분히 큰 사각형만 onDone에 넘긴다(아니면 null).
+ * onTap을 주면 끌지 않고 누른 것(작은 사각형)일 때 onDone(null) 뒤에 누른 곳을 넘긴다(답 칸 한꺼번에 잡기에서 그린 칸 고르기)
  */
-export function attachRectDrag(canvas: HTMLCanvasElement, h: { enabled(): boolean; onMove(r: MaskRect): void; onDone(r: MaskRect | null): void }): void {
+export function attachRectDrag(canvas: HTMLCanvasElement, h: { enabled(): boolean; onMove(r: MaskRect): void; onDone(r: MaskRect | null): void; onTap?(p: Point): void }): void {
   const point = (e: PointerEvent): Point => { const b = canvas.getBoundingClientRect(); return { x: clamp01((e.clientX - b.left) / b.width), y: clamp01((e.clientY - b.top) / b.height) }; };
   let from: Point | null = null, last: MaskRect | null = null;
   canvas.addEventListener('pointerdown', e => {
@@ -22,6 +23,11 @@ export function attachRectDrag(canvas: HTMLCanvasElement, h: { enabled(): boolea
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', e => { if (from) { last = rectFrom(from, point(e)); h.onMove(last); } });
-  canvas.addEventListener('pointerup', () => { if (!from) return; from = null; h.onDone(last && bigEnough(last) ? last : null); });
+  canvas.addEventListener('pointerup', () => {
+    if (!from) return;
+    const at = from, big = !!last && bigEnough(last);
+    from = null; h.onDone(big ? last : null);
+    if (!big) h.onTap?.(at);
+  });
   canvas.addEventListener('pointercancel', () => { if (!from) return; from = null; h.onDone(null); });
 }
