@@ -113,6 +113,11 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.setIdentityMask, async (폴더: string, rect: unknown): Promise<AnswerKey> => d.bridge.setIdentityMask(await setDir(폴더), maskRectArg(rect)));
   h(CHANNELS.setAnswerRegion, async (폴더: string, 단위: unknown, rect: unknown): Promise<AnswerKey> => d.bridge.setAnswerRegion(await setDir(폴더), 단위, maskRectArg(rect)));
   h(CHANNELS.setAnswerRegions, async (폴더: string, 변경: unknown): Promise<AnswerKey> => d.bridge.setAnswerRegions(await setDir(폴더), 변경));
+  h(CHANNELS.findAnswerRegions, async (폴더: string, page: unknown, 단위: unknown) => {
+    if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) throw new DataError('답 칸을 찾을 장 번호가 잘못되었습니다');
+    if (!Array.isArray(단위) || !단위.every(x => typeof x === 'string')) throw new DataError('답 칸을 찾을 단위 목록이 잘못되었습니다');
+    return d.bridge.findAnswerRegions(await setDir(폴더), page, 단위);
+  });
   h(CHANNELS.matchRoster, async (폴더: string) => d.bridge.matchRosterAll(await setDir(폴더)));
   h(CHANNELS.importKey, async () => { const r = await dialog.showOpenDialog(d.window()!, { properties: ['openFile'], filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePaths[0]) return null; return parseKey(await readFile(r.filePaths[0], 'utf-8'), path.basename(r.filePaths[0])); });
   h(CHANNELS.exportKey, async (폴더: string) => { const dir = await setDir(폴더); const { key } = await loadSet(dir); const r = await dialog.showSaveDialog(d.window()!, { defaultPath: keyExportName(key), filters: [{ name: '정답표', extensions: ['json'] }] }); if (r.canceled || !r.filePath) return null; await writeFile(r.filePath, JSON.stringify(key, null, 1), 'utf-8'); return r.filePath; });

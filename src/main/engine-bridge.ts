@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { caseRequest, caseRevertRequest, planApplyCase, planCaseRevert } from '../core/cases.js';
 import { isConfirmed, maskRectArg, parseKey } from '../core/key.js';
 import { addCase, rejudgeAll, removeCase, type Change } from '../core/rejudge.js';
 import { matchRoster, readRoster } from '../core/roster.js';
-import { loadSet, listPages, saveTranscript } from '../core/setio.js';
-import { DataError, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
+import { loadSet, listPages, pageImageName, saveTranscript } from '../core/setio.js';
+import { DataError, pageTag, type AnswerKey, type MaskRect, type QtyUnit, type Student, type Transcript } from '../core/types.js';
 import { casesOnChangedAnswers, mapUnits, remapCases, remapRegions } from '../core/unit-map.js';
 import { planUnitResults, uncheckChanged, unitResultsRequest } from '../core/unit-results.js';
 import { ApiProvider, classifyApiError } from '../engine/api.js';
@@ -16,7 +17,8 @@ import { GEMINI, GeminiProvider, testGeminiKey } from '../engine/gemini.js';
 import { OPENAI, OpenAIProvider, testOpenAIKey } from '../engine/openai.js';
 import { judgePage } from '../engine/judge.js';
 import { draftKey, reviseKeyDraft, type KeyDraftInput, type KeyReviseInput } from '../engine/keydraft.js';
-import { imageToSend, type JpegMasker } from '../engine/privacy.js';
+import { imageToSend, regionImageToSend, type JpegMasker } from '../engine/privacy.js';
+import { findRegions, type FoundRegions } from '../engine/regions.js';
 import { EngineError, userFacingMessage, type Effort, type TranscribeProvider } from '../engine/provider.js';
 import { loadRules } from '../engine/rules.js';
 import { claudeStatus, locateClaude } from '../engine/status.js';
@@ -184,6 +186,24 @@ export class EngineBridge {
       const roster = await this.rosterOrNull();
       return roster ? matchRoster(transcript, key, roster).transcript : transcript;
     });
+  }
+
+  /**
+   * 답 칸 찾기: 전사한 한 장을 신원 영역까지 가려 보내고 단위마다 제안 상자를 받는다. 정답표는 쓰지 않는다
+   * (제안을 받을지는 선생님이 '답 칸 한꺼번에 잡기' 창에서 정하고, 저장은 setAnswerRegions가 한다). 정답표에 없는 단위 id는 버린다
+   */
+  async findAnswerRegions(setDir: string, page: number, 단위: string[]): Promise<FoundRegions> {
+    const { key, transcripts } = await this.confirmedSet(setDir);
+    const transcript = transcripts.find(x => x.page === page);
+    if (!transcript) throw new DataError(`${pageTag(page)} 장의 전사가 없습니다. 전사한 장에서 답 칸을 찾으세요`);
+    const want = new Set(단위);
+    const ids = [...key.정량, ...key.정성].map(u => u.id).filter(id => want.has(id));
+    if (!ids.length) throw new DataError('답 칸을 찾을 단위가 없습니다');
+    let jpeg: Buffer;
+    try { jpeg = await readFile(path.join(setDir, 'pages', pageImageName(page))); }
+    catch { throw new DataError(`${pageTag(page)} 장의 그림 파일이 없습니다`); }
+    const image = (await regionImageToSend(jpeg, key, this.deps.maskJpeg)).toString('base64');
+    return this.exclusive(async signal => findRegions(await this.provider(), { imageJpegBase64: image, key, transcript, 단위: ids, effort: await this.effortFor(key) }, signal));
   }
 
   /** 다음 전사의 예상 시간·비용에 쓸 기록을 설정에 더한다(AI 설정마다). 예상에만 쓰므로 적지 못해도 전사 결과는 그대로 둔다 */

@@ -96,7 +96,7 @@ export const CHANNELS = {
   listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text', exportAnswerPdf: 'set:export-answer-pdf', exportCriteria: 'set:export-criteria',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', openResult: 'review:open-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
-  setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', setAnswerRegions: 'set:answer-regions', setEffort: 'set:effort', matchRoster: 'roster:match',
+  setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', setAnswerRegions: 'set:answer-regions', findAnswerRegions: 'ai:find-regions', setEffort: 'set:effort', matchRoster: 'roster:match',
   applyCase: 'case:apply', revertCase: 'case:revert', removeCase: 'case:remove', rejudge: 'judge:rule', judgeWithModel: 'judge:model',
   updateStatus: 'update:status', checkUpdate: 'update:check', downloadUpdate: 'update:download', installUpdate: 'update:install',
   createSampleSet: 'sample:create', makeDefaultSemester: 'semester:make-default',
@@ -171,6 +171,8 @@ export interface GeulnunApi {
   setAnswerRegion(폴더: string, 단위: string, rect: MaskRect | null): Promise<AnswerKey>;
   /** 여러 단위의 답 칸을 한 번에(단위 id → 사각형, null이면 지우기). 정답표를 한 번만 쓴다 */
   setAnswerRegions(폴더: string, 변경: Record<string, MaskRect | null>): Promise<AnswerKey>;
+  /** AI가 한 장에서 단위마다 답 칸을 찾아 제안한다(신원 영역은 가려 보낸다). 정답표는 쓰지 않는다. 찾지 못한 단위는 null. 중단은 cancelRun */
+  findAnswerRegions(폴더: string, page: number, 단위: string[]): Promise<Record<string, MaskRect | null>>;
   /** 이미 전사한 장을 명단과 맞춘다(이 PC 안에서만) */
   matchRoster(폴더: string): Promise<RejudgeResult>;
   /** 결정적 재판정(모델 호출 없음) */

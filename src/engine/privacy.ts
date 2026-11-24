@@ -1,3 +1,4 @@
+import { identityMask } from '../core/key.js';
 import { DataError, type AnswerKey, type MaskRect } from '../core/types.js';
 
 export type JpegMasker = (jpeg: Buffer, rect: MaskRect) => Buffer | Promise<Buffer>;
@@ -14,4 +15,14 @@ export async function imageToSend(jpeg: Buffer, key: AnswerKey, masker?: JpegMas
   if (!key.이름가림) return jpeg;
   if (!masker) throw new DataError('이 세트는 이름 칸을 가리고 보내도록 설정되어 있는데, 지금 실행 방식에서는 그림을 가릴 수 없습니다. 글눈 프로그램에서 전사해 주세요');
   return masker(jpeg, key.이름가림);
+}
+
+/**
+ * 답 칸 찾기로 보내는 그림. 답의 자리를 찾는 데는 학생 신원이 필요 없어, 세트 설정과 상관없이 신원 영역(과 이름 칸)을 늘 칠한다.
+ * 가릴 수 없으면 원본을 보내는 대신 멈춘다
+ */
+export async function regionImageToSend(jpeg: Buffer, key: AnswerKey, masker?: JpegMasker): Promise<Buffer> {
+  if (!masker) throw new DataError('답 칸 찾기는 학생 정보 자리를 가린 그림만 보냅니다. 지금 실행 방식에서는 그림을 가릴 수 없습니다. 글눈 프로그램에서 해 주세요');
+  const out = await masker(jpeg, identityMask(key));
+  return key.이름가림 ? masker(out, key.이름가림) : out;
 }
