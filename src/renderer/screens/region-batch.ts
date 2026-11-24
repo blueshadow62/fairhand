@@ -7,7 +7,7 @@ import { el } from '../lib/el.js';
 import { t } from '../lib/i18n.js';
 import { anonOrder } from '../lib/item-review.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
-import { nextUnit, regionAt, regionChanges, regionCount, setRegion, startDraft, stepUnit, undoRegion, unitOrder, type Regions } from '../lib/region-batch.js';
+import { acceptAllSuggestions, acceptSuggestion, addSuggestions, discardSuggestion, nextSuggestion, nextUnit, regionAt, regionChanges, regionCount, setRegion, startDraft, stepUnit, undoRegion, unitOrder, type Regions } from '../lib/region-batch.js';
 import { makeLeaveGuard } from '../lib/screen-utils.js';
 
 /** 실행마다 새로 정한다. 겹쳐 볼 다른 장과 그 '답안 n' 번호가 장 번호를 따르지 않게 */
@@ -39,6 +39,9 @@ export function openRegionBatch(o: RegionBatchOpts): void {
   let sel = order.find(id => !initial[id]) ?? order[0]!;
   let dragging: MaskRect | null = null;
   let busy = false, allowClose = false, asking = false;
+  let finding = false, findStarted = 0, findTimer: ReturnType<typeof setInterval> | undefined;
+  /** 마지막 AI 찾기에서 찾지 못한 단위(목록에 알린다) */
+  let notFound = new Set<string>();
 
   // 영역을 잡는 기준 장은 지금 창과 같은 전사된 첫 장. 겹쳐 볼 다른 장은 익명 순서로 몇 장
   const first = Math.min(...pages);
@@ -63,6 +66,10 @@ export function openRegionBatch(o: RegionBatchOpts): void {
   const current = el('div', { class: 'rb-current' });
   const clearBtn = el('button', { class: 'small', onclick: () => edit(null) }, t('region.batch.clear'));
   const undoBtn = el('button', { class: 'small', onclick: () => undo() }, t('region.batch.undo'));
+  const acceptBtn = el('button', { class: 'small primary', onclick: () => accept() }, t('region.batch.aiAccept'));
+  const discardBtn = el('button', { class: 'small', onclick: () => discard() }, t('region.batch.aiDiscard'));
+  const acceptAllBtn = el('button', { class: 'small', onclick: () => acceptAll() });
+  const aiBtn = el('button', { class: 'small', title: t('region.batch.aiTitle'), onclick: () => { if (finding) void api.cancelRun(); else void findWithAi(); } });
   const sheetButtons = sheets.map((s, i) => el('button', { class: 'small', 'aria-pressed': 'false', onclick: () => showSheet(i) }, s.label));
   const zoomText = el('span', { class: 'zoom' });
   const canvas = el('canvas', { class: 'page' });
@@ -72,11 +79,11 @@ export function openRegionBatch(o: RegionBatchOpts): void {
   const saveBtn = el('button', { class: 'primary', onclick: () => void saveAndClose() }, t('common.save'));
   const closeBtn = el('button', { onclick: () => void requestClose() }, t('region.batch.close'));
   const dlg = el('dialog', { class: 'region-batch', 'aria-labelledby': 'region-batch-title' },
-    el('div', { class: 'rb-head' }, el('h3', { id: 'region-batch-title' }, t('region.batch.title')), count, el('span', { class: 'muted' }, t('region.batch.keys'))),
+    el('div', { class: 'rb-head' }, el('h3', { id: 'region-batch-title' }, t('region.batch.title')), count, el('span', { class: 'muted' }, t('region.batch.keys')), el('span', { class: 'rb-gap' }), aiBtn, acceptAllBtn),
     el('div', { class: 'muted' }, t('region.batch.help')),
     el('div', { class: 'rb-body' }, list,
       el('div', { class: 'rb-view' },
-        el('div', { class: 'rb-bar' }, current, clearBtn, undoBtn),
+        el('div', { class: 'rb-bar' }, current, acceptBtn, discardBtn, clearBtn, undoBtn),
         el('div', { class: 'rb-bar' },
           el('span', { class: 'muted', title: t('region.batch.sheetsHelp') }, t('region.batch.sheets')), el('div', { class: 'seg rb-sheets', role: 'group', 'aria-label': t('region.batch.sheets') }, ...sheetButtons),
           el('span', { class: 'rb-gap' }),
@@ -89,6 +96,7 @@ export function openRegionBatch(o: RegionBatchOpts): void {
 
   const changes = () => regionChanges(initial, draft.regions);
   const dirty = () => Object.keys(changes()).length > 0;
+  const pending = () => regionCount(order, draft.ai);
 
   // ── 그리기: 그림, 신원 영역(늘 칠함), 잡은 답 칸 모두(고른 단위는 색·굵기를 달리 해 맨 위에) ──
   function draw(): void {
@@ -106,6 +114,20 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     if (dragging) shown[sel] = dragging;
     const fs = Math.max(16, Math.round(W / 48)); // 맞춤(폭 맞춤)으로 줄여 보여도 단위 id가 읽히게
     g.font = `700 ${fs}px Pretendard, sans-serif`; g.textBaseline = 'top'; g.textAlign = 'left';
+    // AI 제안은 점선 보라색, 이름표는 'id AI'를 칸 아래에(받은 칸의 이름표는 위에 있어 겹치지 않게)
+    for (const u of [...order.filter(x => x !== sel), sel]) {
+      const a0 = draft.ai[u];
+      if (!a0 || (u === sel && dragging)) continue;
+      const on = u === sel, r = toPixels(a0, W, H), color = '#7b1fa2', label = `${u} AI`;
+      if (on) { g.fillStyle = 'rgba(123, 31, 162, .12)'; g.fillRect(r.x, r.y, r.w, r.h); }
+      g.setLineDash([Math.round(W / 120), Math.round(W / 240)]);
+      g.strokeStyle = color; g.lineWidth = on ? Math.max(3, Math.round(W / 320)) : Math.max(2, Math.round(W / 700));
+      g.strokeRect(r.x, r.y, r.w, r.h);
+      g.setLineDash([]);
+      const tw = g.measureText(label).width + fs * 0.6, th = fs * 1.3, ty = r.y + r.h + th <= H ? r.y + r.h : r.y - th;
+      g.fillStyle = color; g.fillRect(r.x, ty, tw, th);
+      g.fillStyle = '#fff'; g.fillText(label, r.x + fs * 0.3, ty + fs * 0.15);
+    }
     for (const u of [...order.filter(x => x !== sel), sel]) {
       const r0 = shown[u];
       if (!r0) continue;
@@ -125,20 +147,28 @@ export function openRegionBatch(o: RegionBatchOpts): void {
   function render(): void {
     const regions = draft.regions;
     for (const [id, r] of rows) {
-      const on = id === sel, has = !!regions[id];
-      r.btn.classList.toggle('active', on); r.btn.classList.toggle('has', has);
+      const on = id === sel, has = !!regions[id], ai = !!draft.ai[id];
+      r.btn.classList.toggle('active', on); r.btn.classList.toggle('has', has); r.btn.classList.toggle('ai', ai);
       if (on) r.btn.setAttribute('aria-current', 'true'); else r.btn.removeAttribute('aria-current');
-      r.mark.textContent = has ? `✓ ${t('region.batch.has')}` : t('region.batch.missing');
+      r.mark.textContent = ai ? t('region.batch.aiPending') : has ? `✓ ${t('region.batch.has')}` : notFound.has(id) ? t('region.batch.aiNotFound') : t('region.batch.missing');
     }
     count.textContent = t('region.batch.count', { n: regionCount(order, regions), total: order.length });
     const u = info.get(sel)!;
     current.replaceChildren(el('span', { class: 'muted' }, t('region.batch.current')), el('strong', {}, sel), el('span', { class: 'desc', title: u.설명 }, u.설명));
     clearBtn.disabled = busy || !regions[sel];
+    acceptBtn.hidden = discardBtn.hidden = !draft.ai[sel];
+    acceptBtn.disabled = discardBtn.disabled = busy;
+    const p = pending();
+    acceptAllBtn.hidden = !p; acceptAllBtn.disabled = busy;
+    acceptAllBtn.textContent = t('region.batch.aiAcceptAll', { n: p });
+    aiBtn.textContent = finding ? t('region.batch.aiStop') : t('region.batch.ai');
+    aiBtn.disabled = busy && !finding;
     undoBtn.disabled = busy || !draft.edits.length;
     const n = Object.keys(changes()).length;
     saveBtn.disabled = busy || !n;
     closeBtn.disabled = busy;
-    if (!busy && !status.classList.contains('error')) status.textContent = n ? t('region.batch.changes', { n }) : t('region.batch.noChanges');
+    if (finding) status.textContent = t('region.batch.aiFinding', { sec: Math.round((Date.now() - findStarted) / 1000) });
+    else if (!busy && !status.classList.contains('error')) status.textContent = [n ? t('region.batch.changes', { n }) : t('region.batch.noChanges'), ...(p ? [t('region.batch.aiPendingCount', { n: p })] : [])].join(' · ');
     sheetButtons.forEach((b, i) => { b.classList.toggle('active', i === sheet); b.setAttribute('aria-pressed', String(i === sheet)); });
     draw();
   }
@@ -161,6 +191,50 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     if (rect) pick(nextUnit(order, draft.regions, sel)); else render();
   }
 
+  function accept(): void {
+    if (busy || !draft.ai[sel]) return;
+    clearError();
+    draft = acceptSuggestion(draft, sel);
+    pick(nextSuggestion(order, draft.ai, sel) ?? sel);
+  }
+  function discard(): void {
+    if (busy || !draft.ai[sel]) return;
+    clearError();
+    draft = discardSuggestion(draft, sel);
+    pick(nextSuggestion(order, draft.ai, sel) ?? sel);
+  }
+  function acceptAll(): void {
+    if (busy || !pending()) return;
+    clearError();
+    draft = acceptAllSuggestions(draft, order);
+    render();
+  }
+
+  /**
+   * 지금 보는 장을 보내 AI 제안을 받는다. 답 칸이 없는 단위만 묻고, 모두 잡혀 있으면 다시 제안받을지 묻는다.
+   * 제안은 저장하지 않고 그림 위에 따로 보인다. 받을지는 선생님이 정한다
+   */
+  async function findWithAi(): Promise<void> {
+    if (busy) return;
+    const missing = order.filter(id => !draft.regions[id]);
+    if (!missing.length && !confirm(t('region.batch.aiAgain'))) return;
+    const targets = missing.length ? missing : order, page = sheets[sheet]!.page;
+    busy = finding = true; findStarted = Date.now(); clearError();
+    findTimer = setInterval(render, 1000);
+    render();
+    try {
+      const found = await api.findAnswerRegions(d.폴더, page, targets);
+      if (!dlg.open) return;
+      notFound = new Set(targets.filter(id => !found[id]));
+      draft = addSuggestions(draft, found, sel);
+    } catch (e) {
+      showError((e as Error).message);
+    } finally {
+      clearInterval(findTimer); busy = finding = false;
+      if (dlg.open) pick(draft.ai[sel] ? sel : nextSuggestion(order, draft.ai, sel) ?? sel);
+    }
+  }
+
   function undo(): void {
     if (busy) return;
     const u = undoRegion(draft);
@@ -174,7 +248,7 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     enabled: () => !busy && !!imgs.get(sheets[sheet]!.page),
     onMove: r => { dragging = r; draw(); },
     onDone: r => { dragging = null; if (r) edit(r); else draw(); },
-    onTap: p => { const id = regionAt(order, draft.regions, p); if (id) pick(id); },
+    onTap: p => { const id = regionAt(order, { ...draft.ai, ...draft.regions }, p); if (id) pick(id); },
   });
 
   // ── 다른 장으로 보기·확대 ──
@@ -209,7 +283,7 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     try {
       const key = await api.setAnswerRegions(d.폴더, c);
       initial = { ...key.답영역 };
-      draft = { regions: { ...initial }, edits: [] };
+      draft = { regions: { ...initial }, ai: draft.ai, edits: [] }; // 받지 않은 제안은 저장하지 않고 남긴다
       o.onSaved(key, n);
     } catch (e) {
       showError((e as Error).message);
@@ -217,12 +291,14 @@ export function openRegionBatch(o: RegionBatchOpts): void {
   }
   const leaveOk = makeLeaveGuard(api, { isDirty: dirty, save, discard: () => undefined });
   function finish(): void { allowClose = true; dlg.close(); }
-  async function saveAndClose(): Promise<void> { await save(); if (!dirty()) finish(); }
+  /** 받지 않은 제안은 저장하지 않는다. 남아 있으면 먼저 알린다 */
+  const pendingOk = (): boolean => !pending() || confirm(t('region.batch.aiPendingLeave', { n: pending() }));
+  async function saveAndClose(): Promise<void> { if (busy || !pendingOk()) return; await save(); if (!dirty()) finish(); }
   /** 저장하지 않은 변경이 있으면 묻고 닫는다. 저장하는 중이면 닫지 않는다 */
   async function requestClose(): Promise<void> {
     if (busy || asking) return;
     asking = true;
-    try { if (await leaveOk()) finish(); } catch (e) { showError((e as Error).message); } finally { asking = false; }
+    try { if (pendingOk() && await leaveOk()) finish(); } catch (e) { showError((e as Error).message); } finally { asking = false; }
   }
 
   // 글자 입력 칸이 없는 창이라 키를 창 전체에서 받는다. 목록 줄을 다시 그리지 않아 초점이 창 밖으로 빠지지 않는다
@@ -235,7 +311,9 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     else if (mod) return;
     else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); pick(stepUnit(order, sel, 1)); }
     else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); pick(stepUnit(order, sel, -1)); }
-    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); edit(null); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (draft.ai[sel]) discard(); else edit(null); }
+    // 목록 줄(지금 단위)에서는 Enter가 제안 받기. 다른 단추에 초점이 있으면 그 단추를 누른다
+    else if (e.key === 'Enter' && draft.ai[sel] && (!(e.target instanceof HTMLButtonElement) || e.target.classList.contains('rb-unit'))) { e.preventDefault(); accept(); }
   };
   document.addEventListener('keydown', onKey);
   dlg.addEventListener('cancel', e => { e.preventDefault(); void requestClose(); });
@@ -243,6 +321,8 @@ export function openRegionBatch(o: RegionBatchOpts): void {
     // 브라우저가 Esc를 거듭 누른 것을 막지 않고 창을 닫는 경우가 있다. 묻지 않고 닫혔으면 다시 열고 묻는다
     if (!allowClose) { dlg.showModal(); void requestClose(); return; }
     document.removeEventListener('keydown', onKey);
+    clearInterval(findTimer);
+    if (finding) void api.cancelRun(); // 창이 닫히면 돌던 찾기도 멈춘다
     for (const img of imgs.values()) img.src = '';
     imgs.clear();
     dlg.remove();

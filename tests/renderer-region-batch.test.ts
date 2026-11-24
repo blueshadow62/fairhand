@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextUnit, regionAt, regionChanges, regionCount, sameRect, setRegion, startDraft, stepUnit, undoRegion, unitOrder, type Regions } from '../src/renderer/lib/region-batch.js';
+import { acceptAllSuggestions, acceptSuggestion, addSuggestions, discardSuggestion, nextSuggestion, nextUnit, regionAt, regionChanges, regionCount, sameRect, setRegion, startDraft, stepUnit, undoRegion, unitOrder, type Regions } from '../src/renderer/lib/region-batch.js';
 
 const A = { x: 0.1, y: 0.2, w: 0.8, h: 0.1 }, B = { x: 0.1, y: 0.4, w: 0.3, h: 0.05 }, C = { x: 0.5, y: 0.4, w: 0.3, h: 0.05 };
 const order = ['1-1', '1-2', '2-1', 'E1'];
@@ -76,4 +76,33 @@ test('sameRect·regionCount', () => {
   assert.ok(!sameRect(A, { ...A, h: 0.11 }));
   assert.equal(regionCount(order, { '1-1': A, E1: C, '9-9': B }), 2);
   assert.equal(regionCount(order, undefined), 0);
+});
+
+test('AI 제안: 저장할 칸과 따로 두고, 받기·버리기·덮어쓰기·모두 받기가 되돌리기에 든다', () => {
+  const initial: Regions = { E1: C };
+  const d = addSuggestions(startDraft(initial), { '1-1': A, '1-2': B, '2-1': null, E1: B }, '1-1'); // 찾지 못한 단위는 건너뛰고, 이미 잡은 칸은 그대로
+  assert.deepEqual(d.regions, { E1: C });
+  assert.deepEqual(d.ai, { '1-1': A, '1-2': B, E1: B });
+  assert.deepEqual(regionChanges(initial, d.regions), {}); // 받기 전에는 저장할 변경이 없다
+  assert.equal(nextSuggestion(order, d.ai, '1-1'), '1-2');
+  assert.equal(nextSuggestion(order, d.ai, 'E1'), '1-1'); // 끝에서 앞으로
+  const a = acceptSuggestion(d, '1-1');
+  assert.deepEqual([a.regions['1-1'], a.ai['1-1']], [A, undefined]);
+  assert.equal(acceptSuggestion(a, '1-1'), a); // 제안이 없으면 그대로
+  const dragged = setRegion(a, '1-2', C); // 사람이 끌면 제안은 사라진다
+  assert.deepEqual([dragged.regions['1-2'], dragged.ai['1-2']], [C, undefined]);
+  const dropped = discardSuggestion(dragged, 'E1'); // 버려도 이미 잡은 칸은 남는다
+  assert.deepEqual([dropped.regions.E1, dropped.ai.E1], [C, undefined]);
+  assert.equal(nextSuggestion(order, dropped.ai, '1-1'), null);
+  assert.deepEqual(regionChanges(initial, dropped.regions), { '1-1': A, '1-2': C });
+  let u = undoRegion(dropped)!; assert.equal(u.단위, 'E1'); assert.deepEqual(u.draft.ai.E1, B);
+  u = undoRegion(u.draft)!; assert.equal(u.단위, '1-2'); assert.deepEqual([u.draft.regions['1-2'], u.draft.ai['1-2']], [undefined, B]);
+  u = undoRegion(u.draft)!; assert.deepEqual([u.draft.regions['1-1'], u.draft.ai['1-1']], [undefined, A]);
+  u = undoRegion(u.draft)!; assert.deepEqual(u.draft.ai, {}); // 제안 받아 오기도 한 번에 되돌린다
+  const all = acceptAllSuggestions(d, ['1-1', '1-2']); // 목록에 든 단위만, 한 번의 고침
+  assert.deepEqual(all.regions, { E1: C, '1-1': A, '1-2': B });
+  assert.deepEqual(all.ai, { E1: B });
+  assert.equal(all.edits.length, d.edits.length + 1);
+  assert.deepEqual(undoRegion(all)!.draft.ai, d.ai);
+  assert.equal(acceptAllSuggestions(startDraft(initial), order).edits.length, 0);
 });
