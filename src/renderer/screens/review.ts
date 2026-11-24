@@ -236,7 +236,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         [tag(i.page), 학생, i.이름, i.식별확신 !== '확실' ? t(`hwaksin.${i.식별확신}`) : null, i.중복 ? t('review.duplicate') : null, i.비고수 ? t('review.notesCount', { n: i.비고수 }) : null, i.확인완료 ? '✓' : null].filter(Boolean).join(' · ')));
     }
     for (const p of untranscribed()) listItems.append(el('div', { class: `item bad${T?.page === p ? ' active' : ''}`, onclick: () => go(p) }, t('review.noTranscript', { page: tag(p) })));
-    const missing = missingStudents(data.key, data.transcripts, data.명단);
+    // 반을 고르면 이 줄도 그 반만. 검색·비고·미확인 거르기는 답안지에 대한 것이라 미제출 학생에게는 쓰지 않는다
+    const missing = missingStudents(data.key, data.transcripts, data.명단, filter.반);
     if (missing.length) listItems.append(el('div', { class: 'item muted' }, t('review.missing', { list: missing.map(s => `${sid(s)}${s.이름 ? ` ${s.이름}` : ''}`).join(', ') })));
   }
 

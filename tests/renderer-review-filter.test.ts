@@ -32,3 +32,28 @@ test('missingStudents: 명단이 없으면 인원 기준, 있으면 명단 기�
   assert.deepEqual(missingStudents(key, [t(1, 1), t(2, 3)], null), [{ 학년: 3, 반: 1, 번호: 2, 이름: null }]);
   assert.deepEqual(missingStudents(key, [t(1, 1)], [{ 학년: 3, 반: 1, 번호: 1, 이름: '가' }, { 학년: 3, 반: 1, 번호: 2, 이름: '나' }]), [{ 학년: 3, 반: 1, 번호: 2, 이름: '나' }]);
 });
+
+test('missingStudents: 반을 고르면 그 반만, 전체 반이면 전부(인원 기준)', () => {
+  const key = { 세트: 's', 글: 'g', 학기: 'h', 대상: { 학년: 3, 반: [1, 2], 인원: { '1': 3, '2': 2 } }, 정량: [], 정성: [] } as AnswerKey;
+  const sheets = [t(1, 1), t(2, 2, { 반: 2 })];
+  assert.deepEqual(missingStudents(key, sheets, null, 2), [{ 학년: 3, 반: 2, 번호: 1, 이름: null }]);
+  assert.deepEqual(missingStudents(key, sheets, null, null), missingStudents(key, sheets, null));
+  assert.deepEqual(missingStudents(key, sheets, null).map(s => `${s.반}-${s.번호}`), ['1-2', '1-3', '2-1']);
+});
+
+test('missingStudents: 반을 고르면 그 반만(명단 기준), 낸 학생은 모든 전사로 판단', () => {
+  const key = { 세트: 's', 글: 'g', 학기: 'h', 대상: { 학년: 3, 반: [1, 2] }, 정량: [], 정성: [] } as AnswerKey;
+  const roster = [{ 학년: 3, 반: 1, 번호: 1, 이름: '가' }, { 학년: 3, 반: 1, 번호: 2, 이름: '나' }, { 학년: 3, 반: 2, 번호: 1, 이름: '다' }, { 학년: 3, 반: 2, 번호: 2, 이름: '라' }];
+  // 1쪽은 2반 1번, 2쪽은 1반 1번. 어느 반을 골라도 두 학생은 낸 것으로 본다
+  const sheets = [t(1, 1, { 반: 2 }), t(2, 1)];
+  assert.deepEqual(missingStudents(key, sheets, roster, 1), [{ 학년: 3, 반: 1, 번호: 2, 이름: '나' }]);
+  assert.deepEqual(missingStudents(key, sheets, roster, 2), [{ 학년: 3, 반: 2, 번호: 2, 이름: '라' }]);
+  assert.deepEqual(missingStudents(key, sheets, roster, null).map(s => s.이름), ['나', '라']);
+});
+
+test('missingStudents: 고른 반에 미제출이 없으면 빈 목록', () => {
+  const key = { 세트: 's', 글: 'g', 학기: 'h', 대상: { 학년: 3, 반: [1, 2], 인원: { '1': 2, '2': 2 } }, 정량: [], 정성: [] } as AnswerKey;
+  const sheets = [t(1, 1), t(2, 2)];
+  assert.deepEqual(missingStudents(key, sheets, null, 1), []);
+  assert.equal(missingStudents(key, sheets, null, 2).length, 2);
+});

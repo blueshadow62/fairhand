@@ -32,8 +32,9 @@ export function applyFilter(items: ReviewItem[], f: Filter): ReviewItem[] {
   return out.sort((a, b) => group(a) - group(b) || byStudent(a, b));
 }
 
-/** 명단이 있으면 명단(대상 학년·반) 중 전사에 없는 학생, 없으면 반별 인원 기준(1..인원 중 없는 번호) */
-export function missingStudents(key: AnswerKey, transcripts: Transcript[], roster: Student[] | null): Student[] {
+/** 명단이 있으면 명단(대상 학년·반) 중 전사에 없는 학생, 없으면 반별 인원 기준(1..인원 중 없는 번호).
+ *  반을 주면 결과만 그 반으로 거른다. 낸 학생은 세트의 모든 전사로 판단해, 다른 반으로 거른 목록이어도 결과가 같다 */
+export function missingStudents(key: AnswerKey, transcripts: Transcript[], roster: Student[] | null, 반: number | null = null): Student[] {
   const have = new Set(transcripts.filter(t => t.식별확신 !== '불명').map(sid).filter((k): k is string => !!k));
   const 학년 = key.대상.학년;
   let candidates: Student[];
@@ -45,5 +46,5 @@ export function missingStudents(key: AnswerKey, transcripts: Transcript[], roste
       if (typeof n === 'number') for (let 번호 = 1; 번호 <= n; 번호++) candidates.push({ 학년, 반, 번호, 이름: null });
     }
   }
-  return candidates.filter(s => !have.has(`${s.학년}-${s.반}-${s.번호}`));
+  return candidates.filter(s => (반 === null || s.반 === 반) && !have.has(`${s.학년}-${s.반}-${s.번호}`));
 }
