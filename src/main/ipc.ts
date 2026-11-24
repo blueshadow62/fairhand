@@ -3,8 +3,9 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { answerPdfOptionsArg } from '../core/answer-pdf.js';
+import { criteriaOptionsArg } from '../core/criteria.js';
 import { maskRectArg, parseKey } from '../core/key.js';
-import { keyExportName, setFolderName } from '../core/names.js';
+import { criteriaFileName, keyExportName, setFolderName } from '../core/names.js';
 import { appendUpload, loadSet, loadUploads, listPages, removePage } from '../core/setio.js';
 import { parseTranscript } from '../core/transcript.js';
 import { DataError, type AnswerKey, type MaskRect, type UploadRecord } from '../core/types.js';
@@ -20,11 +21,13 @@ import type { SettingsStore } from './settings.js';
 import type { Updater } from './update.js';
 import { copySampleSet, makeDefaultSemester } from './sample.js';
 import { exportAnswerPdf } from './answer-pdf.js';
+import { criteriaFile, writeCriteriaFile } from './criteria.js';
+import type { PrintDocs } from './protocols.js';
 import { notifyArgs } from './notify.js';
 
 const LINKS: Record<ExternalLink, string> = { install: 'https://code.claude.com/docs/ko/setup', codexInstall: 'https://developers.openai.com/codex/cli', geminiKey: 'https://aistudio.google.com/apikey', openaiKey: 'https://platform.openai.com/api-keys', privacy: 'https://github.com/blueshadow62/fairhand/blob/main/PRIVACY.md', guide: 'https://github.com/blueshadow62/fairhand#readme', releases: 'https://github.com/blueshadow62/fairhand/releases/latest' };
 
-export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater; sampleDir: string }
+export interface IpcDeps { bridge: EngineBridge; settings: SettingsStore; secrets: SecretStore; version: string; window: () => BrowserWindow | null; updater: Updater; sampleDir: string; printDocs: PrintDocs }
 
 async function wrap<T>(fn: () => Promise<T>): Promise<IpcResult<T>> {
   try { return { ok: true, value: await fn() }; }
@@ -131,6 +134,17 @@ export function registerIpc(d: IpcDeps): void {
     const r = await exportAnswerPdf(dir, path.resolve(outDir), answerPdfOptionsArg(opts));
     for (const f of [r.폴더, ...r.파일]) exportedPaths.add(path.resolve(f));
     return r;
+  });
+  // 저장된 정답표로 만든다(화면의 저장하지 않은 고침은 들어가지 않는다. 화면이 먼저 저장하게 한다). 쓴 경로는 '폴더에서 보기'로 열 수 있게 기억한다
+  h(CHANNELS.exportCriteria, async (폴더: string, raw: unknown) => {
+    const o = criteriaOptionsArg(raw);
+    const dir = await setDir(폴더); const { key } = await loadSet(dir);
+    const r = await dialog.showSaveDialog(d.window()!, { defaultPath: criteriaFileName(key, o.형식), filters: [o.형식 === 'hwpx' ? { name: 'HWPX', extensions: ['hwpx'] } : { name: 'PDF', extensions: ['pdf'] }] });
+    if (r.canceled || !r.filePath) return null;
+    const lang = (await d.settings.load()).언어 === 'en' ? 'en' : 'ko';
+    await writeCriteriaFile(r.filePath, await criteriaFile(key, o, lang, new Date(), d.printDocs));
+    exportedPaths.add(path.resolve(r.filePath));
+    return r.filePath;
   });
   h(CHANNELS.readSourceText, async (폴더: string) => { const dir = await setDir(폴더); try { return await readFile(path.join(dir, '원본', '지문.txt'), 'utf-8'); } catch { return ''; } });
 

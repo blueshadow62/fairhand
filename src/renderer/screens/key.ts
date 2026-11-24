@@ -11,6 +11,7 @@ import { answerChangeNotice, cleanupNotice, draftToRows, emptyRow, formatHeadcou
 import { caseConflict } from '../../core/cases.js';
 import { caseActive } from '../../core/rejudge.js';
 import { changedUnitIds } from '../../core/unit-map.js';
+import { openCriteriaDialog } from './criteria-export.js';
 
 function defaultSemester(d = new Date()): string {
   const m = d.getMonth() + 1;
@@ -426,6 +427,14 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   }) }, t('key.modelRejudge'));
   const judgeBar = el('div', { class: 'row' }, ruleBtn, modelBtn, t('key.pagesLabel'), judgePages);
 
+  /** '채점 기준 안내문' 창: 저장된 정답표로 만들므로 저장하지 않은 고침이 있으면 먼저 저장하게 한다. 사례는 검토에서 쌓인 것까지 든 목록(사례)으로 센다 */
+  function openCriteria(): void {
+    if (!폴더 || !savedKey) return;
+    if (dirty) { showError(t('common.saveKeyFirst')); return; }
+    openCriteriaDialog(폴더, { ...savedKey, 사례 });
+  }
+  const criteriaButton = (): HTMLButtonElement => el('button', { title: t('key.criteriaTip'), onclick: () => openCriteria() }, t('key.criteria'));
+
   const confirmBox = el('input', { type: 'checkbox', onchange: () => void setConfirmed(confirmBox.checked) });
   async function setConfirmed(on: boolean): Promise<void> {
     if (!폴더 || dirty) { confirmBox.checked = !on; showError(t('common.saveKeyFirst')); return; }
@@ -502,6 +511,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('div', { class: 'card' }, el('div', { class: 'row' }, el('h3', {}, 폴더 ? t('common.set', { name: 폴더 }) : t('key.newSet')),
           el('button', { onclick: () => void importKey() }, t('key.import')),
           폴더 ? el('button', { onclick: () => guard(async () => { const p = await api.exportKey(폴더!); if (p) showInfo(t('key.exported', { path: p })); }) }, t('key.export')) : null,
+          폴더 ? criteriaButton() : null,
           폴더 ? el('button', { class: 'danger', onclick: () => guard(async () => {
             const info = store.state.sets.find(s => s.폴더 === 폴더);
             if (!confirm(t('key.deleteSetConfirm', { title: meta.글, pages: info?.쪽수 ?? 0, transcripts: info?.전사수 ?? 0 }))) return;
@@ -522,7 +532,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
           el('div', { class: 'row' }, draftBtn,
             폴더 ? el('button', { onclick: () => guard(async () => { const n = await api.attachSource(폴더!); if (n) attachName.textContent = t('key.attached', { name: n }); }) }, t('key.attach')) : null, attachName),
           el('h3', {}, t('key.chatTitle')), el('div', { class: 'muted' }, t('key.chatHelp')), chatLog, el('div', { class: 'row chat-row' }, chatInput, chatBtn)),
-        panel('rules', rulesBox, casesBox, judgeBar, judgeBox)),
+        panel('rules', rulesBox, casesBox, 폴더 ? el('div', { class: 'row criteria-row' }, criteriaButton(), el('span', { class: 'muted' }, t('key.criteriaHelp'))) : null, judgeBar, judgeBox)),
       saveBar);
     showTab(tab);
     renderTable(); renderStatus(); renderList(); renderRules(); renderCases(); renderStart(); clear(judgeBox);

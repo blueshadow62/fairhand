@@ -622,3 +622,6 @@ dialog.answer-pdf legend { padding: 0 4px; font-weight: 700; }
 dialog.answer-pdf fieldset .band { margin: 4px 0 0; }
 dialog.answer-pdf .row.sub { margin: 0; }
 dialog.answer-pdf .pdf-status .path { overflow-wrap: anywhere; }
+/* 채점 기준 안내문 창: 선택지 밑 풀이는 상자 글자 줄에 맞춰 들인다 */
+dialog.criteria-export fieldset .muted.sub { margin: -2px 0 2px 22px; font-size: var(--fs-m); }
+.criteria-row { margin-top: var(--sp-3); }

@@ -1,4 +1,5 @@
 import type { AnswerPdfOptions, AnswerPdfResult } from '../core/answer-pdf.js';
+import type { CriteriaOptions } from '../core/criteria.js';
 import type { CaseChange, CaseRevertRequest } from '../core/cases.js';
 import type { AnswerKey, Case, MaskRect, Student, Transcript, UploadRecord } from '../core/types.js';
 import type { ChangedAnswerCase } from '../core/unit-map.js';
@@ -92,7 +93,7 @@ export const CHANNELS = {
   getSettings: 'settings:get', saveSettings: 'settings:save', pickFolder: 'dialog:folder', pickFile: 'dialog:file', askLeave: 'dialog:leave', openExternal: 'shell:external', revealPath: 'shell:reveal', version: 'app:version', notify: 'app:notify',
   secretView: 'secret:view', secretSet: 'secret:set', secretClear: 'secret:clear', secretTest: 'secret:test',
   cliStatus: 'cli:status', cliLogin: 'cli:login', cliInstall: 'cli:install',
-  listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text', exportAnswerPdf: 'set:export-answer-pdf',
+  listSets: 'set:list', createSet: 'set:create', deleteSet: 'set:delete', listTrash: 'trash:list', restoreSet: 'trash:restore', purgeSet: 'trash:purge', readSet: 'set:read', saveKey: 'set:save-key', importKey: 'set:import-key', exportKey: 'set:export-key', attachSource: 'set:attach-source', readSourceText: 'set:source-text', exportAnswerPdf: 'set:export-answer-pdf', exportCriteria: 'set:export-criteria',
   draftKey: 'ai:draft-key', reviseKey: 'ai:revise-key', extractText: 'file:extract-text', tryPage: 'ai:try-page', startRun: 'run:start', cancelRun: 'run:cancel', progress: 'run:progress', addPages: 'pages:add', deletePage: 'pages:delete', deletePages: 'pages:delete-many', recordUpload: 'pages:record-upload',
   saveTranscript: 'review:save', buildResult: 'review:build-result', openResult: 'review:open-result', buildCumulative: 'review:build-cumulative', setUnitResults: 'review:unit-results',
   setNameMask: 'set:name-mask', setIdentityMask: 'set:identity-mask', setAnswerRegion: 'set:answer-region', setAnswerRegions: 'set:answer-regions', setEffort: 'set:effort', matchRoster: 'roster:match',
@@ -135,6 +136,8 @@ export interface GeulnunApi {
   readSourceText(폴더: string): Promise<string>;            // 원본/*.txt 가 있으면 그 글(붙여넣은 지문 저장용)
   /** 세트의 답안지 그림을 PDF로 받는다. outDir은 pickFolder로 이번 실행에 고른 폴더여야 한다. 고르면 채점 표시·점수를 그림 위에 그린다 */
   exportAnswerPdf(폴더: string, outDir: string, opts: AnswerPdfOptions): Promise<AnswerPdfResult>;
+  /** 저장된 정답표로 '채점 기준 안내문'(PDF·HWPX)을 만든다. 저장 창에서 고른 경로를 돌려준다(그만두면 null) */
+  exportCriteria(폴더: string, opts: CriteriaOptions): Promise<string | null>;
   draftKey(input: { 글: string; 문제: string; 지문?: string; 문제그림?: ArrayBuffer[]; 지문그림?: ArrayBuffer[] }): Promise<KeyDraftResult>;   // 그림은 JPEG
   extractText(name: string, data: ArrayBuffer): Promise<string>;
   reviseKey(input: { 글: string; 문제: string; 지문?: string; 문제그림?: ArrayBuffer[]; 지문그림?: ArrayBuffer[]; 현재: { 정량: AnswerKey['정량']; 정성: AnswerKey['정성'] }; 지시: string; 앞선지시?: string[] }): Promise<KeyDraftResult>;   // txt·hwpx에서 글만(hwp·docx는 안내 오류)

@@ -24,6 +24,8 @@ export const isResultFileName = (name: string): boolean => !name.startsWith('~$'
 export const cumulativeFileName = (학기: string, 학년: number, d: Date): string =>
   `${semesterTag(학기)}_${학년}학년_누가기록_${dateTag(d)}.xlsx`;
 export const keyExportName = (k: AnswerKey): string => `${head(k)}_${titleTag(k.글)}_정답표.json`;
+/** 채점 기준 안내문(문항 설정에서 내보내는 PDF·HWPX). 정답표 내보내기처럼 날짜를 붙이지 않는다 */
+export const criteriaFileName = (k: AnswerKey, ext: 'pdf' | 'hwpx'): string => `${head(k)}_${titleTag(k.글)}_채점기준.${ext}`;
 
 /**
  * 답안지 PDF 이름. marked: 채점 표시를 넣은 것(받은 사람이 이름만 보고 구분하게 '채점답안지'), part: 반별·학생별 묶음의 한 조각(예: '2반', '2반07번_김하나').

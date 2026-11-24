@@ -6,7 +6,7 @@ import { maskJpegNative } from './mask.js';
 import { registerIpc } from './ipc.js';
 import { installLog } from './log.js';
 import { menuTemplate } from './menu.js';
-import { APP_SCHEME, CSP, IMG_SCHEME, registerProtocols } from './protocols.js';
+import { APP_SCHEME, CSP, IMG_SCHEME, PrintDocs, registerProtocols } from './protocols.js';
 import { SecretStore } from './secrets.js';
 import { SettingsStore } from './settings.js';
 import { fixPath } from './shell-path.js';
@@ -48,12 +48,13 @@ app.whenReady().then(async () => {
     if ('자동업데이트' in patch || '자동설치' in patch) updater.setAutoInstall(autoInstall());
     return settingsCache;
   };
+  const printDocs = new PrintDocs(); // 채점 기준 안내문 PDF를 숨은 창에서 인쇄할 동안만 든다
   const menu = menuTemplate(process.platform); // Windows는 메뉴 없음, 맥은 단축키용 최소 메뉴
   Menu.setApplicationMenu(menu ? Menu.buildFromTemplate(menu) : null);
   registerProtocols(protocol, { html: path.join(ROOT, 'src', 'renderer'), dist: path.join(ROOT, 'dist', 'src'), pdfjs: path.join(ROOT, 'node_modules', 'pdfjs-dist', 'build'), fonts: path.join(ROOT, 'resources', 'fonts') },
-    () => settingsCache.학기폴더);
+    () => settingsCache.학기폴더, printDocs);
   await pathFixed; // 화면이 AI 도구 상태를 묻기 전에
-  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater, sampleDir: SAMPLE_DIR(ROOT) });
+  registerIpc({ bridge, settings, secrets, version: app.getVersion(), window: () => win, updater, sampleDir: SAMPLE_DIR(ROOT), printDocs });
 
   session.defaultSession.webRequest.onHeadersReceived((details, cb) => cb({ responseHeaders: { ...details.responseHeaders,
     'Content-Security-Policy': [CSP] } }));
