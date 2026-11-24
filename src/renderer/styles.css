@@ -291,6 +291,8 @@ label.upload input:focus { box-shadow: none; }
 .thumb figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px 6px; font-size: var(--fs-s); }
 .thumb figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thumb figcaption button { min-height: 24px; padding: 0 8px; flex: none; }
+/* 고른 장 줄: 다시 전사(보통 단추)는 고른 수 옆, 지우기(빨간 단추)는 줄 끝으로 떼어 둔다 */
+.pick-row .danger { margin-left: auto; }
 /* 끌어다 놓을 수 있는 동안(파일을 끌고 채점 실행 화면 위에 있을 때) 올리기 칸을 강조색 점선과 옅은 바탕으로. 테두리가 1px 굵어진 만큼 안쪽 여백을 줄여 글이 움직이지 않게 */
 .card.upload-card.dropping { border: 2px dashed var(--accent); background: var(--accent-soft); padding: calc(var(--sp-4) - 1px) 17px; }
 /* 고른 파일: 단추 모양 칩(순번·이름·쪽 수와 받을 장 범위). 순번이 저장 차례이고, 오른쪽 위 x로 그 파일만 뺀다.
@@ -358,6 +360,7 @@ canvas.preview { display: block; border: 1px solid var(--line); border-radius: v
 .review .viewer-bar { position: sticky; top: 0; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--viewer-bar); border-bottom: 1px solid var(--line); z-index: 1; }
 .review .viewer-bar button { min-height: 32px; padding: 0 10px; border-radius: var(--r-s); }
 .review .viewer-bar .muted { font-size: var(--fs-s); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* 그림 칸을 좁혀도 막대가 여러 줄로 늘지 않게 */
+.review.redoing .list, .review.redoing .editor { opacity: 0.6; } /* 이 장 다시 전사 동안 잠긴 칸 */
 .review .editor { overflow: auto; padding: 10px 14px 20px; background: var(--surface); }
 .review .splitter { position: relative; cursor: col-resize; touch-action: none; background: var(--surface-2); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 .review .splitter::after { content: ''; position: absolute; left: 50%; top: 50%; width: 3px; height: 40px; border-radius: 2px; transform: translate(-50%, -50%); background: var(--line-h); }
@@ -595,6 +598,7 @@ dialog.answer-pdf .region-note > span { flex: 1 1 240px; min-width: 0; }
 .card.in-use { border-color: var(--accent-line); box-shadow: inset 4px 0 0 var(--accent); }
 /* 프로필 카드와 채점 실행 전사 칸의 '고급'(실행 파일·설정 폴더, 다시 전사할 장): 처음 쓰는 사람에게 필요 없는 칸이라 접어 두고, 펼침 단추는 글보다 옅게 */
 .card details.advanced { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--line-2); }
+.card details.advanced .redo-input { width: 18em; max-width: 100%; }
 .card details.advanced > summary { width: fit-content; padding: 4px 2px; cursor: pointer; font-weight: 600; color: var(--text-2); }
 .card details.advanced > summary:hover, .card details.advanced[open] > summary { color: var(--text); }
 .card details.advanced > summary .muted { margin-left: var(--sp-2); font-weight: 400; }

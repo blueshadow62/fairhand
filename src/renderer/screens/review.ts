@@ -117,7 +117,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     item.root.classList.toggle('hidden', !has || mode !== 'item');
   }
   async function setMode(m: Mode): Promise<void> {
-    if (m === mode) return;
+    if (m === mode || redoing) return; // 다시 전사하는 동안에는 답안지별에 머문다(끝나면 그 장을 다시 그린다)
     if (mode === 'sheet' && !(await leaveOk())) return; // 답안지별에서 고치던 것은 저장하거나 버린 뒤에 바꾼다
     mode = m;
     try { sessionStorage.setItem(MODE_PREF, m); } catch { /* 이번 화면에서만 유지 */ }
@@ -252,7 +252,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   ctx.setLeaveGuard(leaveOk);
 
   function go(page: number): void {
-    if (T?.page === page) return;
+    if (T?.page === page || redoing) return;
     void leaveOk().then(ok => { if (ok) openPage(page); });
   }
 
@@ -309,12 +309,68 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       el('button', { onclick: () => void saveAndNext(), title: MAC ? '⌘Enter' : 'Ctrl+Enter' }, t('review.saveNext')),
       el('label', {}, done, t('review.done')),
       unsavedTag,
-      el('label', { title: t('review.recordCasesTitle') }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), t('review.recordCases'))));
+      el('label', { title: t('review.recordCasesTitle') }, el('input', { type: 'checkbox', checked: recordCases, onchange: (e: Event) => { recordCases = (e.target as HTMLInputElement).checked; remember(recordCases); } }), t('review.recordCases')),
+      redoBtn));
+    syncRedo();
+  }
+
+  // ── 이 장 다시 전사(답안지별에만. 문항별은 학생 신원을 가리는 화면이라 두지 않는다) ──
+  // 실행 잠금은 메인이 맡는다: 채점 실행의 전사·한 장 시험·모델 다시 판정이 돌고 있으면 startRun이 거절하고, 그 오류를 그대로 보인다
+  let redoing = false;
+  const redoBtn = el('button', { class: 'small redo-page', onclick: () => void redoPage() });
+  function syncRedo(): void {
+    const confirmed = data?.key.확인?.완료 === true;
+    redoBtn.disabled = redoing || !T || !confirmed;
+    redoBtn.textContent = t(redoing ? 'review.redoRunning' : 'review.redo');
+    redoBtn.title = confirmed ? t('review.redoTitle') : t('common.notConfirmed');
+  }
+  /** 도는 동안 장 목록·전사 칸을 잠근다. 그사이 고친 것이나 넘긴 장이 새 전사와 섞이지 않게(한 장이라 짧다) */
+  function lockForRedo(on: boolean): void {
+    list.inert = editor.inert = on;
+    for (const b of modeButtons.values()) b.disabled = on;
+    grid.classList.toggle('redoing', on);
+    syncRedo();
+  }
+
+  async function redoPage(): Promise<void> {
+    if (!T || !data || redoing || saving || data.key.확인?.완료 !== true) return;
+    if (!(await leaveOk())) return; // 고치던 것은 덮어쓰기 전에 저장하거나 버린다
+    if (!T || !data || redoing) return;
+    const page = T.page, 폴더 = data.폴더;
+    if (!confirm(t('review.redoConfirm', { page: tag(page) }))) return;
+    redoing = true; lockForRedo(true);
+    const started = Date.now();
+    const band = el('div', { class: 'band info', role: 'status' });
+    const tick = () => { band.textContent = t('review.redoProgress', { page: tag(page), sec: Math.round((Date.now() - started) / 1000) }); };
+    tick();
+    const timer = setInterval(tick, 1000);
+    notice.append(band);
+    let report = () => { /* 아래에서 정한다 */ };
+    let excelError: string | undefined;
+    try {
+      const r = await api.startRun(폴더, { pages: [page], force: true });
+      const f = r.failed.find(x => x.page === page);
+      excelError = r.엑셀오류;
+      // 실패해도 메인은 기존 전사 파일을 지우지 않는다(성공한 때만 쓴다)
+      report = f ? () => showError(t('review.redoFailed', { page: tag(page), error: f.error }))
+        : r.ok.includes(page) ? () => showInfo(t('review.redoDone', { page: tag(page) }))
+        : () => showInfo(t('review.redoStopped', { page: tag(page) })); // 채점 실행 화면에서 중단한 때
+    } catch (e) { const m = (e as Error).message; report = () => showError(m); }
+    finally { clearInterval(timer); band.remove(); redoing = false; lockForRedo(false); }
+    if (shownFor === 폴더) {
+      await reload(page); // reload가 notice를 비우므로 알림은 그 뒤에
+      if (data?.폴더 === 폴더 && data.pages.includes(page) && T?.page !== page) openPage(page); // 거르기(비고만 등)에서 빠져도 그 장을 보인다
+    }
+    report();
+    if (excelError) notice.append(el('div', { class: 'band warn' }, t('common.excelFailed', { error: excelError })));
+    // 메인이 적은 장당 시간 기록(채점 실행의 예상 줄)과 시작 화면의 세트 현황을 새로 읽는다
+    try { store.update({ settings: await api.getSettings() }); } catch { /* 예상 줄만 옛 기록으로 */ }
+    await store.refreshSets().catch(() => undefined);
   }
 
   /** '저장하고 다음'(Ctrl+Enter): 이 장을 확인 완료로 저장하고 목록의 다음 장을 연다. 저장이 안 되면 머물고, 마지막 장이면 머물며 알린다 */
   async function saveAndNext(): Promise<void> {
-    if (!T || !data || saving) return;
+    if (!T || !data || saving || redoing) return;
     const page = T.page, 폴더 = data.폴더;
     // 다음 장은 누른 때의 목록 순서로 정한다. 저장하면 목록이 다시 정렬되거나(문제 먼저) 이 장이 빠진다(미확인만)
     const next = neighbor(1);
@@ -333,7 +389,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   let saving = false; // Ctrl+S 연타·버튼 연타로 저장과 엑셀 생성이 두 벌 도는 것을 막는다. 사례 되돌리기도 같은 표시로 겹치지 않게
   /** 전사가 저장되고 사례 기록도 탈 없이 끝나면 true. '저장하고 다음'은 그때만 다음 장으로 간다. 사례 확인 창에서 취소하면 저장하지 않는다 */
   async function save(): Promise<boolean> {
-    if (!T || !data || saving) return false;
+    if (!T || !data || saving || redoing) return false;
     saving = true;
     const tr = T, 폴더 = data.폴더;
     const cases = caseCandidates(data.key, data.transcripts.find(x => x.page === tr.page), tr);
@@ -501,7 +557,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
 
   document.addEventListener('keydown', e => {
     // 문항별 검토에서는 숨은 답안지별 장을 저장하거나 넘기지 않는다. 사례 확인 창이 떠 있는 동안에도 장을 넘기지 않는다
-    if (root.classList.contains('hidden') || !T || mode !== 'sheet' || document.querySelector('dialog[open]')) return;
+    if (root.classList.contains('hidden') || !T || mode !== 'sheet' || redoing || document.querySelector('dialog[open]')) return;
     if ((e.ctrlKey || (MAC && e.metaKey)) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } // 맥은 ⌘S
     // 한글 조합 중의 Enter는 글자 확정이다. 그때 넘기면 마지막 글자가 빠진 채 저장된다
     else if ((e.ctrlKey || (MAC && e.metaKey)) && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); void saveAndNext(); } // 맥은 ⌘Enter

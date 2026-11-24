@@ -7,7 +7,8 @@ import { toItems } from '../lib/review-filter.js';
 import type { AnswerKey, MaskRect, Transcript, UploadRecord } from '../../core/types.js';
 import { canvasToJpeg, DPI_SCALE, openSheetSource, pdfPageJpeg, type Rotation, type SheetSource } from '../pdf-pages.js';
 import { attachRectDrag } from '../lib/rect-drag.js';
-import { parsePageSpec, tag } from '../lib/screen-utils.js';
+import { tag } from '../lib/screen-utils.js';
+import { resolveRedoPages } from '../lib/redo-pages.js';
 import { costUsd, priceOf } from '../../shared/prices.js';
 import { runMeter } from '../../shared/estimate.js';
 import { estimateLine, liveEstimateText, withSetEffort } from '../lib/run-estimate.js';
@@ -493,6 +494,12 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   const pickAll = el('input', { type: 'checkbox', onchange: () => { selected = new Set(pickAll.checked && data ? data.pages : []); lastPick = null; syncPicks(); } });
   const pickCount = el('span', { class: 'muted' });
   const deleteSel = el('button', { class: 'danger', onclick: () => void deleteSelected() });
+  // 다시 전사는 지우기와 헷갈리지 않게 보통 단추로 고른 수 옆에 두고, 지우기(빨간 단추)는 줄 끝으로 민다
+  const redoSel = el('button', { onclick: () => {
+    if (!data) return;
+    const pages = data.pages.filter(p => selected.has(p));
+    if (pages.length) confirmRedo(pages);
+  } });
 
   function renderThumbs(): void {
     clear(thumbsBox); picks.clear();
@@ -500,7 +507,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     thumbsTitle.textContent = t('run.savedPages', { n: data.pages.length });
     if (!data.pages.length) { thumbsBox.append(el('div', { class: 'muted' }, t('run.noPages'))); syncPicks(); return; }
     thumbsBox.append(
-      el('div', { class: 'row' }, el('label', {}, pickAll, t('run.pickAll')), pickCount, deleteSel),
+      el('div', { class: 'row pick-row' }, el('label', {}, pickAll, t('run.pickAll')), pickCount, redoSel, deleteSel),
       el('div', { class: 'thumbs' }, ...data.pages.map(p => {
         const tr = data!.transcripts.find(x => x.page === p);
         const who = !tr ? t('run.untranscribed') : tr.이름 ?? (tr.반 !== null && tr.번호 !== null ? `${tr.반}-${tr.번호}` : t('run.unidentified'));
@@ -530,6 +537,10 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     pickCount.textContent = n ? t('run.pickedCount', { n }) : '';
     deleteSel.textContent = deleting ? t('run.deleting') : t('run.deleteSelected', { n });
     deleteSel.disabled = running || deleting || !n;
+    redoSel.textContent = t('run.redoSelected', { n });
+    // 고급의 '다시 전사'와 같은 조건에 지우는 중을 더한다
+    redoSel.disabled = running || trying || deleting || data?.key.확인?.완료 !== true || !n;
+    redoSel.title = data && data.key.확인?.완료 !== true ? t('common.notConfirmed') : '';
   }
 
   function pick(p: number, on: boolean, range: boolean): void {
@@ -661,13 +672,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     const f = tryInput.files?.[0]; tryInput.value = '';
     if (!f || !data || running || trying) return;
     const { 폴더, key } = data; // 기다리는 사이 세트가 바뀌어도 이 정답표로 그린다
-    trying = true; renderRun(); renderUpload();
+    trying = true; renderRun(); renderUpload(); syncPicks();
     clear(tryBox); tryBox.append(el('div', { class: 'muted' }, t('run.try.running')));
     try {
       const tr = await api.tryPage(폴더, await fileToJpeg(f, store.state.settings.기본회전));
       clear(tryBox); tryBox.append(transcriptTable(key, tr));
     } catch (e) { clear(tryBox); showError((e as Error).message); }
-    finally { trying = false; await refreshEstimates(); renderRun(); renderUpload(); }
+    finally { trying = false; await refreshEstimates(); renderRun(); renderUpload(); syncPicks(); }
   }
 
   /** 메인은 전사·시험 한 장이 끝날 때 장당 시간·토큰을 설정에 적는다. 예상 줄이 새 기록을 쓰게 설정을 다시 읽는다 */
@@ -678,7 +689,7 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
   // ── 전사 ──
   const progressBar = el('progress', { max: '1', value: '0' });
   const progressText = el('span');
-  const pagesInput = el('input', { size: 10, placeholder: t('common.pagesPlaceholder') });
+  const pagesInput = el('input', { class: 'redo-input', placeholder: t('run.redoPlaceholder'), 'aria-label': t('run.redoPages') });
   let redoOpen = false;
 
   async function run(opts: { pages?: number[]; force?: boolean }): Promise<void> {
@@ -786,6 +797,26 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
     return el('div', {}, el('div', { class: 'row' }, t('run.concurrency'), sel), el('div', { class: 'muted' }, t('run.concurrencyHelp')));
   }
 
+  /** 고급의 '다시 전사할 장' 칸: 장 번호·p 번호·범위·학생 이름을 쉼표로 섞어 쓴다. 문제가 하나라도 있으면 실행하지 않는다 */
+  function redoTyped(): void {
+    if (!data) return;
+    const r = resolveRedoPages(pagesInput.value, data.pages, data.transcripts);
+    if (r.bad.length) { showError(t('run.redoBad', { words: r.bad.join(', ') })); return; }
+    if (r.missing.length) { showError(t('run.missingPages', { pages: r.missing.map(tag).join(', ') })); return; }
+    if (r.unknown.length) { showError(t('run.redoUnknown', { words: r.unknown.join(', ') })); return; }
+    if (!r.pages.length) { showError(t('run.redoEmpty')); return; }
+    confirmRedo(r.pages, r.byName);
+  }
+
+  /** 다시 전사 확인(검토에서 고친 내용도 덮어쓴다). 이름으로 찾은 장은 어느 이름이 어느 장인지 함께 보인다 */
+  function confirmRedo(pages: number[], byName: { 이름: string; pages: number[] }[] = []): void {
+    if (!data || running || trying || deleting) return;
+    const names = byName.length ? `\n\n${t('run.redoByName', { list: byName.map(b => `${b.이름} → ${b.pages.map(tag).join(', ')}`).join('\n') })}` : '';
+    if (!confirm(t('run.redoConfirm', { pages: pages.map(tag).join(', ') }) + names)) return;
+    runCard.scrollIntoView({ block: 'center', behavior: 'smooth' }); // 진행 막대는 전사 칸에 있다
+    void run({ pages, force: true });
+  }
+
   function renderRun(): void {
     clear(runBox);
     if (!data) return;
@@ -807,14 +838,8 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         concurrencyRow(),
         positionsRow(),
         el('div', { class: 'row' }, t('run.redoPages'), pagesInput,
-          el('button', { disabled: running || trying || !confirmed, onclick: () => {
-            const pages = parsePageSpec(pagesInput.value);
-            if (!pages) { showError(t('common.badPageSpec')); return; }
-            const missing = pages.filter(p => !data!.pages.includes(p));
-            if (missing.length) { showError(t('run.missingPages', { pages: missing.map(tag).join(', ') })); return; }
-            if (!confirm(t('run.redoConfirm', { pages: pages.map(tag).join(', ') }))) return;
-            void run({ pages, force: true });
-          } }, t('run.redo')))),
+          el('button', { disabled: running || trying || !confirmed, onclick: redoTyped }, t('run.redo'))),
+        el('div', { class: 'muted' }, t('run.redoHelp'))),
       confirmed ? null : el('div', { class: 'band error' }, t('run.notConfirmedLong')));
   }
 
