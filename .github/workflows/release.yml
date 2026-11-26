@@ -22,10 +22,11 @@ jobs:
       - run: npm test
       # 빌더가 직접 올리면 초안이 둘 생기는 일이 있어(0.2.1·0.2.2), 빌드만 하고 초안 하나를 gh로 만든다. 설명을 적고 직접 공개한다.
       - run: npx electron-builder --win --publish never
-      - run: gh release create "${{ github.ref_name }}" --draft --title "글눈 ${{ github.ref_name }}" --notes "설명을 적는 중입니다." release/fairhand-setup-*.exe release/latest.yml release/*.blockmap
+      - run: gh release create "$TAG" --draft --title "글눈 $TAG" --notes "설명을 적는 중입니다." release/fairhand-setup-*.exe release/latest.yml release/*.blockmap
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }} # 태그 이름을 셸 글에 직접 넣지 않는다
   mac:
     # 맥 시험판 dmg(Apple 실리콘·인텔). 초안은 위 Windows 작업이 하나만 만들고, 여기서는 그 초안에 파일을 더한다.
     # 서명이 없어 자동 업데이트가 안 되므로 latest-mac.yml은 올리지 않는다(맥 앱은 업데이트를 확인하지 않는다).
@@ -41,6 +42,7 @@ jobs:
       - run: npm test
       # 맥만 제품 이름을 Fairhand로 덮어써 묶는다(한글 이름이면 시작하자마자 죽는다. package.json의 dist:mac)
       - run: npm run dist:mac
-      - run: gh release upload "${{ github.ref_name }}" release/fairhand-*-mac-*.dmg --clobber
+      - run: gh release upload "$TAG" release/fairhand-*-mac-*.dmg --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }} # 태그 이름을 셸 글에 직접 넣지 않는다
