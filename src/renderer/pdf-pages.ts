@@ -38,8 +38,9 @@ export async function openPdf(file: File, bytes?: ArrayBuffer): Promise<OpenedPd
       const ctx = canvas.getContext('2d')!;
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
       // intent 'print'는 requestAnimationFrame을 쓰지 않는다: 창이 가려지거나 최소화되면 화면용 렌더가 멈춘다
-      await page.render({ canvas, canvasContext: ctx, viewport, intent: 'print' }).promise;
-      page.cleanup();
+      try { await page.render({ canvas, canvasContext: ctx, viewport, intent: 'print' }).promise; }
+      catch (e) { canvas.width = canvas.height = 0; throw e; }
+      finally { page.cleanup(); }
       return canvas;
     },
     close() { void task.destroy(); }, // pdf.js 6: 문서가 아니라 불러오기 작업을 닫는다(워커·메모리 해제)
@@ -53,22 +54,26 @@ export function canvasToJpeg(c: HTMLCanvasElement, quality = 0.85): Promise<Arra
 /** PDF 한 파일의 지정한 쪽을 JPEG로(한 장 시험용) */
 export async function pdfPageJpeg(file: File, n: number, rotation: Rotation): Promise<ArrayBuffer> {
   const pdf = await openPdf(file);
-  try { return await canvasToJpeg(await pdf.renderPage(n, { rotation, scale: DPI_SCALE })); } finally { pdf.close(); }
+  try {
+    const c = await pdf.renderPage(n, { rotation, scale: DPI_SCALE });
+    try { return await canvasToJpeg(c); } finally { c.width = c.height = 0; }
+  } finally { pdf.close(); }
 }
 
 /** 스캐너가 낸 사진 파일(jpg·png)을 회전만 해서 캔버스로. 크기는 그대로 */
 export async function imageToCanvas(file: File, rotation: Rotation, scale = 1): Promise<HTMLCanvasElement> {
   const bmp = await createImageBitmap(file);
-  const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
-  const c = document.createElement('canvas');
-  const swap = rotation === 90 || rotation === 270;
-  c.width = swap ? h : w; c.height = swap ? w : h;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rotation * Math.PI / 180);
-  ctx.drawImage(bmp, -w / 2, -h / 2, w, h);
-  bmp.close();
-  return c;
+  try {
+    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    const c = document.createElement('canvas');
+    const swap = rotation === 90 || rotation === 270;
+    c.width = swap ? h : w; c.height = swap ? w : h;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rotation * Math.PI / 180);
+    ctx.drawImage(bmp, -w / 2, -h / 2, w, h);
+    return c;
+  } finally { bmp.close(); }
 }
 
 /** 올린 파일 하나: PDF(여러 쪽) 또는 사진(한 쪽). 이름순(숫자 인식)으로 정렬해 쓴다 */

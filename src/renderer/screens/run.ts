@@ -305,9 +305,13 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
         for (let p = 1; p <= src.pageCount; p++) {
           n++;
           const c = await src.render(p, 회전[p - 1]!, DPI_SCALE);
-          jpegs.push(await canvasToJpeg(c));
-          thumbs.push(await canvasToJpeg(shrink(c, THUMB_W), 0.75));
-          c.width = c.height = 0; // 200dpi 캔버스(장당 수십 MB)를 GC를 기다리지 않고 비운다
+          try {
+            jpegs.push(await canvasToJpeg(c));
+            const s = shrink(c, THUMB_W);
+            try { thumbs.push(await canvasToJpeg(s, 0.75)); } finally { s.width = s.height = 0; }
+          } finally {
+            c.width = c.height = 0; // 200dpi 캔버스(장당 수십 MB)를 GC를 기다리지 않고 비운다
+          }
           uploadStatus.textContent = t('run.rendering', { n, total });
           if (jpegs.length >= BATCH) await flush();
         }
@@ -318,7 +322,11 @@ export function mount(root: HTMLElement, ctx: Ctx): void {
       justSaved = [...made];
       dropPicked(); fileInput.value = '';
       await refresh();
-    } catch (e) { showError((e as Error).message); }
+    } catch (e) {
+      // 앞 묶음은 이미 저장됐다. 목록에 보이게 하고 범위를 알려, 같은 장을 모르고 다시 저장하지 않게 한다
+      if (made.length) await refresh().catch(() => undefined);
+      showError(made.length ? `${(e as Error).message} · ${t('run.pagesSaved', { from: tag(made[0]!), to: tag(made[made.length - 1]!) })}` : (e as Error).message);
+    }
     finally { saving = false; renderUpload(); }
   }
   const saveBtn = el('button', { class: 'primary', onclick: () => void savePages() }, t('run.splitSave'));
