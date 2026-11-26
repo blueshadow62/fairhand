@@ -50,17 +50,23 @@ export function registerIpc(d: IpcDeps): void {
   h(CHANNELS.saveSettings, (patch: Parameters<SettingsStore['save']>[0]) => d.settings.save(patch));
   // 사용자가 폴더 고르기 창에서 고른 폴더와 답안지 PDF를 쓴 곳만 기억한다: PDF는 고른 폴더에만 쓰고, 학기 폴더 밖이라도 쓴 곳은 '폴더 열기'로 보인다
   const pickedFolders = new Set<string>(), exportedPaths = new Set<string>();
+  // 상한 200: 고르기·내보내기 한 번에 경로 하나씩만 들어오므로 쓰던 경로는 지워지지 않는다
+  const remember = (set: Set<string>, p: string) => {
+    const r = path.resolve(p);
+    set.delete(r); set.add(r);
+    if (set.size > 200) set.delete(set.values().next().value!);
+  };
   h(CHANNELS.pickFolder, async () => {
     const r = await dialog.showOpenDialog(d.window()!, { properties: ['openDirectory', 'createDirectory'] });
     const p = r.canceled ? null : r.filePaths[0] ?? null;
-    if (p) pickedFolders.add(path.resolve(p));
+    if (p) remember(pickedFolders, p);
     return p;
   });
   h(CHANNELS.pickFile, async (kind: PickKind) => {
     const r = await dialog.showOpenDialog(d.window()!, pickFileOptions(kind, process.platform)); return r.canceled ? null : r.filePaths[0] ?? null;
   });
   h(CHANNELS.askLeave, async () => { const s = await d.settings.load(); const r = await dialog.showMessageBox(d.window()!, leaveDialogOptions(s.언어)); return leaveChoice(r.response); });
-  h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = LINKS[link]; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
+  h(CHANNELS.openExternal, async (link: ExternalLink) => { const url = Object.hasOwn(LINKS, link) ? LINKS[link] : undefined; if (!url) throw new DataError('허용되지 않은 주소'); await shell.openExternal(url); });
   h(CHANNELS.revealPath, async (p: string) => { if (typeof p === 'string' && exportedPaths.has(path.resolve(p))) { shell.showItemInFolder(p); return; } const sem = await semester(); const rel = path.relative(sem, p); if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new DataError('학기 폴더 밖은 열지 않습니다'); shell.showItemInFolder(p); });
   // 오래 걸리는 전사 중 다른 창을 보고 있으면 끝난 줄 모른다. 창에 초점이 있으면 띄우지 않고, 알림을 누르면 창을 앞으로 가져온다
   let lastNote: Notification | null = null; // 붙잡아 두지 않으면 알림을 누르기 전에 사라져 click이 오지 않는다
@@ -137,7 +143,7 @@ export function registerIpc(d: IpcDeps): void {
     const dir = await setDir(폴더);
     if (typeof outDir !== 'string' || !pickedFolders.has(path.resolve(outDir))) throw new DataError('받을 폴더를 폴더 고르기 창에서 다시 골라 주세요');
     const r = await exportAnswerPdf(dir, path.resolve(outDir), answerPdfOptionsArg(opts));
-    for (const f of [r.폴더, ...r.파일]) exportedPaths.add(path.resolve(f));
+    remember(exportedPaths, r.파일.length === 1 ? r.파일[0]! : r.폴더); // 화면의 '폴더에서 보기'가 여는 경로와 같아야 한다(파일마다 넣으면 학생별 PDF 수백 개가 상한을 넘긴다)
     return r;
   });
   // 저장된 정답표로 만든다(화면의 저장하지 않은 고침은 들어가지 않는다. 화면이 먼저 저장하게 한다). 쓴 경로는 '폴더에서 보기'로 열 수 있게 기억한다
@@ -148,7 +154,7 @@ export function registerIpc(d: IpcDeps): void {
     if (r.canceled || !r.filePath) return null;
     const lang = (await d.settings.load()).언어 === 'en' ? 'en' : 'ko';
     await writeCriteriaFile(r.filePath, await criteriaFile(key, o, lang, new Date(), d.printDocs));
-    exportedPaths.add(path.resolve(r.filePath));
+    remember(exportedPaths, r.filePath);
     return r.filePath;
   });
   h(CHANNELS.readSourceText, async (폴더: string) => { const dir = await setDir(폴더); try { return await readFile(path.join(dir, '원본', '지문.txt'), 'utf-8'); } catch { return ''; } });
