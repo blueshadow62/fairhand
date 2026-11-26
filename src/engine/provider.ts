@@ -53,8 +53,10 @@ export function toTranscript(raw: unknown, key: AnswerKey, page: number, info: T
 export const RETRYABLE: ReadonlySet<EngineErrorKind> = new Set(['rate-limit', 'overloaded', 'network', 'timeout']);
 
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((res, rej) => {
-  const t = setTimeout(res, ms);
-  signal.addEventListener('abort', () => { clearTimeout(t); rej(new EngineError('cancelled', '중단됨')); }, { once: true });
+  if (signal.aborted) { rej(new EngineError('cancelled', '중단됨')); return; } // 이미 중단된 signal에는 리스너가 울리지 않는다
+  const onAbort = () => { clearTimeout(t); rej(new EngineError('cancelled', '중단됨')); };
+  const t = setTimeout(() => { signal.removeEventListener('abort', onAbort); res(); }, ms);
+  signal.addEventListener('abort', onAbort, { once: true });
 });
 
 /** 네트워크·과부하·한도·시간 초과는 2·4·8초 뒤 다시(최대 3회). 그 밖의 오류는 바로 던진다. */

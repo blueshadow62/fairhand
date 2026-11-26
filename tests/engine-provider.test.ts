@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { getEventListeners } from 'node:events';
 import { parseKey } from '../src/core/key.js';
 import { EngineError, toTranscript, withRetry, userFacingMessage } from '../src/engine/provider.js';
 import { transcribeRequest } from '../src/engine/provider.js';
@@ -58,6 +59,20 @@ test('withRetry: 시간 초과는 한 번만 다시 묻는다(다른 재시도 �
   const kinds = ['timeout', 'network', 'timeout'] as const;
   await assert.rejects(withRetry(async () => { throw new EngineError(kinds[n++]!, 'x'); }, new AbortController().signal, [1, 1, 1]), (e: unknown) => e instanceof EngineError && e.kind === 'timeout');
   assert.equal(n, 3);
+});
+
+test('withRetry: 기다림이 끝나면 중단 리스너를 떼어 signal에 쌓이지 않는다', async () => {
+  const ac = new AbortController();
+  let n = 0;
+  assert.equal(await withRetry(async () => { n++; if (n < 3) throw new EngineError('network', 'x'); return 'done'; }, ac.signal, [1, 1, 1]), 'done');
+  assert.equal(getEventListeners(ac.signal, 'abort').length, 0);
+});
+
+test('withRetry: 실패와 함께 중단됐으면 기다리지 않고 cancelled', async () => {
+  const ac = new AbortController();
+  const t0 = Date.now();
+  await assert.rejects(withRetry(async () => { ac.abort(); throw new EngineError('network', 'x'); }, ac.signal, [5000]), (e: unknown) => e instanceof EngineError && e.kind === 'cancelled');
+  assert.ok(Date.now() - t0 < 1000);
 });
 
 test('withRetry: 중단되면 바로 cancelled', async () => {
